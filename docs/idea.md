@@ -2,7 +2,7 @@
 
 ## Summary
 
-edge-ui-swatchbook is a showroom for UI libraries. The same six industrial software screens are built once per library, with the same data and the same layout. You open a screen, switch the library, and see how each one handles the same job.
+edge-ui-swatchbook is a showroom for UI libraries. The same six industrial software screens are built once per library, with the same data and the same information. You open a screen, switch the library, and see how each one handles the same job.
 
 ## Metaphor
 
@@ -28,35 +28,62 @@ A salesperson in a shop spreads out samples so you can compare them side by side
 ## Goals
 
 - Make library differences visible on realistic, demanding screens, not toy demos.
-- Keep everything identical except the library: same data, same routes, same layout shell.
+- Keep content identical except the library: same data, same routes, same information and actions, same shell structure.
 - Be easy to open and click through (static site, no backend).
 
 ## Non-goals
 
 - A real industrial product or backend.
-- Pixel-identical screens across libraries. Each library should look and behave the way it naturally does.
+- Pixel-identical screens across libraries. Each library should look and behave the way it naturally does. See [ADR 0002](adr/0002-parity-means-identical-content-native-rendering.md).
 - Ranking libraries. The repo shows, it does not judge.
+- Phone or touch layouts. The target is desktop, keyboard and mouse first.
 
-## Proposed libraries
+## Decisions
 
-Initial guess, open to change:
+- **Parity.** Identical: screens, routes, mock data, information, actions, shell structure, keyboard shortcut bindings. Native: components, spacing, typography, grid and focus behavior, theming. A missing capability is a Gap and is shown as it is.
+- **Shared core.** One Mock Dataset (about 5,000 batches, 300 tags, 90 days of shift history, a few hundred events, generated with a fixed seed), one deterministic Simulator driven by a tick, and shared Plant State logic. Plant State resets on reload.
+- **Charts.** One shared chart library, themed per library, behind a thin wrapper so it can change later. It is chosen when the first library is built.
+- **Structure.** A pnpm monorepo: a shared `core` package and one Vite app per library, deployed under sub-paths of one GitHub Pages site. The shell switcher links to the same screen in another app. See [ADR 0001](adr/0001-one-app-per-library-with-shared-core.md).
+- **Stack.** React, strict TypeScript, Vite, pnpm workspaces, static deploy on GitHub Pages.
+- **Specs and checks.** A short spec per screen in `docs/screens/`. One Playwright suite runs against every library app and checks content and actions through shared test IDs, in both languages. No pixel comparison.
+- **Build order.** One library first with all six screens, then the others one at a time. Ant Design goes first because it proves the core, the specs and the Playwright suite.
+- **Release scope.** v1 has 3 libraries, v2 adds 3 more (6 in total), and the rest stay in a backlog. Adding a library later is cheap because each one is a separate app over the shared core. See [Libraries](#libraries).
+- **Theme and density.** The shell has light/dark and compact/comfortable toggles plus presets. Each library maps them to its own theming. Where density is not supported, the toggle shows it as unavailable.
+- **Guided tour.** v1 is linear and neutral: one step per screen, a short note on what to look for, defined as shared data.
+- **Languages.** English (`en`) and Brazilian Portuguese (`pt-BR`). The default follows the browser language, with English as the fallback. Typed dictionaries live in the core. Mock data text is stored as translation keys plus parameters, and identifiers (batch IDs, tag names) stay untranslated. Numbers and dates use `Intl`, units are never translated, and the plant time zone is `America/Sao_Paulo`.
+- **Preferences.** Language, theme and density persist in `localStorage`, shared across the apps on the same origin.
+- **Docs language.** `README.md`, `GLOSSARY.md` and `docs/` stay in English. Only the product UI is bilingual.
 
-- shadcn/ui
-- MUI
-- Ant Design
-- Mantine
+## Library criteria
 
-## Proposed stack
+A library is a candidate only if it:
 
-Defaults, open to change:
+- supports React,
+- is actively maintained,
+- has native dark mode,
+- offers a data grid, built in or officially paired, usable for free,
+- is free to use for a public demo,
+- can render everything it shows itself (components, grid, date picker, empty states) in both `en` and `pt-BR`.
 
-- React and TypeScript with Vite
-- Mock data only
-- Static deploy on GitHub Pages
+Where a library ships an official `pt-BR` pack, use it. Where it does not, we translate its strings ourselves in the core dictionaries, and record that as the library's Translation Burden. That cost is part of what the showroom shows.
+
+Paid-only features are excluded, not worked around.
+
+## Libraries
+
+| Release | Library | `pt-BR` |
+|---------|---------|---------|
+| v1 (Ant Design first) | Ant Design | official pack |
+| v1 | UI5 Web Components for React | official pack |
+| v1 | Siemens iX | Translation Burden |
+| v2 | Cloudscape | official pack |
+| v2 | Carbon | Translation Burden |
+| v2 | Blueprint | Translation Burden |
+| Backlog | Fluent UI v9, Semi Design, Arco Design, TDesign, PatternFly, Vaadin React | mixed |
+| Backlog | Mantine, shadcn/ui, Chakra UI | MUI: official pack, grid pack partial. shadcn/ui: none. Mantine and Chakra: Translation Burden |
+
+- **Mantine, shadcn/ui and Chakra:** the table is assembled from a free grid (mantine-datatable or TanStack Table), with no continuous virtualization out of the box.
 
 ## Open questions
 
-- Final list of libraries.
-- Whether each library lives in its own app/folder or all are routed inside one app.
-- How the shared mock data and layout shell are structured so libraries stay swappable.
-- Scope of the guided tour.
+- The chart library, chosen when the first library is built.
