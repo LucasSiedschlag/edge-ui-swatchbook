@@ -1,0 +1,18 @@
+name: Feature
+description: A new capability, or a Screen in a Library
+labels: ["enhancement"]
+assignees: [LucasSiedschlag]
+body:
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+    validations:
+      required: true
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      value: "- [ ] "
+    validations:
+      required: true

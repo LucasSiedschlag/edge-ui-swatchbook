@@ -18,6 +18,12 @@ Read these first, in order:
 - Charts go through the shared chart wrapper only, so the chart library stays swappable.
 - Plant State resets on reload. Only language, theme and density persist, in `localStorage`.
 
+## Layout and commands
+
+- `packages/core`: shared Mock Dataset, Simulator, Plant State, translations, Tour and shortcuts (`@swatchbook/core`).
+- `apps/<library>`: one Vite app per Library, built on the core. `apps/ant-design` is the first.
+- pnpm is not installed globally on this machine. Run it with `corepack pnpm <command>`, for example `corepack pnpm -r typecheck` and `corepack pnpm -r build`.
+
 ## Open
 
 The Library lists for v1, v2 and the backlog are in `docs/idea.md`. Do not add or swap a Library without asking. The chart library is not decided. Do not pick it without asking.

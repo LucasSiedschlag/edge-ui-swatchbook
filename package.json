@@ -1,0 +1,17 @@
+{
+  "name": "edge-ui-swatchbook",
+  "private": true,
+  "version": "0.0.0",
+  "license": "MIT",
+  "packageManager": "pnpm@12.16.1",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "typecheck": "pnpm -r typecheck",
+    "build": "pnpm -r build"
+  },
+  "devDependencies": {
+    "typescript": "^7.0.2"
+  }
+}

@@ -1,0 +1,48 @@
+name: Add Library
+description: Add a Library app to the showroom
+labels: ["enhancement", "library"]
+assignees: [LucasSiedschlag]
+body:
+  - type: input
+    id: library
+    attributes:
+      label: Library and version
+    validations:
+      required: true
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Release (v1, v2 or backlog) and why this Library.
+    validations:
+      required: true
+  - type: textarea
+    id: criteria
+    attributes:
+      label: Criteria
+      description: Evidence for each criterion in docs/idea.md. Record a Translation Burden if there is no official pt-BR pack.
+      value: |
+        - [ ] Supports React
+        - [ ] Actively maintained
+        - [ ] Native dark mode
+        - [ ] Free data grid (built in or officially paired)
+        - [ ] Free for a public demo
+        - [ ] en and pt-BR for everything it renders itself (official pack, or Translation Burden recorded)
+    validations:
+      required: true
+  - type: textarea
+    id: done-when
+    attributes:
+      label: Done when
+      value: |
+        - [ ] App under apps/ built on @swatchbook/core
+        - [ ] Screen 1: Operations Live Deck
+        - [ ] Screen 2: Interactive Recipe Lab
+        - [ ] Screen 3: Batch & Lot Ledger
+        - [ ] Screen 4: Plant Performance Center
+        - [ ] Screen 5: Live Parameter Matrix
+        - [ ] Screen 6: Control Room Command
+        - [ ] Parity suite passes in en and pt-BR
+        - [ ] Gaps listed
+    validations:
+      required: true
