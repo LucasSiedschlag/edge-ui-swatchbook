@@ -41,6 +41,7 @@ A salesperson in a shop spreads out samples so you can compare them side by side
 ## Decisions
 
 - **Parity.** Identical: screens, routes, mock data, information, actions, shell structure, keyboard shortcut bindings. Native: components, spacing, typography, grid and focus behavior, theming. A missing capability is a Gap and is shown as it is.
+- **Plant.** A fictional PVC window and door frame maker in the Joinville/SC region: 3 areas, 7 lines, 27 machines (extrusion, metalworking, assembly). Lots link through a genealogy from material lot to assembly serial. Alarms follow ISA-18.2 priorities and states. Users and roles are labels only, with no login or permission checks. The layout, vocabulary and per-screen specs are in [docs/screens](screens/README.md). Parameter ranges are design suggestions, not verified production values.
 - **Shared core.** One Mock Dataset (about 5,000 batches, 300 tags, 90 days of shift history, a few hundred events, generated with a fixed seed), one deterministic Simulator driven by a tick, and shared Plant State logic. Plant State resets on reload.
 - **Charts.** One shared chart library, themed per library, behind a thin wrapper so it can change later. It is chosen when the first library is built.
 - **Structure.** A pnpm monorepo: a shared `core` package and one Vite app per library, deployed under sub-paths of one GitHub Pages site. The shell switcher links to the same screen in another app. See [ADR 0001](adr/0001-one-app-per-library-with-shared-core.md).

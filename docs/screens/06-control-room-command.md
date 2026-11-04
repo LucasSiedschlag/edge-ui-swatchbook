@@ -1,0 +1,33 @@
+# 6. Control Room Command
+
+Route `/control`. Alarms, the Event Log and communication diagnostics.
+
+## Shows
+
+- **Active alarm list.** Priority (Critical, High, Medium, Low), state, Line, Machine, message, raised time and age. Sorted by priority, then by raised time. Alarm states: active unacknowledged, active acknowledged, returned to normal unacknowledged, cleared.
+- **Event Log.** Chronological, newest first: time, User, Role, action, target, and old value to new value where one applies. It includes Alarm acknowledgements, Setpoint Overrides, Pause, Emergency stop, Shift handovers and Recipe changes.
+- **Communication diagnostics.** For every Machine: link status (Online, Degraded or Offline), latency in ms, packet loss percentage, last heartbeat and error count.
+
+## Actions
+
+| Action | Effect |
+|--------|--------|
+| Filter Alarms | By priority, state, Area and Line. |
+| Acknowledge | One or several selected Alarms, with `a` or a button. An active unacknowledged Alarm becomes active acknowledged. A returned to normal unacknowledged Alarm becomes cleared. Logged. |
+| Filter the Event Log | By User, action type and time range (the four standard ranges). |
+| Sort diagnostics | By status, latency, packet loss or Machine. |
+
+## States
+
+- No active Alarms: empty state in the list.
+- Event Log filter with no match: empty state.
+- Offline Machine: shown first in diagnostics and linked to its Alarm if one exists.
+- Acknowledging an Alarm that is already acknowledged: no change, no log entry.
+
+## Required test IDs
+
+`control.alarm-list`, `control.alarm-row`, `control.alarm-filter-priority`, `control.alarm-filter-state`, `control.alarm-select`, `control.acknowledge`, `control.alarm-empty`, `control.event-log`, `control.event-filter-user`, `control.event-filter-type`, `control.event-filter-range`, `control.event-empty`, `control.diagnostics`, `control.diagnostics-sort`.
+
+## Out of scope
+
+Shelving or suppressing Alarms, editing alarm limits, remote diagnostics commands, printing the Event Log.
