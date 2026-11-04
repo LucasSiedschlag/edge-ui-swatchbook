@@ -10,3 +10,7 @@ export const SCREENS = [
   { id: 'control', route: '/control' },
 ] as const;
 export type ScreenId = (typeof SCREENS)[number]['id'];
+
+export { DEFAULT_SEED, generateMockDataset } from './mock/generate';
+export type * from './mock/types';
+export { findBatch } from './mock/lookup';
