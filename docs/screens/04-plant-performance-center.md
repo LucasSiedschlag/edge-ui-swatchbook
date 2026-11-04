@@ -21,7 +21,7 @@ Route `/performance`. For Managers. A read-only view of how the plant performs.
 ## States
 
 - A scope and range with no production (for example a Line that did not run): empty state in each block.
-- Live range (Last shift) updates each tick. Longer ranges are fixed history.
+- Last shift is the most recent completed Shift and does not change. Last 24 hours includes the current Shift and updates each tick. Longer ranges are fixed history.
 
 ## Required test IDs
 
