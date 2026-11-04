@@ -27,3 +27,13 @@ Read these first, in order:
 ## Open
 
 The Library lists for v1, v2 and the backlog are in `docs/idea.md`. Do not add or swap a Library without asking. The chart library is not decided. Do not pick it without asking.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues for this repo, via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: one root `GLOSSARY.md` and `docs/adr/`. See `docs/agents/domain.md`.
