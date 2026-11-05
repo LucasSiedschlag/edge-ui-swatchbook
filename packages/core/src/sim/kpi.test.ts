@@ -32,6 +32,21 @@ describe('a Line that is not making product', () => {
   });
 });
 
+describe('a Pause early in a Shift', () => {
+  it('does not lift OEE, and brings it down while the Line is paused', () => {
+    const o = pausedBetween(600, 660);
+    const oee = (tick: number) => line(tick, 'E1', o)?.oee ?? 0;
+    expect(oee(600)).toBeLessThanOrEqual(oee(599) + 0.02);
+    expect(oee(659)).toBeLessThan(oee(599));
+  });
+
+  it('shows zero quality once a Line has made nothing this Shift, not the history baseline', () => {
+    const l = line(31_000, 'E1');
+    expect(l?.outputThisShift).toBe(0);
+    expect(l?.quality).toBe(0);
+  });
+});
+
 describe('live KPIs agree with the hourly records', () => {
   it.each(['E1', 'RF1', 'A1', 'P1'])('on %s, once there is half an hour of data', (id) => {
     const tick = 5000;

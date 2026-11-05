@@ -1,5 +1,6 @@
 import type { Tag } from '../mock/types';
-import { type Direction, heldAt, type SimContext } from './context';
+import { type Direction, heldAt, type Latch, type SimContext } from './context';
+import { type Overlay, setpointAt } from './overlay';
 import { hash, noise, smooth } from './noise';
 
 export type TagStatus = 'normal' | 'high' | 'low' | 'stale';
@@ -21,8 +22,6 @@ export interface TagReading {
 
 /** How far inside the limits a value must be to count as clearly back. */
 const DEADBAND = 0.05;
-/** How far back to look for the last tick that decided the alarm state. */
-const LOOKBACK = 300;
 
 /** Counters and run hours have no high or low limit worth an Alarm. */
 const COUNTER_UNITS = new Set(['pcs', 'h']);
@@ -72,32 +71,87 @@ function statusOf(tag: Tag, value: number): TagStatus {
   return value > tag.max ? 'high' : value < tag.min ? 'low' : 'normal';
 }
 
-export type SetpointFor = (tick: number) => number;
+/** Alarm states are worked out forward from here. Nothing is in alarm before. */
+export const START_TICK = -7500;
 
-/** Alarm state at a tick: the last tick that was clearly out or clearly inside decides. Stateless, so any range gives the same answer. */
-export function alarmedAt(ctx: SimContext, tag: Tag, tick: number, setpointFor: SetpointFor): Direction | null {
+type Latches = Map<string, Latch>;
+const overlayLatches = new WeakMap<Overlay, Latches>();
+
+function latchesOf(ctx: SimContext, overlay: Overlay | undefined, tag: Tag): Latches {
+  if (!overlay?.setpoints?.has(tag.id)) return ctx.latches;
+  let m = overlayLatches.get(overlay);
+  if (!m) overlayLatches.set(overlay, (m = new Map()));
+  return m;
+}
+
+/** Most recent latch set wins when both are set. */
+function currentAlarm(hiAt: number | null, loAt: number | null): Direction | null {
+  if (hiAt !== null && loAt !== null) return hiAt > loAt ? 'high' : 'low';
+  return hiAt !== null ? 'high' : loAt !== null ? 'low' : null;
+}
+
+/**
+ * Alarm state at a tick, with a deadband on each side. The high side sets when the value goes above max and clears only at
+ * `max - 5%` of the range or lower. The low side sets below min and clears at `min + 5%` or higher. It is worked out forward
+ * and kept per Tag, so a value hovering at a limit stays in one alarm for as long as it hovers.
+ *
+ * A change of Overlay must be a new object, because the latch is kept per Overlay object.
+ */
+export function alarmedAt(ctx: SimContext, tag: Tag, tick: number, overlay?: Overlay): Direction | null {
   const hb = ctx.heartbeat.get(tag.machineId);
   if (hb !== undefined && tick >= hb) return null;
-  const margin = (tag.max - tag.min) * DEADBAND;
-  for (let t = tick; t > tick - LOOKBACK; t--) {
-    const v = tagValue(tag, t, heldAt(ctx, tag.id, t), setpointFor(t));
-    if (v > tag.max) return 'high';
-    if (v < tag.min) return 'low';
-    if (v <= tag.max - margin && v >= tag.min + margin) return null;
+  const range = tag.max - tag.min;
+  // A setpoint well inside the limits is always clearly inside again as soon as the value is back, so the value alone decides.
+  const central = tag.setpoint >= tag.min + range * 0.07 && tag.setpoint <= tag.max - range * 0.07;
+  if (central && !overlay?.setpoints?.has(tag.id)) {
+    const v = tagValue(tag, tick, heldAt(ctx, tag.id, tick));
+    return v > tag.max ? 'high' : v < tag.min ? 'low' : null;
   }
-  return null;
+  if (tick < START_TICK) return null;
+  const store = latchesOf(ctx, overlay, tag);
+  let latch = store.get(tag.id);
+  if (!latch) store.set(tag.id, (latch = { upTo: START_TICK - 1, hiAt: null, loAt: null, changes: [] }));
+  const margin = range * DEADBAND;
+  let prev = latch.changes.length > 0 ? (latch.changes[latch.changes.length - 1] as { alarm: Direction | null }).alarm : null;
+  for (let t = latch.upTo + 1; t <= tick; t++) {
+    const v = tagValue(tag, t, heldAt(ctx, tag.id, t), setpointAt(overlay, tag, t));
+    if (v > tag.max && latch.hiAt === null) latch.hiAt = t;
+    else if (v <= tag.max - margin) latch.hiAt = null;
+    if (v < tag.min && latch.loAt === null) latch.loAt = t;
+    else if (v >= tag.min + margin) latch.loAt = null;
+    const now = currentAlarm(latch.hiAt, latch.loAt);
+    if (now !== prev) {
+      latch.changes.push({ tick: t, alarm: now });
+      prev = now;
+    }
+  }
+  latch.upTo = Math.max(latch.upTo, tick);
+  // Last change at or before the tick.
+  let lo = 0;
+  let hi = latch.changes.length - 1;
+  let ans: Direction | null = null;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    const c = latch.changes[mid] as { tick: number; alarm: Direction | null };
+    if (c.tick <= tick) {
+      ans = c.alarm;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return ans;
 }
 
 /**
  * One Tag at one tick. An open Alarm holds its Tag out of limits for its stretch. A Tag of an Offline Machine
  * is Stale from the last heartbeat on, frozen at the value it had then.
  */
-export function readTag(ctx: SimContext, tag: Tag, tick: number, setpointFor: SetpointFor = () => tag.setpoint): TagReading {
+export function readTag(ctx: SimContext, tag: Tag, tick: number, overlay?: Overlay): TagReading {
   const hb = ctx.heartbeat.get(tag.machineId);
   if (hb !== undefined && tick >= hb) {
-    return { tagId: tag.id, value: tagValue(tag, hb, null, setpointFor(hb)), status: 'stale', setpoint: setpointFor(hb), alarm: null };
+    const sp = setpointAt(overlay, tag, hb);
+    return { tagId: tag.id, value: tagValue(tag, hb, null, sp), status: 'stale', setpoint: sp, alarm: null };
   }
-  const setpoint = setpointFor(tick);
+  const setpoint = setpointAt(overlay, tag, tick);
   const value = tagValue(tag, tick, heldAt(ctx, tag.id, tick), setpoint);
-  return { tagId: tag.id, value, status: statusOf(tag, value), setpoint, alarm: alarmedAt(ctx, tag, tick, setpointFor) };
+  return { tagId: tag.id, value, status: statusOf(tag, value), setpoint, alarm: alarmedAt(ctx, tag, tick, overlay) };
 }

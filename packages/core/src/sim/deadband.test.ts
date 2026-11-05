@@ -44,18 +44,8 @@ describe('raises: identity and edges', () => {
     for (const r of list) expect(r.id).toBe(`RZ-${r.tick}-${r.tagId}`);
   });
 
-  it('dates the return of a dataset raise at the first tick the Tag is out of alarm', () => {
-    for (const r of raises(d, 0, 3600)) {
-      expect(r.returnTick).not.toBeNull();
-      const rt = r.returnTick as number;
-      expect(rt).toBeGreaterThan(r.tick);
-      expect(simulate(d, rt - 1).tags.find((x) => x.tagId === r.tagId)?.alarm).toBe(r.direction);
-      expect(simulate(d, rt).tags.find((x) => x.tagId === r.tagId)?.alarm).toBeNull();
-    }
-  });
-
-  it('gives no return tick for a raise caused by an override, because it is a forecast', () => {
-    for (const r of raises(d, 0, 900, at(tag?.max ?? 0)).filter((x) => x.tagId === id)) expect(r.returnTick).toBeNull();
+  it('has no return tick, because Plant State watches the alarm state of each Tag', () => {
+    for (const r of raises(d, 0, 3600)) expect('returnTick' in r).toBe(false);
   });
 
   it('does not raise again for a Tag that an Alarm already holds out of limits', () => {
@@ -67,5 +57,51 @@ describe('raises: identity and edges', () => {
   it('keeps the alarm state in step with tagSeries', () => {
     const s = tagSeries(d, id, 90, 120, 1, at(tag?.max ?? 0));
     expect(s.every((p) => p.alarm === simulate(d, p.tick, at(tag?.max ?? 0)).tags.find((r) => r.tagId === id)?.alarm)).toBe(true);
+  });
+});
+
+
+describe('deadband: an exact latch on each side', () => {
+  const overlays = new Map<string, Overlay>();
+  const holdAt = (tagId: string, value: number, fromTick = 100): Overlay => {
+    const key = `${tagId}|${value}|${fromTick}`;
+    if (!overlays.has(key)) overlays.set(key, { setpoints: new Map([[tagId, [{ fromTick, value }]]]) });
+    return overlays.get(key) as Overlay;
+  };
+  const tags = ['E1-puller.puller-speed', 'E2-extruder.barrel-zone-4-temp', 'RF1-roll-former.line-speed', 'A1-corner-weld.weld-time'];
+
+  it.each(tags)('raises exactly once in two hours for %s held at max, and once held at min', (tagId) => {
+    const t = d.tags.find((x) => x.id === tagId);
+    expect(t).toBeDefined();
+    for (const value of [t?.max ?? 0, t?.min ?? 0]) {
+      expect(raises(d, 0, 7200, holdAt(tagId, value)).filter((r) => r.tagId === tagId)).toHaveLength(1);
+    }
+  });
+
+  it('keeps the alarm state set through two hours at a limit, and does not clear by running out of history', () => {
+    const o = holdAt(id, tag?.max ?? 0);
+    for (let tick = 150; tick <= 7200; tick += 37) expect(simulate(d, tick, o).tags.find((r) => r.tagId === id)?.alarm).toBe('high');
+  });
+
+  it('swaps high for low when the override steps from one limit to the other', () => {
+    const o: Overlay = { setpoints: new Map([[id, [{ fromTick: 100, value: tag?.max ?? 0 }, { fromTick: 400, value: tag?.min ?? 0 }]]]) };
+    const mine = raises(d, 0, 1200, o).filter((r) => r.tagId === id);
+    expect(mine.map((r) => r.direction)).toEqual(['high', 'low']);
+    const read = (tick: number) => simulate(d, tick, o).tags.find((r) => r.tagId === id)?.alarm;
+    expect(read(399)).toBe('high');
+    expect(read(mine[1]?.tick ?? 0)).toBe('low');
+    for (let tick = (mine[1]?.tick ?? 0) + 1; tick < 1200; tick += 11) expect(read(tick)).toBe('low');
+  });
+
+  it('only shows an alarm on a Tag that is out of limits or still inside the deadband', () => {
+    for (let tick = 0; tick < 2000; tick += 13) {
+      for (const r of simulate(d, tick).tags) {
+        const t = d.tags.find((x) => x.id === r.tagId);
+        const margin = ((t?.max ?? 0) - (t?.min ?? 0)) * 0.05;
+        if (r.alarm === null) expect(r.status === 'normal' || r.status === 'stale').toBe(true);
+        if (r.alarm === 'high' && r.status === 'normal') expect(r.value).toBeGreaterThan((t?.max ?? 0) - margin);
+        if (r.alarm === 'low' && r.status === 'normal') expect(r.value).toBeLessThan((t?.min ?? 0) + margin);
+      }
+    }
   });
 });

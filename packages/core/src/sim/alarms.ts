@@ -2,7 +2,7 @@ import type { AlarmPriority, LineId, MockDataset, TextRef, Timestamp } from '../
 import { simulatedTime } from './clock';
 import { assertTick, contextOf, type Direction, heldAt, returnTickOf } from './context';
 import { hash, noise } from './noise';
-import { type Overlay, setpointAt } from './overlay';
+import type { Overlay } from './overlay';
 import { alarmedAt, canExcurse, EPOCH_TICKS, excursionOf } from './tags';
 
 export interface Raise {
@@ -10,8 +10,6 @@ export interface Raise {
   id: string;
   tick: number;
   time: Timestamp;
-  /** The first tick the Tag is out of alarm. Null for a raise caused by an override, because a later change can move it. */
-  returnTick: number | null;
   tagId: string;
   machineId: string;
   lineId: LineId;
@@ -24,8 +22,8 @@ export interface Raise {
 export interface Return {
   tick: number;
   alarmId: string;
-  /** Null for a fault that is not tied to a Tag. */
-  tagId: string | null;
+  /** Always null: only faults without a Tag are listed. */
+  tagId: null;
 }
 
 function priorityOf(key: number, epoch: number): AlarmPriority {
@@ -49,15 +47,11 @@ export function raises(d: MockDataset, fromTick: number, toTick: number, overlay
       if (!e || e.start <= fromTick || e.start > toTick) continue;
       // A Tag already held out of limits by an Alarm cannot cross again until that ends.
       if (heldAt(ctx, tag.id, e.start) || heldAt(ctx, tag.id, e.start - 1)) continue;
-      const setpointFor = () => tag.setpoint;
-      if (alarmedAt(ctx, tag, e.start - 1, setpointFor) !== null) continue;
-      let back = e.start + 1;
-      while (back < e.start + 600 && alarmedAt(ctx, tag, back, setpointFor) !== null) back++;
+      if (alarmedAt(ctx, tag, e.start - 1) !== null) continue;
       out.push({
         id: `RZ-${e.start}-${tag.id}`,
         tick: e.start,
         time: simulatedTime(e.start),
-        returnTick: back,
         tagId: tag.id,
         machineId: tag.machineId,
         lineId: tag.lineId,
@@ -75,16 +69,14 @@ export function raises(d: MockDataset, fromTick: number, toTick: number, overlay
   for (const tagId of overlay?.setpoints?.keys() ?? []) {
     const tag = ctx.tagById.get(tagId);
     if (!tag || !canExcurse(tag) || ctx.heartbeat.has(tag.machineId)) continue;
-    const setpointFor = (t: number) => setpointAt(overlay, tag, t);
     for (let tick = Math.max(fromTick, 0) + 1; tick <= toTick; tick++) {
       if (heldAt(ctx, tag.id, tick) || heldAt(ctx, tag.id, tick - 1)) continue;
-      const now = alarmedAt(ctx, tag, tick, setpointFor);
-      if (now === null || alarmedAt(ctx, tag, tick - 1, setpointFor) !== null) continue;
+      const now = alarmedAt(ctx, tag, tick, overlay);
+      if (now === null || alarmedAt(ctx, tag, tick - 1, overlay) !== null) continue;
       out.push({
         id: `RZ-${tick}-${tag.id}`,
         tick,
         time: simulatedTime(tick),
-        returnTick: null,
         tagId: tag.id,
         machineId: tag.machineId,
         lineId: tag.lineId,
@@ -102,7 +94,8 @@ export function raises(d: MockDataset, fromTick: number, toTick: number, overlay
 }
 
 /**
- * Alarms open at load that return to normal at a tick in (fromTick, toTick], each at its own tick. A comms loss is not listed,
+ * Open Alarms that are not tied to a Tag (faults) and return to normal at a tick in (fromTick, toTick], each at its own tick.
+ * Alarms tied to a Tag return when `alarm` is null on their Tag, so there is one rule for them. A comms loss is not listed,
  * because it stays until its Machine is back, and the Offline Machine never comes back.
  */
 export function returns(d: MockDataset, fromTick: number, toTick: number): Return[] {
@@ -110,9 +103,9 @@ export function returns(d: MockDataset, fromTick: number, toTick: number): Retur
   assertTick(toTick);
   const out: Return[] = [];
   for (const a of d.alarms) {
-    if ((a.state !== 'active-unacknowledged' && a.state !== 'active-acknowledged') || a.message.key === 'alarm.comm-loss') continue;
+    if (a.tagId !== null || (a.state !== 'active-unacknowledged' && a.state !== 'active-acknowledged') || a.message.key === 'alarm.comm-loss') continue;
     const tick = returnTickOf(a.id);
-    if (tick > fromTick && tick <= toTick) out.push({ tick, alarmId: a.id, tagId: a.tagId });
+    if (tick > fromTick && tick <= toTick) out.push({ tick, alarmId: a.id, tagId: null });
   }
   return out.sort((x, y) => x.tick - y.tick || (x.alarmId < y.alarmId ? -1 : 1));
 }

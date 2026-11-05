@@ -119,22 +119,24 @@ describe('simulate: Alarms follow the Tags', () => {
     }
   });
 
-  it('returns each open Alarm at its own tick and reports it, except a comms loss while its Machine is Offline', () => {
+  it('reports only the faults without a Tag as returning, each at its own tick, and never a comms loss', () => {
     const list = returns(d, -1, 2000);
-    const returning = d.alarms.filter((a) => (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged') && a.message.key !== 'alarm.comm-loss');
-    expect(list.map((r) => r.alarmId).sort()).toEqual(returning.map((a) => a.id).sort());
-    expect(new Set(list.map((r) => r.tick)).size).toBeGreaterThan(1);
-    expect(returning.some((a) => a.tagId === null)).toBe(true);
+    const faults = d.alarms.filter((a) => (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged') && a.tagId === null && a.message.key !== 'alarm.comm-loss');
+    expect(faults.length).toBeGreaterThan(0);
+    expect(list.map((r) => r.alarmId).sort()).toEqual(faults.map((a) => a.id).sort());
     for (const r of list) {
+      expect(r.tagId).toBeNull();
       expect(r.tick).toBeGreaterThanOrEqual(300);
       expect(r.tick).toBeLessThan(900);
-      const a = open.find((x) => x.id === r.alarmId);
-      if (!a) {
-        expect(r.tagId).toBeNull();
-        continue;
-      }
-      expect(simulate(d, r.tick - 1).tags.find((x) => x.tagId === a.tagId)?.status).toBe(direction(a.message.key));
-      expect(simulate(d, r.tick).tags.find((x) => x.tagId === a.tagId)?.status).toBe('normal');
+    }
+  });
+
+  it('returns the Tag of each open Alarm to normal at its own tick, which shows in its alarm state', () => {
+    const ticks = open.map((a) => Math.min(...[...Array(900).keys()].filter((t) => simulate(d, t).tags.find((r) => r.tagId === a.tagId)?.alarm === null)));
+    expect(new Set(ticks).size).toBeGreaterThan(1);
+    for (const t of ticks) {
+      expect(t).toBeGreaterThanOrEqual(300);
+      expect(t).toBeLessThan(900);
     }
   });
 
@@ -387,12 +389,21 @@ describe('snapshotDigest', () => {
 
   // Playwright (Issue 8) compares this value across Chromium, Firefox and WebKit. Update it only when the Simulator changes on purpose.
   it('is stable for the default dataset', () => {
-    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('24368acd');
+    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('affe77b0');
   });
 });
 
 
 describe('simulate: smaller edges', () => {
+  it('never moves a last-seen time backward', () => {
+    let prev = simulate(d, 0).machines;
+    for (let tick = 1; tick <= 400; tick++) {
+      const cur = simulate(d, tick).machines;
+      cur.forEach((m, i) => expect(m.lastSeenAt).toBeGreaterThanOrEqual(prev[i]?.lastSeenAt ?? 0));
+      prev = cur;
+    }
+  });
+
   it('never reports a last-seen time earlier than the dataset heartbeat, or later than now', () => {
     for (const tick of [0, 1, 2, 30]) {
       const s = simulate(d, tick);

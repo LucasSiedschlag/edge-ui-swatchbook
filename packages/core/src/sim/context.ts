@@ -14,7 +14,18 @@ export interface AlarmWindow {
   open: boolean;
 }
 
+/** The alarm state of one Tag, worked out forward from `START_TICK` and kept as a list of changes. */
+export interface Latch {
+  /** The last tick worked out. */
+  upTo: number;
+  hiAt: number | null;
+  loAt: number | null;
+  changes: { tick: number; alarm: Direction | null }[];
+}
+
 export interface SimContext {
+  /** Latches of Tags that follow the dataset only and cannot be taken from the value alone. */
+  latches: Map<string, Latch>;
   tagById: Map<string, Tag>;
   windows: Map<string, AlarmWindow[]>;
   /** Offline Machine id to the tick of its last heartbeat. */
@@ -48,7 +59,7 @@ export function contextOf(d: MockDataset): SimContext {
   }
   const heartbeat = new Map<string, number>();
   for (const m of d.machines) if (m.comms.status === 'offline') heartbeat.set(m.id, tickOf(d, m.comms.lastHeartbeatAt));
-  const ctx = { tagById: new Map(d.tags.map((t) => [t.id, t])), windows, heartbeat };
+  const ctx: SimContext = { latches: new Map(), tagById: new Map(d.tags.map((t) => [t.id, t])), windows, heartbeat };
   cache.set(d, ctx);
   return ctx;
 }

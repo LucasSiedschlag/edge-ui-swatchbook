@@ -34,4 +34,22 @@ describe.each([1, 2, 3, 20260101])('simulator for seed %i', (seed) => {
   it('lists the same raises from separate datasets', () => {
     expect(JSON.stringify(raises(a, 0, 7200))).toBe(JSON.stringify(raises(b, 0, 7200)));
   });
+
+  it('raises for every Tag that goes into alarm after load, and for nothing else', () => {
+    const list = raises(a, 0, 3000);
+    const seen = new Set<string>();
+    let prev = simulate(a, 0).tags;
+    for (let tick = 1; tick <= 3000; tick++) {
+      const cur = simulate(a, tick).tags;
+      cur.forEach((r, i) => {
+        if (r.alarm !== null && prev[i]?.alarm === null) {
+          const hit = list.find((x) => x.tick === tick && x.tagId === r.tagId);
+          expect(hit?.direction).toBe(r.alarm);
+          seen.add(r.tagId + tick);
+        }
+      });
+      prev = cur;
+    }
+    expect(list.length).toBe(seen.size);
+  });
 });

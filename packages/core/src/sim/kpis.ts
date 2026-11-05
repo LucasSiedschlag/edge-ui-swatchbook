@@ -139,13 +139,15 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
 
     // The first half hour of a Shift starts from the history baseline and moves to the live numbers.
     const b = baselineOf(d, line.id);
-    const w = making ? Math.min(1, elapsed / BLEND_TICKS) : 1;
+    // The blend runs while the Line has work this Shift, so a Pause lowers the numbers smoothly instead of jumping them.
+    const hasWork = m.unitsAt(shiftStart) < active.targetUnits;
+    const w = hasWork ? Math.min(1, elapsed / BLEND_TICKS) : 1;
     const key = hash(line.id);
     const wobble = (salt: number, size: number) => (smooth(key + salt, tick, 300) - 0.5) * size * (1 - w);
     const mix = (baseline: number, live: number, salt: number, size: number) => round3(clamp(baseline * (1 - w) + live * w + wobble(salt, size)));
     const availability = mix(b.availability, elapsed > 0 ? makingTicks / elapsed : 0, 1, 0.04);
     const performance = mix(b.performance, output > 0 ? output / target : 0, 2, 0.04);
-    const quality = mix(b.quality, output > 0 ? (output - scrap) / output : b.quality, 3, 0.02);
+    const quality = mix(b.quality, output > 0 ? (output - scrap) / output : 0, 3, 0.02);
     return {
       ...base,
       batch: {
