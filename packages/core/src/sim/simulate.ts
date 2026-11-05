@@ -3,7 +3,7 @@ import { shiftInfo, simulatedTime, type ShiftInfo } from './clock';
 import { readHours, readLines, type LineLive } from './kpis';
 import { readLinks, type MachineLink } from './links';
 import { assertTick, contextOf } from './context';
-import { type Overlay, setpointAt } from './overlay';
+import { assertOverlay, type Overlay } from './overlay';
 import { readTag, type TagReading } from './tags';
 
 export interface Snapshot {
@@ -20,8 +20,10 @@ export interface Snapshot {
 /** Everything that changes over time, as a pure function of the Mock Dataset and the tick. */
 export function simulate(d: MockDataset, tick: number, overlay?: Overlay): Snapshot {
   assertTick(tick);
+  if (tick < 0) throw new Error('simulate needs a tick of 0 or more, use tagSeries for the time before load');
+  assertOverlay(overlay);
   const ctx = contextOf(d);
   const machines = readLinks(d.machines, tick);
-  const tags = d.tags.map((t) => readTag(ctx, t, tick, setpointAt(overlay, t, tick)));
+  const tags = d.tags.map((t) => readTag(ctx, t, tick, overlay));
   return { tick, time: simulatedTime(tick), shift: shiftInfo(tick), tags, machines, lines: readLines(d, tick, tags, overlay), hours: readHours(d, tick, overlay) };
 }

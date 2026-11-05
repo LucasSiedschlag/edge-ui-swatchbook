@@ -2,14 +2,14 @@ import type { AlarmPriority, LineId, MockDataset, TextRef, Timestamp } from '../
 import { simulatedTime } from './clock';
 import { assertTick, contextOf, type Direction, heldAt, returnTickOf } from './context';
 import { hash, noise } from './noise';
-import { type Overlay, setpointAt } from './overlay';
-import { canExcurse, EPOCH_TICKS, EXCURSION_TICKS, excursionOf, readTag } from './tags';
+import { assertOverlay, type Overlay } from './overlay';
+import { alarmedAt, canExcurse, EPOCH_TICKS, excursionOf } from './tags';
 
 export interface Raise {
+  /** Unique and stable: `RZ-<tick>-<tag id>`. */
+  id: string;
   tick: number;
   time: Timestamp;
-  /** The tick the Tag is back within limits. */
-  returnTick: number;
   tagId: string;
   machineId: string;
   lineId: LineId;
@@ -22,7 +22,8 @@ export interface Raise {
 export interface Return {
   tick: number;
   alarmId: string;
-  tagId: string;
+  /** Always null: only faults without a Tag are listed. */
+  tagId: null;
 }
 
 function priorityOf(key: number, epoch: number): AlarmPriority {
@@ -37,6 +38,7 @@ function priorityOf(key: number, epoch: number): AlarmPriority {
 export function raises(d: MockDataset, fromTick: number, toTick: number, overlay?: Overlay): Raise[] {
   assertTick(fromTick);
   assertTick(toTick);
+  assertOverlay(overlay);
   const ctx = contextOf(d);
   const out: Raise[] = [];
   for (let epoch = Math.max(0, Math.floor(fromTick / EPOCH_TICKS)); epoch <= Math.floor(toTick / EPOCH_TICKS); epoch++) {
@@ -46,10 +48,11 @@ export function raises(d: MockDataset, fromTick: number, toTick: number, overlay
       if (!e || e.start <= fromTick || e.start > toTick) continue;
       // A Tag already held out of limits by an Alarm cannot cross again until that ends.
       if (heldAt(ctx, tag.id, e.start) || heldAt(ctx, tag.id, e.start - 1)) continue;
+      if (alarmedAt(ctx, tag, e.start - 1) !== null) continue;
       out.push({
+        id: `RZ-${e.start}-${tag.id}`,
         tick: e.start,
         time: simulatedTime(e.start),
-        returnTick: e.start + EXCURSION_TICKS,
         tagId: tag.id,
         machineId: tag.machineId,
         lineId: tag.lineId,
@@ -67,16 +70,14 @@ export function raises(d: MockDataset, fromTick: number, toTick: number, overlay
   for (const tagId of overlay?.setpoints?.keys() ?? []) {
     const tag = ctx.tagById.get(tagId);
     if (!tag || !canExcurse(tag) || ctx.heartbeat.has(tag.machineId)) continue;
-    const status = (t: number) => readTag(ctx, tag, t, setpointAt(overlay, tag, t)).status;
-    for (let tick = fromTick + 1; tick <= toTick; tick++) {
-      const now = status(tick);
-      if ((now !== 'high' && now !== 'low') || status(tick - 1) !== 'normal') continue;
-      let back = tick + 1;
-      while (back < tick + 3600 && status(back) !== 'normal') back++;
+    for (let tick = Math.max(fromTick, 0) + 1; tick <= toTick; tick++) {
+      // A new raise is a Tag going into alarm, or switching from one side to the other.
+      const now = alarmedAt(ctx, tag, tick, overlay);
+      if (now === null || now === alarmedAt(ctx, tag, tick - 1, overlay)) continue;
       out.push({
+        id: `RZ-${tick}-${tag.id}`,
         tick,
         time: simulatedTime(tick),
-        returnTick: back,
         tagId: tag.id,
         machineId: tag.machineId,
         lineId: tag.lineId,
@@ -93,13 +94,19 @@ export function raises(d: MockDataset, fromTick: number, toTick: number, overlay
   return out.sort((a, b) => a.tick - b.tick || (a.tagId < b.tagId ? -1 : a.tagId > b.tagId ? 1 : 0));
 }
 
-/** Alarms open at load whose Tag returns within limits at a tick in (fromTick, toTick]. */
+/**
+ * Open Alarms that are not tied to a Tag (faults) and return to normal at a tick in (fromTick, toTick], each at its own tick.
+ * Alarms tied to a Tag return when `alarm` is null on their Tag, so there is one rule for them. A comms loss is not listed,
+ * because it stays until its Machine is back, and the Offline Machine never comes back.
+ */
 export function returns(d: MockDataset, fromTick: number, toTick: number): Return[] {
   assertTick(fromTick);
   assertTick(toTick);
   const out: Return[] = [];
-  for (const [tagId, windows] of contextOf(d).windows) {
-    for (const w of windows) if (w.open && w.toTick > fromTick && w.toTick <= toTick) out.push({ tick: returnTickOf(w.alarmId), alarmId: w.alarmId, tagId });
+  for (const a of d.alarms) {
+    if (a.tagId !== null || (a.state !== 'active-unacknowledged' && a.state !== 'active-acknowledged') || a.message.key === 'alarm.comm-loss') continue;
+    const tick = returnTickOf(a.id);
+    if (tick > fromTick && tick <= toTick) out.push({ tick, alarmId: a.id, tagId: null });
   }
-  return out.sort((a, b) => a.tick - b.tick || (a.alarmId < b.alarmId ? -1 : 1));
+  return out.sort((x, y) => x.tick - y.tick || (x.alarmId < y.alarmId ? -1 : 1));
 }

@@ -1,6 +1,6 @@
 import type { MockDataset } from '../mock/types';
 import { assertTick, contextOf } from './context';
-import { type Overlay, setpointAt } from './overlay';
+import { assertOverlay, type Overlay } from './overlay';
 import { readTag, type TagReading } from './tags';
 
 export interface SeriesPoint extends TagReading {
@@ -16,11 +16,12 @@ export function tagSeries(d: MockDataset, tagId: string, fromTick: number, toTic
   assertTick(fromTick);
   assertTick(toTick);
   assertTick(step);
+  assertOverlay(overlay);
   if (step < 1) throw new Error('step must be at least 1');
   const ctx = contextOf(d);
   const tag = ctx.tagById.get(tagId);
   if (!tag) throw new Error(`unknown tag ${tagId}`);
   const out: SeriesPoint[] = [];
-  for (let tick = fromTick; tick <= toTick; tick += step) out.push({ tick, ...readTag(ctx, tag, tick, setpointAt(overlay, tag, tick)) });
+  for (let tick = fromTick; tick <= toTick; tick += step) out.push({ tick, ...readTag(ctx, tag, tick, overlay) });
   return out;
 }

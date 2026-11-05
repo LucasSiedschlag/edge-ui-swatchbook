@@ -30,7 +30,8 @@ export const IDLE_LINE: LineId = 'C1';
 
 const WINDOW_START = NOW - HISTORY_DAYS * DAY;
 const pad = (n: number, w: number) => String(n).padStart(w, '0');
-const round = (x: number, dp: number) => Math.round(x * 10 ** dp) / 10 ** dp;
+const SCALE = [1, 10, 100];
+const round = (x: number, dp: 0 | 1 | 2) => Math.round(x * (SCALE[dp] as number)) / (SCALE[dp] as number);
 
 function pickStatus(rng: Rng): BatchStatus {
   const r = rng.next();

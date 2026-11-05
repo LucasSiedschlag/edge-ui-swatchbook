@@ -18,7 +18,7 @@ export { simulate, type Snapshot } from './sim/simulate';
 export { raises, returns, type Raise, type Return } from './sim/alarms';
 export { tagSeries, type SeriesPoint } from './sim/series';
 export { snapshotDigest } from './sim/digest';
-export type { Overlay, SetpointStep } from './sim/overlay';
+export { setpointAt, type Overlay, type SetpointStep } from './sim/overlay';
 export { shiftInfo, simulatedTime, tickAt, TICK_MS, type ShiftInfo } from './sim/clock';
 export type { LineLive, BatchProgress } from './sim/kpis';
 export type { MachineLink } from './sim/links';

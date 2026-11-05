@@ -41,9 +41,7 @@ describe('overlay: Setpoint Overrides', () => {
       expect(r.tick).toBeGreaterThanOrEqual(100);
       expect(r.direction).toBe('high');
       expect(reading(r.tick, toMax)?.status).toBe('high');
-      expect(reading(r.tick - 1, toMax)?.status).toBe('normal');
-      expect(r.returnTick).toBeGreaterThan(r.tick);
-      expect(reading(r.returnTick, toMax)?.status).toBe('normal');
+      expect(reading(r.tick - 1, toMax)?.alarm).toBeNull();
     }
     expect(raises(d, 0, 900).filter((r) => r.tagId === tagId)).toHaveLength(0);
   });
