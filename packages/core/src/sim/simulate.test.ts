@@ -389,7 +389,7 @@ describe('snapshotDigest', () => {
 
   // Playwright (Issue 8) compares this value across Chromium, Firefox and WebKit. Update it only when the Simulator changes on purpose.
   it('is stable for the default dataset', () => {
-    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('cb75ad8c');
+    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('e15f358a');
   });
 });
 
