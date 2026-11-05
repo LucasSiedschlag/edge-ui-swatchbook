@@ -1,4 +1,5 @@
 import type { LineId, MockDataset } from '../mock/types';
+import { validateVersion } from './validation';
 import { contextOf } from '../sim/context';
 import type { Overlay } from '../sim/overlay';
 import type { LineControl, PlantState, StopSpan } from './types';
@@ -36,6 +37,14 @@ export function buildOverlay(
 
 /** The state at load. Plant State resets on reload, so this is the only way to get one. */
 export function createPlantState(d: MockDataset): PlantState {
+  const versions: Record<string, number> = {}, steps: Record<string, number> = {};
+  for (const version of d.recipeVersions) {
+    const lineType = d.recipes.find(r => r.id === version.recipeId)!.lineType;
+    if (!validateVersion(version, lineType).valid) throw new Error(`invalid Recipe Version ${version.id}`);
+    versions[version.recipeId] = Math.max(versions[version.recipeId] ?? 0, version.number);
+    steps[version.id] = Math.max(0, ...version.steps.map(s => Number(/-s(\d+)$/.exec(s.id)?.[1] ?? 0)));
+  }
+  const lastId = (ids: string[]) => Math.max(0, ...ids.map(id => Number(/-(\d+)$/.exec(id)?.[1] ?? 0)));
   const controls = {} as Record<LineId, LineControl>;
   const manualStops = {} as Record<LineId, readonly StopSpan[]>;
   const faultStops = {} as Record<LineId, readonly StopSpan[]>;
@@ -48,11 +57,12 @@ export function createPlantState(d: MockDataset): PlantState {
   const heartbeat = contextOf(d).heartbeat;
   for (const m of d.machines) {
     const tick = heartbeat.get(m.id);
-    if (tick !== undefined) faultStops[m.lineId] = [...(faultStops[m.lineId] ?? []), { fromTick: tick, toTick: NEVER }];
+    if (tick !== undefined) faultStops[m.lineId] = [...(faultStops[m.lineId] ?? []), { fromTick: tick, toTick: NEVER, reason: 'fault' }];
   }
   const firstOperator = d.users.find((u) => u.role === 'operator') ?? (d.users[0] as { id: string });
   return {
     dataset: d,
+    ids: { versions, steps, alarms: lastId(d.alarms.map(a => a.id)), events: lastId(d.events.map(e => e.id)) },
     currentUserId: firstOperator.id,
     controls,
     manualStops,

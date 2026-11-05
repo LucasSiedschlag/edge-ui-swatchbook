@@ -1,5 +1,5 @@
 export { lineStatus } from './lines';
-export { recipeCheck, recipeList, type RecipeRow } from './recipes';
+export { recipeCheck, recipeList, isDirty, type RecipeRow } from './recipes';
 export { reduce } from './reduce';
 export { checkRecipeVersion, diePressureLimit, failingRules, type RuleId, type RuleResult, type RuleViolation } from './rules';
 export { createPlantState } from './state';

@@ -14,6 +14,7 @@ export interface LineStatus {
   status: 'running' | 'stopped' | 'alarm';
   /** Why the Line is stopped, also while the status shows Alarm. Null when it is not stopped. */
   reason: StopReason | null;
+  /** Count at syncedTick, including when a historical stop reason is requested. */
   criticalAlarms: number;
 }
 
@@ -26,6 +27,7 @@ export interface LineControl {
 
 /** A stretch of ticks in which a Line made no product. An open stretch ends at Infinity. */
 export interface StopSpan {
+  reason: StopReason;
   fromTick: number;
   toTick: number;
 }
@@ -36,6 +38,13 @@ export interface StopSpan {
  */
 export interface PlantState {
   readonly dataset: MockDataset;
+  /** High water marks survive deletion. Allocated identities are never reclaimed. */
+  readonly ids: {
+    versions: Readonly<Record<string, number>>;
+    steps: Readonly<Record<string, number>>;
+    alarms: number;
+    events: number;
+  };
   readonly currentUserId: string;
   readonly controls: Readonly<Record<LineId, LineControl>>;
   /** Stretches in which the operator stopped each Line. */
@@ -59,6 +68,10 @@ export interface PlantState {
 }
 
 export type PlantErrorCode =
+  | 'invalid-tick'
+  | 'invalid-version'
+  | 'step-kind-exists'
+  | 'no-step-template'
   | 'confirmation-required'
   | 'critical-alarm-active'
   | 'latched'

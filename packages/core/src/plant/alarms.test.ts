@@ -129,12 +129,15 @@ describe('Alarms follow the Simulator', () => {
   });
 
   it('lets a new Alarm be acknowledged and then cleared by its return', () => {
-    const s = ok(start(), { type: 'advance' }, 600).state;
-    const fresh = s.alarms.find((a) => !d.alarms.some((x) => x.id === a.id) && a.state === 'active-unacknowledged');
-    if (!fresh) return;
-    const acked = ok(s, { type: 'acknowledge', alarmIds: [fresh.id] }, 600).state;
+    const raise = raises(d, 0, 3600, start().overlay).find(r => r.lineId !== 'A2')!;
+    expect(raise).toBeDefined();
+    const s = ok(start(), { type: 'advance' }, raise.tick).state;
+    const fresh = s.alarms.find(a => a.tagId === raise.tagId && a.raisedAt === raise.time)!;
+    expect(fresh).toBeDefined();
+    expect(fresh.state).toBe('active-unacknowledged');
+    const acked = ok(s, { type: 'acknowledge', alarmIds: [fresh.id] }, raise.tick).state;
     expect(alarm(acked, fresh.id)?.state).toBe('active-acknowledged');
-    const later = ok(acked, { type: 'advance' }, 3000).state;
+    const later = ok(acked, { type: 'advance' }, raise.tick + 1000).state;
     expect(alarm(later, fresh.id)?.state).toBe('cleared');
   });
 

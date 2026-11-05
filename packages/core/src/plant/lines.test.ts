@@ -79,7 +79,9 @@ describe('Pause and Resume', () => {
   });
 
   it('keeps a Line with an Offline Machine stopped for Fault, whatever is pressed', () => {
-    const r = ok(start(), { type: 'resume', lineId: 'A2' }, 10);
+    const paused = ok(start(), { type: 'pause', lineId: 'A2' }, 5).state;
+    expect(lineStatus(paused, 'A2', 5).reason).toBe('fault');
+    const r = ok(paused, { type: 'resume', lineId: 'A2' }, 10);
     expect(lineStatus(r.state, 'A2', 10)).toMatchObject({ status: 'stopped', reason: 'fault' });
     expect(r.state.overlay.runTicks?.('A2', 0, 500)).toBe(0);
   });
@@ -108,6 +110,14 @@ describe('Emergency stop and Reset', () => {
     const running = ok(reset.state, { type: 'resume', lineId: 'E2' }, 130);
     expect(lineStatus(running.state, 'E2', 130)).toMatchObject({ status: 'running' });
     expect(running.state.overlay.runTicks?.('E2', 0, 200)).toBe(100 + 0 + 70);
+  });
+
+  it('keeps the Emergency stop reason ahead of Fault until Reset', () => {
+    const stopped = ok(start(), { type: 'emergency-stop', lineId: 'A2', confirmed: true }, 10).state;
+    expect(lineStatus(stopped, 'A2').reason).toBe('emergency-stop');
+    const reset = ok(stopped, { type: 'reset', lineId: 'A2' }, 20).state;
+    expect(lineStatus(reset, 'A2').reason).toBe('fault');
+    expect(lineStatus(reset, 'A2', 15).reason).toBe('emergency-stop');
   });
 
   it('does nothing for a Reset that is not needed', () => {

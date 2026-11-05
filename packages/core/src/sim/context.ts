@@ -1,3 +1,4 @@
+import { activeRecipeParameter } from '../parameters';
 import type { MockDataset, Tag } from '../mock/types';
 import { hash, noise } from './noise';
 
@@ -64,7 +65,10 @@ export function contextOf(d: MockDataset): SimContext {
   }
   const heartbeat = new Map<string, number>();
   for (const m of d.machines) if (m.comms.status === 'offline') heartbeat.set(m.id, tickOf(d, m.comms.lastHeartbeatAt));
-  const ctx: SimContext = { latches: new Map(), overlayLatches: new Map(), tagById: new Map(d.tags.map((t) => [t.id, t])), windows, heartbeat };
+  const ctx: SimContext = { latches: new Map(), overlayLatches: new Map(), tagById: new Map(d.tags.map((t) => {
+    const parameter = activeRecipeParameter(d, t);
+    return [t.id, parameter ? { ...t, setpoint: parameter.setpoint } : t];
+  })), windows, heartbeat };
   cache.set(d, ctx);
   return ctx;
 }

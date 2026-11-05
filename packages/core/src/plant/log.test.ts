@@ -35,7 +35,8 @@ describe('the Event Log', () => {
     // The new Draft is edited before it is saved, so the save has something to save.
     for (const { action, logs } of script) {
       if (action.type === 'save-draft') {
-        const r = reduce(s, { type: 'add-step', versionId: action.versionId, kind: 'ramp' }, { tick });
+        const version = s.recipeVersions.find(v => v.id === action.versionId)!;
+        const r = reduce(s, { type: 'reorder-step', versionId: version.id, stepId: version.steps[0]!.id, toIndex: 1 }, { tick });
         if (r.ok) s = r.state;
       }
       const r = reduce(s, action, { tick });
@@ -48,7 +49,7 @@ describe('the Event Log', () => {
     }
   });
 
-  it('writes nothing for what changes nothing: repeated actions, edits of a Draft working copy, the Simulator, and the current User', () => {
+  it('writes nothing for repeated Line actions, advance, set-user and an unchanged recipe setpoint', () => {
     const noops: PlantAction[] = [
       { type: 'resume', lineId: 'E2' },
       { type: 'reset', lineId: 'E2' },
@@ -117,7 +118,7 @@ describe('the store', () => {
 
   it('is available from the package entry', async () => {
     const core = await import('../index');
-    for (const name of ['createPlantStore', 'createPlantState', 'reduce', 'lineStatus', 'recipeList', 'recipeCheck', 'checkRecipeVersion']) {
+    for (const name of ['createPlantStore', 'createPlantState', 'reduce', 'lineStatus', 'recipeList', 'recipeCheck', 'checkRecipeVersion', 'isDirty']) {
       expect(typeof (core as Record<string, unknown>)[name]).toBe('function');
     }
   });

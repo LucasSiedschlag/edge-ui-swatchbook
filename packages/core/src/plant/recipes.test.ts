@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import { simulatedTime } from '../sim/clock';
-import { createPlantState, recipeCheck, recipeList, reduce } from './index';
+import { createPlantState, isDirty, recipeCheck, recipeList, reduce } from './index';
 import type { PlantAction, PlantState } from './index';
 
 const d = generateMockDataset();
@@ -113,8 +113,12 @@ describe('editing a Draft', () => {
 
   it('adds, removes and reorders Steps, keeping the order 1 to n and the ids unique', () => {
     const s = withDraft();
-    const before = latest(s, clean)?.steps.length ?? 0;
-    const added = ok(s, { type: 'add-step', versionId: draftId(), kind: 'cooldown' }).state;
+    const cooldown = latest(s, clean)!.steps.find(step => step.kind === 'cooldown')!;
+    expect(refused(s, { type: 'add-step', versionId: draftId(), kind: 'cooldown' })?.code).toBe('step-kind-exists');
+    expect(refused(s, { type: 'add-step', versionId: draftId(), kind: 'inspect' })?.code).toBe('no-step-template');
+    const trimmed = ok(s, { type: 'remove-step', versionId: draftId(), stepId: cooldown.id }).state;
+    const before = latest(trimmed, clean)!.steps.length;
+    const added = ok(trimmed, { type: 'add-step', versionId: draftId(), kind: 'cooldown' }).state;
     const v1 = latest(added, clean);
     expect(v1?.steps).toHaveLength(before + 1);
     expect(v1?.steps.map((x) => x.order)).toEqual(v1?.steps.map((_, i) => i + 1));
@@ -131,7 +135,7 @@ describe('editing a Draft', () => {
     const v3 = latest(removed, clean);
     expect(v3?.steps).toHaveLength(before);
     expect(v3?.steps.map((x) => x.order)).toEqual(v3?.steps.map((_, i) => i + 1));
-    const again = ok(removed, { type: 'add-step', versionId: draftId(), kind: 'ramp' }).state;
+    const again = ok(removed, { type: 'add-step', versionId: draftId(), kind: 'preheat' }).state;
     const ids = latest(again, clean)?.steps.map((x) => x.id) ?? [];
     expect(new Set(ids).size).toBe(ids.length);
     expect(refused(removed, { type: 'remove-step', versionId: draftId(), stepId: 'nope' })?.code).toBe('unknown-step');
@@ -152,7 +156,13 @@ describe('Save, Approve and Discard', () => {
     const p = param(start(), bad1, 'barrel-zone-3');
     const fixed = ok(start(), { type: 'edit-parameter', versionId: bad1, parameterId: p?.id ?? '', field: 'setpoint', value: 180 }).state;
     expect(failing(fixed, bad1)).toEqual([]);
+    expect(isDirty(start(), bad1)).toBe(false);
+    expect(isDirty(fixed, bad1)).toBe(true);
     const saved = ok(fixed, { type: 'save-draft', versionId: bad1 }, 70);
+    expect(isDirty(saved.state, bad1)).toBe(false);
+    expect(isDirty(saved.state, 'unknown')).toBe(false);
+    const approved = saved.state.recipeVersions.find(v => v.status === 'approved')!;
+    expect(isDirty(saved.state, approved.id)).toBe(false);
     expect(saved.events).toHaveLength(1);
     expect(saved.events[0]).toMatchObject({ action: 'recipe-save', targetKind: 'recipe-version', target: bad1, at: simulatedTime(70) });
     expect(ok(saved.state, { type: 'save-draft', versionId: bad1 }, 80).events).toEqual([]);
@@ -182,7 +192,7 @@ describe('Save, Approve and Discard', () => {
   it('writes one entry for New Draft, Save, Approve and Discard, and none for edits', () => {
     const r = ok(start(), { type: 'new-draft', versionId: latest(start(), clean)?.id ?? '' }, 5);
     const id = latest(r.state, clean)?.id ?? '';
-    const e = ok(r.state, { type: 'add-step', versionId: id, kind: 'ramp' }, 6);
+    const e = ok(r.state, { type: 'reorder-step', versionId: id, stepId: latest(r.state, clean)!.steps[0]!.id, toIndex: 1 }, 6);
     expect(e.state.events).toHaveLength(d.events.length + 1);
     const s = ok(e.state, { type: 'save-draft', versionId: id }, 7);
     const a = ok(s.state, { type: 'approve', versionId: id }, 8);

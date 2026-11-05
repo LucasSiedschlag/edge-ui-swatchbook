@@ -10,20 +10,20 @@ function version(values: Record<string, number>): RecipeVersion {
 
 describe('dependency rules', () => {
   it('accepts inclusive barrel boundaries and adjacent difference', () => {
-    expect(checkRecipeVersion(version({ 'barrel-zone-1': 165, 'barrel-zone-2': 180, 'barrel-zone-3': 195 }), 'extrusion').map(r => r.status)).toEqual(['pass', 'pass', 'not-applicable', 'not-applicable']);
+    expect(checkRecipeVersion(version({ 'barrel-zone-1': 165, 'barrel-zone-2': 180, 'barrel-zone-3': 195, 'barrel-zone-4': 180, 'barrel-zone-5': 165, 'die-pressure': 180, 'screw-speed': 10 }), 'extrusion').map(r => r.status)).toEqual(['pass', 'pass', 'not-applicable', 'not-applicable']);
   });
   it('reports barrel limits and adjacent differences', () => {
-    expect(checkRecipeVersion(version({ 'barrel-zone-1': 164, 'barrel-zone-2': 196 }), 'extrusion')[0]!.violations).toEqual([
+    expect(checkRecipeVersion(version({ 'barrel-zone-1': 164, 'barrel-zone-2': 196, 'barrel-zone-3': 185, 'barrel-zone-4': 185, 'barrel-zone-5': 185 }), 'extrusion')[0]!.violations).toEqual([
       { parameterKeys: ['barrel-zone-1'], kind: 'below-min', limit: 165, actual: 164 },
       { parameterKeys: ['barrel-zone-2'], kind: 'above-max', limit: 195, actual: 196 },
       { parameterKeys: ['barrel-zone-1', 'barrel-zone-2'], kind: 'adjacent-too-far', limit: 15, actual: 32 },
     ]);
   });
-  it('checks die pressure and skips missing parameters', () => {
+  it('checks die pressure and rejects missing parameters', () => {
     expect(diePressureLimit(10)).toBe(190);
     expect(checkRecipeVersion(version({ 'die-pressure': 191, 'screw-speed': 10 }), 'extrusion')[1]).toEqual({ rule: 2, status: 'fail', violations: [{ parameterKeys: ['die-pressure', 'screw-speed'], kind: 'above-max', limit: 190, actual: 191 }] });
     expect(checkRecipeVersion(version({ 'die-pressure': 190, 'screw-speed': 10 }), 'extrusion')[1]!.status).toBe('pass');
-    expect(checkRecipeVersion(version({ 'die-pressure': 999 }), 'extrusion')[1]!.status).toBe('pass');
+    expect(checkRecipeVersion(version({ 'die-pressure': 999 }), 'extrusion')[1]).toEqual({ rule: 2, status: 'fail', violations: [{ parameterKeys: ['screw-speed'], kind: 'missing', limit: 0, actual: null }] });
   });
   it('checks weld and takt boundaries', () => {
     for (const [temperature, time] of [[240, 20], [270, 40]] as const) expect(checkRecipeVersion(version({ 'weld-temperature': temperature, 'weld-time': time, 'cycle-time': 119 }), 'assembly').map(r => r.status)).toEqual(['not-applicable', 'not-applicable', 'pass', 'pass']);
@@ -33,6 +33,26 @@ describe('dependency rules', () => {
     expect(failingRules(results)).toEqual([3, 4]);
     expect(checkRecipeVersion(version({ 'weld-temperature': 271, 'weld-time': 19 }), 'assembly')[2]!.violations).toEqual([{ parameterKeys: ['weld-temperature'], kind: 'above-max', limit: 270, actual: 271 }, { parameterKeys: ['weld-time'], kind: 'below-min', limit: 20, actual: 19 }]);
   });
+  it('requires every key of each applicable rule with JSON-safe missing violations', () => {
+    const cases = [
+      ['extrusion', 1, ['barrel-zone-1', 'barrel-zone-2', 'barrel-zone-3', 'barrel-zone-4', 'barrel-zone-5']],
+      ['extrusion', 2, ['die-pressure', 'screw-speed']],
+      ['assembly', 3, ['weld-temperature', 'weld-time']],
+      ['assembly', 4, ['cycle-time']],
+    ] as const;
+    for (const [type, rule, keys] of cases) {
+      expect(checkRecipeVersion(version({}), type)[rule - 1]).toEqual({
+        rule, status: 'fail', violations: keys.map(key => ({ parameterKeys: [key], kind: 'missing', limit: 0, actual: null })),
+      });
+    }
+  });
+  it('cannot pass a required Parameter with a non-finite setpoint', () => {
+    for (const value of [NaN, Infinity, -Infinity]) {
+      expect(checkRecipeVersion(version({ 'cycle-time': value }), 'assembly')[3]).toEqual({
+        rule: 4, status: 'fail', violations: [{ parameterKeys: ['cycle-time'], kind: 'missing', limit: 0, actual: null }],
+      });
+    }
+  });
   it('returns four ordered not applicable results for other lines', () => {
     for (const type of ['roll-forming', 'stamping', 'cnc'] as const) expect(checkRecipeVersion(version({}), type)).toEqual([1, 2, 3, 4].map(rule => ({ rule, status: 'not-applicable', violations: [] })));
   });
@@ -40,6 +60,6 @@ describe('dependency rules', () => {
     const data = generateMockDataset();
     const failures = data.recipeVersions.map(v => ({ v, rules: failingRules(checkRecipeVersion(v, data.recipes.find(r => r.id === v.recipeId)!.lineType)) }));
     expect(failures.filter(x => x.v.status === 'approved').every(x => x.rules.length === 0)).toBe(true);
-    for (const rule of [1, 2, 3, 4]) expect(failures.some(x => x.v.status === 'draft' && x.rules.includes(rule as 1 | 2 | 3 | 4))).toBe(true);
+    for (const [recipeId, rule] of [['R01', 1], ['R06', 2], ['R05', 3], ['R10', 4]] as const) expect(failures.find(x => x.v.recipeId === recipeId && x.v.status === 'draft')?.rules).toEqual([rule]);
   });
 });

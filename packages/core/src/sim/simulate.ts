@@ -24,6 +24,6 @@ export function simulate(d: MockDataset, tick: number, overlay?: Overlay): Snaps
   assertOverlay(overlay);
   const ctx = contextOf(d);
   const machines = readLinks(d.machines, tick);
-  const tags = d.tags.map((t) => readTag(ctx, t, tick, overlay));
+  const tags = [...ctx.tagById.values()].map((t) => readTag(ctx, t, tick, overlay));
   return { tick, time: simulatedTime(tick), shift: shiftInfo(tick), tags, machines, lines: readLines(d, tick, tags, overlay), hours: readHours(d, tick, overlay) };
 }

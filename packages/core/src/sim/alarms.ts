@@ -1,4 +1,4 @@
-import type { AlarmPriority, LineId, MockDataset, TextRef, Timestamp } from '../mock/types';
+import type { AlarmPriority, LineId, MockDataset, Tag, TextRef, Timestamp } from '../mock/types';
 import { simulatedTime } from './clock';
 import { assertTick, contextOf, type Direction, heldAt, returnTickOf } from './context';
 import { hash, noise } from './noise';
@@ -31,6 +31,20 @@ function priorityOf(key: number, epoch: number): AlarmPriority {
   return r < 0.05 ? 'critical' : r < 0.25 ? 'high' : r < 0.65 ? 'medium' : 'low';
 }
 
+/** One Alarm description for both transitions and Plant State level reconciliation. */
+export function raiseAt(d: MockDataset, tag: Tag, tick: number, direction: Direction): Raise {
+  return {
+    id: `RZ-${tick}-${tag.id}`, tick, time: simulatedTime(tick), tagId: tag.id,
+    machineId: tag.machineId, lineId: tag.lineId,
+    batchId: d.activeBatches.find(b => b.lineId === tag.lineId)?.id ?? null,
+    direction, priority: priorityOf(hash(tag.id), Math.floor(tick / EPOCH_TICKS)),
+    message: {
+      key: direction === 'low' ? 'alarm.low-value' : tag.name === 'motor-current' ? 'alarm.motor-overload' : 'alarm.high-value',
+      params: { tag: tag.name },
+    },
+  };
+}
+
 /**
  * Tags that cross out of limits at a tick in (fromTick, toTick]. Plant State decides what to do with them.
  * Splitting a range in two gives the same list as asking for it whole.
@@ -42,28 +56,14 @@ export function raises(d: MockDataset, fromTick: number, toTick: number, overlay
   const ctx = contextOf(d);
   const out: Raise[] = [];
   for (let epoch = Math.max(0, Math.floor(fromTick / EPOCH_TICKS)); epoch <= Math.floor(toTick / EPOCH_TICKS); epoch++) {
-    for (const tag of d.tags) {
+    for (const tag of ctx.tagById.values()) {
       if (!canExcurse(tag) || ctx.heartbeat.has(tag.machineId) || overlay?.setpoints?.has(tag.id)) continue;
       const e = excursionOf(tag, epoch);
       if (!e || e.start <= fromTick || e.start > toTick) continue;
       // A Tag already held out of limits by an Alarm cannot cross again until that ends.
       if (heldAt(ctx, tag.id, e.start) || heldAt(ctx, tag.id, e.start - 1)) continue;
       if (alarmedAt(ctx, tag, e.start - 1) !== null) continue;
-      out.push({
-        id: `RZ-${e.start}-${tag.id}`,
-        tick: e.start,
-        time: simulatedTime(e.start),
-        tagId: tag.id,
-        machineId: tag.machineId,
-        lineId: tag.lineId,
-        batchId: d.activeBatches.find((b) => b.lineId === tag.lineId)?.id ?? null,
-        direction: e.direction,
-        priority: priorityOf(hash(tag.id), epoch),
-        message: {
-          key: e.direction === 'low' ? 'alarm.low-value' : tag.name === 'motor-current' ? 'alarm.motor-overload' : 'alarm.high-value',
-          params: { tag: tag.name },
-        },
-      });
+      out.push(raiseAt(d, tag, e.start, e.direction));
     }
   }
   // A Tag with a Setpoint Override is followed tick by tick, because its value can cross at any moment.
@@ -74,21 +74,7 @@ export function raises(d: MockDataset, fromTick: number, toTick: number, overlay
       // A new raise is a Tag going into alarm, or switching from one side to the other.
       const now = alarmedAt(ctx, tag, tick, overlay);
       if (now === null || now === alarmedAt(ctx, tag, tick - 1, overlay)) continue;
-      out.push({
-        id: `RZ-${tick}-${tag.id}`,
-        tick,
-        time: simulatedTime(tick),
-        tagId: tag.id,
-        machineId: tag.machineId,
-        lineId: tag.lineId,
-        batchId: d.activeBatches.find((b) => b.lineId === tag.lineId)?.id ?? null,
-        direction: now,
-        priority: priorityOf(hash(tag.id), Math.floor(tick / EPOCH_TICKS)),
-        message: {
-          key: now === 'low' ? 'alarm.low-value' : tag.name === 'motor-current' ? 'alarm.motor-overload' : 'alarm.high-value',
-          params: { tag: tag.name },
-        },
-      });
+      out.push(raiseAt(d, tag, tick, now));
     }
   }
   return out.sort((a, b) => a.tick - b.tick || (a.tagId < b.tagId ? -1 : a.tagId > b.tagId ? 1 : 0));

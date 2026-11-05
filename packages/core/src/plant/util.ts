@@ -16,7 +16,7 @@ export function entry(
   newValue: EventLogEntry['newValue'] = null,
 ): EventLogEntry {
   return {
-    id: `EV-${String(state.events.length + 1).padStart(4, '0')}`,
+    id: `EV-${String(state.ids.events + 1).padStart(4, '0')}`,
     at: simulatedTime(tick),
     userId: state.currentUserId,
     action,
@@ -30,7 +30,7 @@ export function entry(
 
 /** Returns a new state with the changes, and the Event Log entries to add. */
 export function commit(state: PlantState, changes: Partial<PlantState>, events: EventLogEntry[]): ActionResult {
-  const next: PlantState = { ...state, ...changes, events: [...state.events, ...events] };
+  const next: PlantState = { ...state, ...changes, ids: { ...(changes.ids ?? state.ids), events: state.ids.events + events.length }, events: [...state.events, ...events] };
   return { ok: true, state: { ...next, overlay: buildOverlay(next.manualStops, next.faultStops, next.setpoints.size > 0 ? next.setpoints : undefined) }, events };
 }
 

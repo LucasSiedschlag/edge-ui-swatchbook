@@ -1,3 +1,4 @@
+import { activeRecipeParameter } from '../parameters';
 import type { EventLogEntry, LineId } from '../mock/types';
 import { simulatedTime } from '../sim/clock';
 import { acknowledge, advanceTo } from './alarms';
@@ -8,10 +9,15 @@ import { shiftInfo } from '../sim/clock';
 import { spDate } from '../mock/time';
 import { recipeAction } from './recipes';
 import { commit, entry, nothing, refuse } from './util';
-import type { ActionContext, ActionResult, LineControl, PlantAction, PlantState, StopSpan } from './types';
+import type { ActionContext, ActionResult, LineControl, PlantAction, PlantState, StopReason, StopSpan } from './types';
 
-function openStop(spans: readonly StopSpan[], tick: number): readonly StopSpan[] {
-  return spans.some((s) => s.toTick === NEVER) ? spans : [...spans, { fromTick: tick, toTick: NEVER }];
+function openStop(spans: readonly StopSpan[], tick: number, reason: StopReason): readonly StopSpan[] {
+  const open = spans.find(s => s.toTick === NEVER);
+  if (!open) return [...spans, { fromTick: tick, toTick: NEVER, reason }];
+  if (open.reason === reason) return spans;
+  return spans.flatMap(s => s !== open ? [s] : s.fromTick === tick ? [{ ...s, reason }] : [
+    { ...s, toTick: tick }, { fromTick: tick, toTick: NEVER, reason },
+  ]);
 }
 
 function closeStop(spans: readonly StopSpan[], tick: number): readonly StopSpan[] {
@@ -31,14 +37,17 @@ function setLine(state: PlantState, lineId: LineId, control: LineControl, spans:
 }
 
 export function reduce(state: PlantState, action: PlantAction, ctx: ActionContext): ActionResult {
+  if (!Number.isInteger(ctx.tick) || ctx.tick < 0) return refuse('invalid-tick');
+  const tick = Math.max(ctx.tick, state.syncedTick);
+  const changesOverlay = ['pause', 'resume', 'emergency-stop', 'reset', 'setpoint-override', 'reset-to-recipe'].includes(action.type);
+  const base = advanceTo(state, changesOverlay ? Math.max(0, tick - 1) : tick);
   if (action.type === 'set-user') {
     if (!state.dataset.users.some((u) => u.id === action.userId)) return refuse('unknown-user');
-    return state.currentUserId === action.userId ? nothing(state) : { ok: true, state: { ...state, currentUserId: action.userId }, events: [] };
+    return base.currentUserId === action.userId ? nothing(base) : { ok: true, state: { ...base, currentUserId: action.userId }, events: [] };
   }
-  // Every action sees the Alarms up to its own tick.
-  const base = advanceTo(state, ctx.tick);
   if (action.type === 'advance') return { ok: true, state: base, events: [] };
-  return apply(base, action, ctx);
+  const result = apply(base, action, { tick });
+  return result.ok && changesOverlay ? { ...result, state: advanceTo(result.state, tick) } : result;
 }
 
 function apply(state: PlantState, action: Exclude<PlantAction, { type: 'advance' | 'set-user' }>, ctx: ActionContext): ActionResult {
@@ -50,7 +59,7 @@ function apply(state: PlantState, action: Exclude<PlantAction, { type: 'advance'
       if (!action.alarmIds.includes(a.id)) return a;
       const next = acknowledge(a, tick, state.currentUserId);
       if (!next) return a;
-      events.push({ ...entry({ ...state, events: [...state.events, ...events] }, tick, 'alarm-acknowledge', a.id, 'alarm', a.state, next.state) });
+      events.push({ ...entry({ ...state, ids: { ...state.ids, events: state.ids.events + events.length } }, tick, 'alarm-acknowledge', a.id, 'alarm', a.state, next.state) });
       return next;
     });
     return events.length === 0 ? nothing(state) : commit(state, { alarms }, events);
@@ -67,17 +76,17 @@ function apply(state: PlantState, action: Exclude<PlantAction, { type: 'advance'
   switch (action.type) {
     case 'pause': {
       if (control.paused || control.latched) return nothing(state);
-      return commit(state, setLine(state, action.lineId, { ...control, paused: true }, openStop(spans, tick)), [entry(state, tick, 'pause', action.lineId, 'line')]);
+      return commit(state, setLine(state, action.lineId, { ...control, paused: true }, openStop(spans, tick, 'paused')), [entry(state, tick, 'pause', action.lineId, 'line')]);
     }
     case 'emergency-stop': {
       if (control.latched) return nothing(state);
       if (!action.confirmed) return refuse('confirmation-required');
-      return commit(state, setLine(state, action.lineId, { ...control, latched: true }, openStop(spans, tick)), [entry(state, tick, 'emergency-stop', action.lineId, 'line')]);
+      return commit(state, setLine(state, action.lineId, { ...control, latched: true }, openStop(spans, tick, 'emergency-stop')), [entry(state, tick, 'emergency-stop', action.lineId, 'line')]);
     }
     case 'reset': {
       if (!control.latched) return nothing(state);
       // The latch is cleared, and the Line waits stopped until someone resumes it.
-      return commit(state, setLine(state, action.lineId, { paused: true, latched: false }, spans), [entry(state, tick, 'reset', action.lineId, 'line')]);
+      return commit(state, setLine(state, action.lineId, { paused: true, latched: false }, openStop(spans, tick, 'paused')), [entry(state, tick, 'reset', action.lineId, 'line')]);
     }
     case 'resume': {
       if (!control.paused && !control.latched) return nothing(state);
@@ -90,17 +99,16 @@ function apply(state: PlantState, action: Exclude<PlantAction, { type: 'advance'
 
 function setpoint(state: PlantState, action: Extract<PlantAction, { type: 'setpoint-override' | 'reset-to-recipe' }>, tick: number): ActionResult {
   const d = state.dataset;
-  const tag = d.tags.find((t) => t.id === action.tagId);
+  const simulator = contextOf(d);
+  const tag = simulator.tagById.get(action.tagId);
   if (!tag) return refuse('unknown-tag');
-  const heartbeat = contextOf(d).heartbeat.get(tag.machineId);
+  const heartbeat = simulator.heartbeat.get(tag.machineId);
   if (heartbeat !== undefined && tick >= heartbeat) return refuse('tag-stale');
   // A change made now takes effect from the next tick, so that is the setpoint to compare with.
   const current = setpointAt(state.overlay, tag, tick + 1);
 
   if (action.type === 'reset-to-recipe') {
-    const batch = d.activeBatches.find((b) => b.lineId === tag.lineId);
-    const version = d.recipeVersions.find((v) => v.id === batch?.recipeVersionId);
-    const param = version?.steps.flatMap((s) => s.parameters).find((p) => p.key === tag.parameterKey);
+    const param = activeRecipeParameter(d, tag);
     if (!tag.parameterKey || !param) return refuse('no-recipe-value');
     if (param.setpoint === current) return nothing(state);
     return commit(state, { setpoints: withStep(state.setpoints, tag.id, tick + 1, param.setpoint) }, [entry(state, tick, 'reset-to-recipe', tag.id, 'tag', current, param.setpoint)]);

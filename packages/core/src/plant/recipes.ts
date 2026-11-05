@@ -1,4 +1,5 @@
 import type { LineType, Parameter, RecipeVersion, Step } from '../mock/types';
+import { validateVersion } from './validation';
 import { simulatedTime } from '../sim/clock';
 import { checkRecipeVersion, failingRules, type RuleResult } from './rules';
 import type { ActionResult, PlantAction, PlantState } from './types';
@@ -35,6 +36,10 @@ export function recipeList(state: PlantState): RecipeRow[] {
 
 const renumber = (steps: readonly Step[]): Step[] => steps.map((s, i) => ({ ...s, order: i + 1 }));
 const replace = (state: PlantState, v: RecipeVersion) => state.recipeVersions.map((x) => (x.id === v.id ? v : x));
+export const isDirty = (state: PlantState, versionId: string): boolean => {
+  const version = versionOf(state, versionId), saved = state.savedDrafts.get(versionId);
+  return version?.status === 'draft' && (!saved || !sameContent(version, saved));
+};
 const sameContent = (a: RecipeVersion, b: RecipeVersion) => JSON.stringify(a.steps) === JSON.stringify(b.steps);
 
 function copySteps(steps: readonly Step[], versionId: string): Step[] {
@@ -48,27 +53,30 @@ export function recipeAction(state: PlantState, action: Extract<PlantAction, { v
   const v = versionOf(state, action.versionId);
   if (!v) return refuse('unknown-version');
 
+  if (!validateVersion(v, lineTypeOf(state, v)).valid) return refuse('invalid-version');
+
   if (action.type === 'new-draft') {
     if (v.status !== 'approved') return refuse('not-approved');
     const siblings = state.recipeVersions.filter((x) => x.recipeId === v.recipeId);
     if (siblings.some((x) => x.status === 'draft')) return refuse('draft-exists');
-    const number = Math.max(...siblings.map((x) => x.number)) + 1;
+    const number = (state.ids.versions[v.recipeId] ?? 0) + 1;
     const id = `${v.recipeId}-v${number}`;
     const draft: RecipeVersion = { id, recipeId: v.recipeId, number, status: 'draft', createdAt: simulatedTime(tick), approvedAt: null, steps: copySteps(v.steps, id) };
-    return commit(state, { recipeVersions: [...state.recipeVersions, draft], savedDrafts: new Map(state.savedDrafts).set(id, draft) }, [entry(state, tick, 'recipe-new-draft', id, 'recipe-version')]);
+    if (!validateVersion(draft, lineTypeOf(state, draft)).valid) return refuse('invalid-version');
+    return commit(state, { ids: { ...state.ids, versions: { ...state.ids.versions, [v.recipeId]: number }, steps: { ...state.ids.steps, [id]: draft.steps.length } }, recipeVersions: [...state.recipeVersions, draft], savedDrafts: new Map(state.savedDrafts).set(id, draft) }, [entry(state, tick, 'recipe-new-draft', id, 'recipe-version')]);
   }
 
   if (v.status !== 'draft') return refuse('read-only');
 
   switch (action.type) {
     case 'add-step': {
-      // A new Step starts with the Parameters other versions of this Recipe give a Step of that kind.
+      if (v.steps.some(s => s.kind === action.kind)) return refuse('step-kind-exists');
+      // Only Approved content is a trusted template for a new Step.
       const template = state.recipeVersions
-        .filter((x) => x.recipeId === v.recipeId)
-        .sort((a, b) => b.number - a.number)
-        .flatMap((x) => x.steps)
-        .find((s) => s.kind === action.kind);
-      const suffix = Math.max(0, ...v.steps.map((s) => Number(/-s(\d+)$/.exec(s.id)?.[1] ?? 0))) + 1;
+        .filter((x) => x.recipeId === v.recipeId && x.status === 'approved')
+        .sort((a, b) => b.number - a.number)[0]?.steps.find((s) => s.kind === action.kind);
+      if (!template) return refuse('no-step-template');
+      const suffix = (state.ids.steps[v.id] ?? 0) + 1;
       const id = `${v.id}-s${suffix}`;
       const step: Step = {
         id,
@@ -77,18 +85,19 @@ export function recipeAction(state: PlantState, action: Extract<PlantAction, { v
         name: { key: `step.${action.kind}` },
         parameters: (template?.parameters ?? []).map((p) => ({ ...p, id: `${id}-${p.key}` })),
       };
-      return commit(state, { recipeVersions: replace(state, { ...v, steps: [...v.steps, step] }) }, []);
+      return updateVersion(state, { ...v, steps: [...v.steps, step] }, { ...state.ids, steps: { ...state.ids.steps, [v.id]: suffix } });
     }
     case 'remove-step': {
       if (!v.steps.some((s) => s.id === action.stepId)) return refuse('unknown-step');
-      return commit(state, { recipeVersions: replace(state, { ...v, steps: renumber(v.steps.filter((s) => s.id !== action.stepId)) }) }, []);
+      return updateVersion(state, { ...v, steps: renumber(v.steps.filter((s) => s.id !== action.stepId)) });
     }
     case 'reorder-step': {
       const from = v.steps.findIndex((s) => s.id === action.stepId);
       if (from < 0) return refuse('unknown-step');
+      if (!Number.isFinite(action.toIndex)) return refuse('invalid-value');
       const rest = v.steps.filter((s) => s.id !== action.stepId);
       const to = Math.min(Math.max(0, Math.trunc(action.toIndex)), rest.length);
-      return commit(state, { recipeVersions: replace(state, { ...v, steps: renumber([...rest.slice(0, to), v.steps[from] as Step, ...rest.slice(to)]) }) }, []);
+      return updateVersion(state, { ...v, steps: renumber([...rest.slice(0, to), v.steps[from] as Step, ...rest.slice(to)]) });
     }
     case 'edit-parameter': {
       if (!Number.isFinite(action.value)) return refuse('invalid-value');
@@ -97,17 +106,21 @@ export function recipeAction(state: PlantState, action: Extract<PlantAction, { v
       const next = { ...target, [action.field]: action.value };
       if (next.min > next.setpoint || next.setpoint > next.max) return refuse('parameter-order', { parameterId: target.id });
       const steps = v.steps.map((s) => ({ ...s, parameters: s.parameters.map((p) => (p.id === target.id ? next : p)) }));
-      return commit(state, { recipeVersions: replace(state, { ...v, steps }) }, []);
+      return updateVersion(state, { ...v, steps });
     }
     case 'save-draft': {
-      const failing = failingRules(checkRecipeVersion(v, lineTypeOf(state, v)));
+      const checked = validateVersion(v, lineTypeOf(state, v));
+      if (!checked.valid || v.steps.length === 0) return refuse('invalid-version');
+      const failing = failingRules(checked.rules);
       if (failing.length > 0) return refuse('rules-failing', { rules: failing });
       const saved = state.savedDrafts.get(v.id);
       if (saved && sameContent(saved, v)) return nothing(state);
       return commit(state, { savedDrafts: new Map(state.savedDrafts).set(v.id, v) }, [entry(state, tick, 'recipe-save', v.id, 'recipe-version')]);
     }
     case 'approve': {
-      const failing = failingRules(checkRecipeVersion(v, lineTypeOf(state, v)));
+      const checked = validateVersion(v, lineTypeOf(state, v));
+      if (!checked.valid || v.steps.length === 0) return refuse('invalid-version');
+      const failing = failingRules(checked.rules);
       if (failing.length > 0) return refuse('rules-failing', { rules: failing });
       const approved: RecipeVersion = { ...v, status: 'approved', approvedAt: simulatedTime(tick) };
       const savedDrafts = new Map(state.savedDrafts);
@@ -120,4 +133,9 @@ export function recipeAction(state: PlantState, action: Extract<PlantAction, { v
       return commit(state, { recipeVersions: state.recipeVersions.filter((x) => x.id !== v.id), savedDrafts }, [entry(state, tick, 'recipe-discard', v.id, 'recipe-version')]);
     }
   }
+}
+
+function updateVersion(state: PlantState, version: RecipeVersion, ids = state.ids): ActionResult {
+  if (!validateVersion(version, lineTypeOf(state, version)).valid) return refuse('invalid-version');
+  return commit(state, { recipeVersions: replace(state, version), ids }, []);
 }

@@ -7,11 +7,11 @@ function criticalAlarms(state: PlantState, lineId: LineId): number {
   return state.alarms.filter((a) => a.lineId === lineId && a.priority === 'critical' && (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged')).length;
 }
 
-/** Status of a Line at a tick: Alarm with a Critical Alarm, else Stopped for the first reason that applies, else Running. */
-export function lineStatus(state: PlantState, lineId: LineId, tick: number): LineStatus {
-  const control = state.controls[lineId];
+/** Stop reasons use historical spans. Critical Alarm counts always reflect Alarms at syncedTick. */
+export function lineStatus(state: PlantState, lineId: LineId, tick = state.syncedTick): LineStatus {
+  const manual = (state.manualStops[lineId] ?? []).find(s => tick >= s.fromTick && tick < s.toTick);
   const fault = (state.faultStops[lineId] ?? []).some((s) => tick >= s.fromTick && tick < s.toTick);
-  const reason: StopReason | null = control?.latched ? 'emergency-stop' : fault ? 'fault' : control?.paused ? 'paused' : null;
+  const reason: StopReason | null = manual?.reason === 'emergency-stop' ? 'emergency-stop' : fault ? 'fault' : manual?.reason ?? null;
   const critical = criticalAlarms(state, lineId);
   return { status: critical > 0 ? 'alarm' : reason ? 'stopped' : 'running', reason, criticalAlarms: critical };
 }

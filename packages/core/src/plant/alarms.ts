@@ -1,6 +1,8 @@
 import type { Alarm } from '../mock/types';
 import { simulatedTime } from '../sim/clock';
-import { raises, returns } from '../sim/alarms';
+import { raiseAt, raises, returns, type Raise } from '../sim/alarms';
+import { contextOf } from '../sim/context';
+import { alarmedAt } from '../sim/tags';
 import { tagSeries } from '../sim/series';
 import type { PlantState } from './types';
 
@@ -13,61 +15,81 @@ function applyReturn(a: Alarm, tick: number): Alarm {
   return a.state === 'active-unacknowledged' ? { ...a, state: 'returned-unacknowledged', returnedAt: time } : { ...a, state: 'cleared', returnedAt: time, clearedAt: time };
 }
 
+/** Whether an Alarm covered this condition at a tick, even if this advance has already returned it. */
+function covers(alarm: Alarm, raise: Raise): boolean {
+  return alarm.tagId === raise.tagId && directionOf(alarm) === raise.direction && alarm.raisedAt <= raise.time &&
+    (alarm.returnedAt === null ? isOpen(alarm) : alarm.returnedAt > raise.time);
+}
+
 /**
- * Brings the Alarms up to a tick: Alarms on a Tag return when the Tag is out of alarm, faults return at their own tick, and
- * every raise of the Simulator on a running Line becomes a new Alarm. A raise on a stopped Line is ignored.
- * Moving time in one step or in many gives the same Alarms.
+ * Transitions supply ordinary raises. Levels at run boundaries recover conditions first seen while stopped.
+ * Candidates are ordered by tick and Tag before allocating ids, so advance chunk sizes cannot change history.
  */
 export function advanceTo(state: PlantState, tick: number): PlantState {
-  if (tick <= state.syncedTick) return state;
-  const d = state.dataset;
-  const from = state.syncedTick;
-  const alarms = state.alarms.map((a) => a);
-  let changed = false;
+  if (tick < state.syncedTick) return state;
+  const d = state.dataset, from = state.syncedTick, ctx = contextOf(d);
+  let changed = false, alarmId = state.ids.alarms;
+  const returnTag = (alarm: Alarm, firstTick: number): Alarm => {
+    if (!isOpen(alarm) || alarm.tagId === null) return alarm;
+    const back = tagSeries(d, alarm.tagId, firstTick, tick, 1, state.overlay).find(p => p.alarm !== directionOf(alarm));
+    return back ? applyReturn(alarm, back.tick) : alarm;
+  };
+  const alarms = state.alarms.map(alarm => {
+    const next = returnTag(alarm, Math.min(from + 1, tick));
+    if (next !== alarm) changed = true;
+    return next;
+  });
+  for (const returned of returns(d, from, tick)) {
+    const index = alarms.findIndex(a => a.id === returned.alarmId);
+    const alarm = alarms[index];
+    if (alarm && isOpen(alarm)) { alarms[index] = applyReturn(alarm, returned.tick); changed = true; }
+  }
 
-  alarms.forEach((a, i) => {
-    if (!isOpen(a)) return;
-    if (a.tagId !== null) {
-      const dir = directionOf(a);
-      const back = tagSeries(d, a.tagId, from + 1, tick, 1, state.overlay).find((p) => p.alarm !== dir);
-      if (back) {
-        alarms[i] = applyReturn(a, back.tick);
-        changed = true;
+  const candidates = raises(d, from, tick, state.overlay);
+  // The first examined tick and every Resume are where a level can have lost its transition while stopped.
+  for (const line of d.lines) {
+    const boundaries = new Set([Math.min(from + 1, tick)]);
+    for (const span of [...state.manualStops[line.id], ...state.faultStops[line.id]]) {
+      if (span.toTick >= from && span.toTick <= tick) boundaries.add(span.toTick);
+    }
+    for (const boundary of boundaries) {
+      if (state.overlay.runTicks!(line.id, boundary, boundary + 1) === 0) continue;
+      for (const tag of ctx.tagById.values()) {
+        if (tag.lineId !== line.id) continue;
+        const direction = alarmedAt(ctx, tag, boundary, state.overlay);
+        if (direction !== null) candidates.push(raiseAt(d, tag, boundary, direction));
       }
     }
-  });
-  for (const r of returns(d, from, tick)) {
-    const i = alarms.findIndex((a) => a.id === r.alarmId);
-    const a = alarms[i];
-    if (a && isOpen(a)) {
-      alarms[i] = applyReturn(a, r.tick);
-      changed = true;
-    }
   }
-
-  for (const r of raises(d, from, tick, state.overlay)) {
-    if (state.overlay.runTicks?.(r.lineId, r.tick, r.tick + 1) === 0) continue;
+  const admit = (raise: Raise) => {
+    if (state.overlay.runTicks!(raise.lineId, raise.tick, raise.tick + 1) === 0 || alarms.some(a => covers(a, raise))) return;
     const fresh: Alarm = {
-      id: `AL-${String(alarms.length + 1).padStart(4, '0')}`,
-      priority: r.priority,
-      state: 'active-unacknowledged',
-      lineId: r.lineId,
-      machineId: r.machineId,
-      tagId: r.tagId,
-      batchId: r.batchId,
-      message: r.message,
-      raisedAt: r.time,
-      acknowledgedAt: null,
-      acknowledgedBy: null,
-      returnedAt: null,
-      clearedAt: null,
+      id: `AL-${String(++alarmId).padStart(4, '0')}`, priority: raise.priority,
+      state: 'active-unacknowledged', lineId: raise.lineId, machineId: raise.machineId,
+      tagId: raise.tagId, batchId: raise.batchId, message: raise.message, raisedAt: raise.time,
+      acknowledgedAt: null, acknowledgedBy: null, returnedAt: null, clearedAt: null,
     };
-    const back = tagSeries(d, r.tagId, r.tick + 1, tick, 1, state.overlay).find((p) => p.alarm !== r.direction);
-    alarms.push(back ? applyReturn(fresh, back.tick) : fresh);
+    alarms.push(returnTag(fresh, raise.tick + 1));
     changed = true;
+  };
+  candidates.sort((a, b) => a.tick - b.tick || a.tagId.localeCompare(b.tagId)).forEach(admit);
+
+  // Safety net at the requested tick. Ordinary transitions and run boundaries normally cover every level already.
+  const missing: Raise[] = [];
+  for (const tag of ctx.tagById.values()) {
+    if (state.overlay.runTicks!(tag.lineId, tick, tick + 1) === 0) continue;
+    const direction = alarmedAt(ctx, tag, tick, state.overlay);
+    if (direction === null || alarms.some(a => isOpen(a) && a.tagId === tag.id && directionOf(a) === direction)) continue;
+    const resumes = [...state.manualStops[tag.lineId], ...state.faultStops[tag.lineId]].filter(s => s.toTick <= tick).map(s => s.toTick);
+    const first = Math.max(Math.min(from + 1, tick), ...resumes);
+    missing.push(raiseAt(d, tag, first, direction));
   }
-  // Time moved on, but if no Alarm changed the Alarms stay the very same list, so nothing downstream sees a change.
-  return { ...state, syncedTick: tick, alarms: changed ? alarms : state.alarms };
+  missing.sort((a, b) => a.tick - b.tick || a.tagId.localeCompare(b.tagId)).forEach(admit);
+  return {
+    ...state, syncedTick: tick,
+    ids: alarmId === state.ids.alarms ? state.ids : { ...state.ids, alarms: alarmId },
+    alarms: changed ? alarms : state.alarms,
+  };
 }
 
 /** Acknowledges one Alarm: active becomes acknowledged, returned to normal becomes cleared, anything else stays. */
