@@ -78,6 +78,9 @@ export function heldAt(ctx: SimContext, tagId: string, tick: number): Direction 
   return ctx.windows.get(tagId)?.find((w) => tick >= w.fromTick && tick < w.toTick)?.direction;
 }
 
+/** Supported session horizon: seven days after load. Negative history ticks remain available. */
+export const MAX_TICK = 7 * 86400;
+
 export function assertTick(tick: number): void {
-  if (!Number.isInteger(tick)) throw new Error(`tick must be an integer, got ${tick}`);
+  if (!Number.isSafeInteger(tick) || tick > MAX_TICK) throw new Error(`tick must be a safe integer at or below ${MAX_TICK}, got ${tick}`);
 }

@@ -3,7 +3,7 @@ import { simulatedTime } from '../sim/clock';
 import { raiseAt, raises, returns, type Raise } from '../sim/alarms';
 import { contextOf } from '../sim/context';
 import { alarmedAt } from '../sim/tags';
-import { tagSeries } from '../sim/series';
+import { firstTick } from '../sim/series';
 import type { PlantState } from './types';
 
 const isOpen = (a: Alarm) => a.state === 'active-unacknowledged' || a.state === 'active-acknowledged';
@@ -21,34 +21,44 @@ function covers(alarm: Alarm, raise: Raise): boolean {
     (alarm.returnedAt === null ? isOpen(alarm) : alarm.returnedAt > raise.time);
 }
 
-/**
- * Transitions supply ordinary raises. Levels at run boundaries recover conditions first seen while stopped.
- * Candidates are ordered by tick and Tag before allocating ids, so advance chunk sizes cannot change history.
- */
+/** Finalizes ticks before the requested tick, leaving that tick open for all controls. */
 export function advanceTo(state: PlantState, tick: number): PlantState {
-  if (tick < state.syncedTick) return state;
+  if (tick <= state.syncedTick) return state;
+  return { ...reconcileThrough(state, tick - 1), syncedTick: tick };
+}
+
+/** Inclusive view of the open tick. It does not finalize it or consume identities in the caller's state. */
+export function reconcileAt(state: PlantState): PlantState {
+  return reconcileThrough(state, state.syncedTick);
+}
+
+/**
+ * Reconciles an inclusive interval. Transitions supply ordinary raises, and run boundaries recover levels first seen
+ * while stopped. Candidates are ordered by tick and Tag before allocating ids, independent of advance chunk sizes.
+ */
+function reconcileThrough(state: PlantState, tick: number): PlantState {
   const d = state.dataset, from = state.syncedTick, ctx = contextOf(d);
   let changed = false, alarmId = state.ids.alarms;
-  const returnTag = (alarm: Alarm, firstTick: number): Alarm => {
-    if (!isOpen(alarm) || alarm.tagId === null) return alarm;
-    const back = tagSeries(d, alarm.tagId, firstTick, tick, 1, state.overlay).find(p => p.alarm !== directionOf(alarm));
-    return back ? applyReturn(alarm, back.tick) : alarm;
+  const returnTag = (alarm: Alarm, fromTick: number): Alarm => {
+    if (!isOpen(alarm) || alarm.tagId === null || fromTick > tick) return alarm;
+    const back = firstTick(d, alarm.tagId, fromTick, tick, state.overlay, p => p.alarm !== directionOf(alarm));
+    return back === undefined ? alarm : applyReturn(alarm, back);
   };
   const alarms = state.alarms.map(alarm => {
-    const next = returnTag(alarm, Math.min(from + 1, tick));
+    const next = returnTag(alarm, from);
     if (next !== alarm) changed = true;
     return next;
   });
-  for (const returned of returns(d, from, tick)) {
+  for (const returned of returns(d, from - 1, tick)) {
     const index = alarms.findIndex(a => a.id === returned.alarmId);
     const alarm = alarms[index];
     if (alarm && isOpen(alarm)) { alarms[index] = applyReturn(alarm, returned.tick); changed = true; }
   }
 
-  const candidates = raises(d, from, tick, state.overlay);
+  const candidates = raises(d, from - 1, tick, state.overlay);
   // The first examined tick and every Resume are where a level can have lost its transition while stopped.
   for (const line of d.lines) {
-    const boundaries = new Set([Math.min(from + 1, tick)]);
+    const boundaries = new Set([from]);
     for (const span of [...state.manualStops[line.id], ...state.faultStops[line.id]]) {
       if (span.toTick >= from && span.toTick <= tick) boundaries.add(span.toTick);
     }
@@ -81,12 +91,12 @@ export function advanceTo(state: PlantState, tick: number): PlantState {
     const direction = alarmedAt(ctx, tag, tick, state.overlay);
     if (direction === null || alarms.some(a => isOpen(a) && a.tagId === tag.id && directionOf(a) === direction)) continue;
     const resumes = [...state.manualStops[tag.lineId], ...state.faultStops[tag.lineId]].filter(s => s.toTick <= tick).map(s => s.toTick);
-    const first = Math.max(Math.min(from + 1, tick), ...resumes);
+    const first = Math.max(from, ...resumes);
     missing.push(raiseAt(d, tag, first, direction));
   }
   missing.sort((a, b) => a.tick - b.tick || a.tagId.localeCompare(b.tagId)).forEach(admit);
   return {
-    ...state, syncedTick: tick,
+    ...state,
     ids: alarmId === state.ids.alarms ? state.ids : { ...state.ids, alarms: alarmId },
     alarms: changed ? alarms : state.alarms,
   };

@@ -59,7 +59,7 @@ export interface PlantState {
   readonly savedDrafts: ReadonlyMap<string, RecipeVersion>;
   /** Shift handover notes, by Shift (`YYYY-MM-DD/S1`), in the order they were written. */
   readonly handovers: ReadonlyMap<string, readonly HandoverNote[]>;
-  /** The last tick the Simulator's raises and returns were applied up to. */
+  /** Ticks before this are final. This tick stays open for control changes. */
   readonly syncedTick: number;
   readonly alarms: readonly Alarm[];
   readonly events: readonly EventLogEntry[];
@@ -109,7 +109,7 @@ export type PlantAction =
   | { type: 'emergency-stop'; lineId: LineId; confirmed: boolean }
   | { type: 'reset'; lineId: LineId }
   | { type: 'acknowledge'; alarmIds: readonly string[] }
-  /** Takes effect from the next tick. The reason is required. */
+  /** Takes effect at the open action tick. The reason is required. */
   | { type: 'setpoint-override'; tagId: string; value: number; reason: string }
   | { type: 'reset-to-recipe'; tagId: string }
   /** Records a note on the current Shift. The note is required. */
@@ -126,7 +126,7 @@ export type PlantAction =
   /** Allowed only for a Draft with no failing rule. The version becomes read-only. */
   | { type: 'approve'; versionId: string }
   | { type: 'discard-draft'; versionId: string }
-  /** Applies what the Simulator did up to this tick: new Alarms from raises, and Alarms returning to normal. Writes no log entry. */
+  /** Finalizes ticks before this tick, keeping the current tick open. Writes no log entry. */
   | { type: 'advance' }
   | { type: 'set-user'; userId: string };
 

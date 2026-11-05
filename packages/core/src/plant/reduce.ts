@@ -1,13 +1,14 @@
 import { activeRecipeParameter } from '../parameters';
 import type { EventLogEntry, LineId } from '../mock/types';
 import { simulatedTime } from '../sim/clock';
-import { acknowledge, advanceTo } from './alarms';
-import { lineStatus, NEVER } from './lines';
-import { contextOf } from '../sim/context';
+import { acknowledge, advanceTo, reconcileAt } from './alarms';
+import { NEVER } from './lines';
+import { contextOf, MAX_TICK } from '../sim/context';
 import { type SetpointStep, setpointAt } from '../sim/overlay';
 import { shiftInfo } from '../sim/clock';
 import { spDate } from '../mock/time';
 import { recipeAction } from './recipes';
+import { buildOverlay } from './state';
 import { commit, entry, nothing, refuse } from './util';
 import type { ActionContext, ActionResult, LineControl, PlantAction, PlantState, StopReason, StopSpan } from './types';
 
@@ -37,17 +38,15 @@ function setLine(state: PlantState, lineId: LineId, control: LineControl, spans:
 }
 
 export function reduce(state: PlantState, action: PlantAction, ctx: ActionContext): ActionResult {
-  if (!Number.isInteger(ctx.tick) || ctx.tick < 0) return refuse('invalid-tick');
+  if (!Number.isSafeInteger(ctx.tick) || ctx.tick < 0 || ctx.tick > MAX_TICK) return refuse('invalid-tick');
   const tick = Math.max(ctx.tick, state.syncedTick);
-  const changesOverlay = ['pause', 'resume', 'emergency-stop', 'reset', 'setpoint-override', 'reset-to-recipe'].includes(action.type);
-  const base = advanceTo(state, changesOverlay ? Math.max(0, tick - 1) : tick);
+  const base = advanceTo(state, tick);
   if (action.type === 'set-user') {
     if (!state.dataset.users.some((u) => u.id === action.userId)) return refuse('unknown-user');
     return base.currentUserId === action.userId ? nothing(base) : { ok: true, state: { ...base, currentUserId: action.userId }, events: [] };
   }
   if (action.type === 'advance') return { ok: true, state: base, events: [] };
-  const result = apply(base, action, { tick });
-  return result.ok && changesOverlay ? { ...result, state: advanceTo(result.state, tick) } : result;
+  return apply(base, action, { tick });
 }
 
 function apply(state: PlantState, action: Exclude<PlantAction, { type: 'advance' | 'set-user' }>, ctx: ActionContext): ActionResult {
@@ -91,8 +90,14 @@ function apply(state: PlantState, action: Exclude<PlantAction, { type: 'advance'
     case 'resume': {
       if (!control.paused && !control.latched) return nothing(state);
       if (control.latched) return refuse('latched');
-      if (lineStatus(state, action.lineId, tick).criticalAlarms > 0) return refuse('critical-alarm-active');
-      return commit(state, setLine(state, action.lineId, { ...control, paused: false }, closeStop(spans, tick)), [entry(state, tick, 'resume', action.lineId, 'line')]);
+      const changes = setLine(state, action.lineId, { ...control, paused: false }, closeStop(spans, tick));
+      const tentative = { ...state, ...changes };
+      tentative.overlay = buildOverlay(tentative.manualStops, tentative.faultStops, tentative.setpoints);
+      // Use the same reconciliation as advance, including returns and admissions at this tick.
+      // Its identities and Alarms are thrown away until the open tick is finalized.
+      const peek = reconcileAt(tentative);
+      if (peek.alarms.some(a => a.lineId === action.lineId && a.priority === 'critical' && (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged'))) return refuse('critical-alarm-active');
+      return commit(state, changes, [entry(state, tick, 'resume', action.lineId, 'line')]);
     }
   }
 }
@@ -104,14 +109,14 @@ function setpoint(state: PlantState, action: Extract<PlantAction, { type: 'setpo
   if (!tag) return refuse('unknown-tag');
   const heartbeat = simulator.heartbeat.get(tag.machineId);
   if (heartbeat !== undefined && tick >= heartbeat) return refuse('tag-stale');
-  // A change made now takes effect from the next tick, so that is the setpoint to compare with.
-  const current = setpointAt(state.overlay, tag, tick + 1);
+  // The action tick is still open, so changes take effect at that tick.
+  const current = setpointAt(state.overlay, tag, tick);
 
   if (action.type === 'reset-to-recipe') {
     const param = activeRecipeParameter(d, tag);
     if (!tag.parameterKey || !param) return refuse('no-recipe-value');
     if (param.setpoint === current) return nothing(state);
-    return commit(state, { setpoints: withStep(state.setpoints, tag.id, tick + 1, param.setpoint) }, [entry(state, tick, 'reset-to-recipe', tag.id, 'tag', current, param.setpoint)]);
+    return commit(state, { setpoints: withStep(state.setpoints, tag.id, tick, param.setpoint) }, [entry(state, tick, 'reset-to-recipe', tag.id, 'tag', current, param.setpoint)]);
   }
 
   if (!tag.writable) return refuse('tag-not-writable');
@@ -120,7 +125,7 @@ function setpoint(state: PlantState, action: Extract<PlantAction, { type: 'setpo
   if (action.value < tag.min || action.value > tag.max) return refuse('value-out-of-range');
   if (action.value === current) return nothing(state);
   const logged: EventLogEntry = { ...entry(state, tick, 'setpoint-override', tag.id, 'tag', current, action.value), note: action.reason.trim() };
-  return commit(state, { setpoints: withStep(state.setpoints, tag.id, tick + 1, action.value) }, [logged]);
+  return commit(state, { setpoints: withStep(state.setpoints, tag.id, tick, action.value) }, [logged]);
 }
 
 const NEXT_SHIFT = { S1: 'S2', S2: 'S3', S3: 'S1' } as const;

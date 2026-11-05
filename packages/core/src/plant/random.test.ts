@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import { createRng } from '../mock/prng';
 import type { StepKind } from '../mock/types';
@@ -7,9 +7,11 @@ import { parametersByKey } from '../parameters';
 import { simulate } from '../sim/simulate';
 import { tagSeries } from '../sim/series';
 import { raises } from '../sim/alarms';
+import { contextOf } from '../sim/context';
+import { alarmedAt } from '../sim/tags';
 import { simulatedTime } from '../sim/clock';
 import { assertOverlay, setpointAt } from '../sim/overlay';
-import { assertPlantInvariants, identities, snapshot, stateSnapshot } from './invariants';
+import { actionSnapshot, assertPlantInvariants, completeAndSafe, identities, snapshot, stateSnapshot } from './invariants';
 import { createPlantState, createPlantStore, lineStatus, reduce } from './index';
 import type { PlantAction, PlantState } from './types';
 
@@ -23,45 +25,86 @@ function accepted(state: PlantState, action: PlantAction, tick: number): PlantSt
 const fresh = () => createPlantState(generateMockDataset());
 const draft = (s: PlantState) => s.recipeVersions.find(v => v.status === 'draft')!;
 
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value)) deepFreeze(child);
+    Object.freeze(value);
+  }
+  return value;
+}
+const coverage = new Map<number, Record<string, number>>();
+afterAll(() => {
+  const totals: Record<string, number> = {};
+  for (const counters of coverage.values()) for (const [key, n] of Object.entries(counters)) totals[key] = (totals[key] ?? 0) + n;
+  for (const [key, n] of Object.entries(totals)) expect(n, `seeds ${[...coverage.keys()].join(', ')}: coverage ${key}`).toBeGreaterThan(0);
+  expect([...coverage.values()].some(c => c.after57600! > 0), 'seeds 1, 2, 3, 20260101 cross two Shifts').toBe(true);
+});
+
 for (const seed of [1, 2, 3, 20260101]) it(`seed ${seed}: 300 actions preserve Plant State invariants and replay`, () => {
-  const d = generateMockDataset(seed), original = snapshot(d), rng = createRng(seed);
-  const store = createPlantStore(d), replay = createPlantStore(generateMockDataset(seed));
+  const d = deepFreeze(generateMockDataset(seed)), rng = createRng(seed);
+  const store = createPlantStore(d), replay = createPlantStore(deepFreeze(generateMockDataset(seed)));
+  const counters = { approvals: 0, discards: 0, acknowledges: 0, limitOverrides: 0, alarmResumes: 0, saves: 0, recipeResets: 0, after28800: 0, after57600: 0 };
+  coverage.set(seed, counters);
   const seen = new Set<string>(), deletedSteps: string[] = [], deletedParameters: string[] = [], deletedVersions: string[] = [];
   for (let step = 0; step < 300; step++) {
-    const before = store.getState(), beforeSnapshot = stateSnapshot(before);
-    const lineId = rng.pick(d.lines).id, tag = rng.pick(d.tags);
-    const v = rng.pick(before.recipeVersions.filter(v => v.status === 'draft')) ?? rng.pick(before.recipeVersions);
+    const before = store.getState();
+    const lineId = rng.pick(d.lines).id;
+    const tag = rng.chance(0.8) ? rng.pick(d.tags.filter(t => t.writable && !contextOf(d).heartbeat.has(t.machineId))) : rng.pick(d.tags);
+    const drafts = before.recipeVersions.filter(v => v.status === 'draft');
+    const v = rng.pick(drafts.length ? drafts : before.recipeVersions);
+    const safe = drafts.filter(v => completeAndSafe(v, d.recipes.find(r => r.id === v.recipeId)!.lineType));
+    const safeId = (safe.length ? rng.pick(safe) : v).id;
+    const sources = before.recipeVersions.filter(v => v.status === 'approved' && !drafts.some(x => x.recipeId === v.recipeId));
+    const source = rng.pick(sources.length ? sources : before.recipeVersions.filter(v => v.status === 'approved'));
     const s = rng.pick(v.steps.length ? v.steps : [{ id: 'missing', order: 1, kind: 'run' as const, name: { key: 'missing' }, parameters: [] }]);
     const parameterId = s.parameters.length ? rng.pick(s.parameters).id : 'missing';
     const versionId = rng.chance(0.12) ? rng.pick([...deletedVersions, 'missing']) : v.id;
     const stepId = rng.chance(0.2) ? rng.pick([...deletedSteps, 'missing']) : s.id;
+    const overridden = before.setpoints.size ? rng.pick([...before.setpoints.keys()]) : tag.id;
+    const pausedLines = d.lines.filter(l => before.controls[l.id].paused && !before.controls[l.id].latched);
+    const resumable = pausedLines.length ? rng.pick(pausedLines).id : lineId;
     const actions: PlantAction[] = [
-      { type: 'advance' }, { type: 'pause', lineId }, { type: 'resume', lineId },
+      { type: 'advance' }, { type: 'pause', lineId }, { type: 'resume', lineId: resumable },
       { type: 'emergency-stop', lineId, confirmed: rng.chance(0.7) }, { type: 'reset', lineId },
-      { type: 'setpoint-override', tagId: tag.id, value: rng.pick([tag.min, tag.max, tag.setpoint, tag.max + 1, NaN]), reason: rng.pick(['trial', '']) },
-      { type: 'reset-to-recipe', tagId: tag.id },
-      { type: 'acknowledge', alarmIds: [rng.pick([...before.alarms.map(a => a.id), 'unknown'])] },
+      { type: 'setpoint-override', tagId: tag.id, value: rng.pick([tag.min, tag.max, tag.min, tag.max, tag.setpoint, tag.max + 1, NaN]), reason: rng.pick(['trial', 'trial', '']) },
+      { type: 'reset-to-recipe', tagId: overridden },
+      { type: 'acknowledge', alarmIds: [rng.pick([...before.alarms.filter(a => a.state === 'active-unacknowledged' || a.state === 'returned-unacknowledged').map(a => a.id), 'unknown'])] },
       { type: 'shift-handover', note: rng.pick(['handover', '']) },
       { type: 'set-user', userId: rng.pick([...d.users.map(u => u.id), 'unknown']) },
-      { type: 'new-draft', versionId: rng.pick(before.recipeVersions.filter(v => v.status === 'approved')).id },
-      { type: 'discard-draft', versionId }, { type: 'save-draft', versionId }, { type: 'approve', versionId },
+      { type: 'new-draft', versionId: source.id },
+      { type: 'discard-draft', versionId }, { type: 'save-draft', versionId: safeId }, { type: 'approve', versionId: safeId },
       { type: 'add-step', versionId, kind: rng.pick(kinds) }, { type: 'remove-step', versionId, stepId },
       { type: 'reorder-step', versionId, stepId, toIndex: rng.int(-2, 10) },
       { type: 'edit-parameter', versionId, parameterId: rng.chance(0.2) ? rng.pick([...deletedParameters, 'missing']) : parameterId, field: rng.pick(['min', 'max', 'setpoint'] as const), value: rng.pick([0, 180, 200, 1000, NaN]) },
     ];
-    const action = rng.pick(actions), tick = rng.chance(0.75) ? before.syncedTick + rng.int(1, 10) : rng.pick([before.syncedTick + rng.int(1, 10), before.syncedTick + 1, before.syncedTick, before.syncedTick - 10, -1, 1.5, NaN]);
+    const action = rng.pick(actions);
+    const next = before.syncedTick + (rng.chance(0.25) ? rng.int(100, 3000) : rng.int(0, 12));
+    const tick = rng.chance(0.88) ? next : rng.pick([before.syncedTick, before.syncedTick - 10, -1, 1.5, NaN]);
+    const beforeSnapshot = actionSnapshot(before, action);
     try {
       const result = store.dispatch(action, tick);
-      expect(stateSnapshot(before), 'input unchanged').toBe(beforeSnapshot);
-      expect(snapshot(d), 'Mock Dataset unchanged').toBe(original);
-      if (!result.ok) {
-        expect(store.getState(), 'refusal retains state identity').toBe(before);
-        expect(stateSnapshot(store.getState())).toBe(beforeSnapshot);
-      }
+      expect(actionSnapshot(before, action), `seed ${seed}: input unchanged`).toBe(beforeSnapshot);
+      if (!result.ok) expect(store.getState(), `seed ${seed}: refusal retains state identity`).toBe(before);
       assertPlantInvariants(before, action, tick, result, seen);
       const replayResult = replay.dispatch(action, tick);
-      expect(replayResult.ok).toBe(result.ok);
-      expect(stateSnapshot(replay.getState()), 'deterministic replay').toBe(stateSnapshot(store.getState()));
+      expect(replayResult.ok, `seed ${seed}: replay result`).toBe(result.ok);
+      if (!replayResult.ok && !result.ok) expect(replayResult.error, `seed ${seed}: replay refusal`).toEqual(result.error);
+      expect(stateSnapshot(replay.getState()), `seed ${seed}: deterministic replay`).toBe(stateSnapshot(store.getState()));
+      if (result.ok) {
+        const changed = result.events.length > 0;
+        if (action.type === 'approve' && changed) counters.approvals++;
+        if (action.type === 'discard-draft' && changed) counters.discards++;
+        if (action.type === 'acknowledge' && changed) counters.acknowledges++;
+        if (action.type === 'save-draft' && changed) counters.saves++;
+        if (action.type === 'reset-to-recipe' && changed) counters.recipeResets++;
+        if (action.type === 'setpoint-override' && changed) {
+          const t = d.tags.find(t => t.id === action.tagId)!;
+          if (action.value === t.min || action.value === t.max) counters.limitOverrides++;
+        }
+        if (action.type === 'resume' && changed && [...contextOf(d).tagById.values()].some(t => t.lineId === action.lineId && alarmedAt(contextOf(d), t, result.state.syncedTick, result.state.overlay) !== null)) counters.alarmResumes++;
+        if (result.state.syncedTick > 28800) counters.after28800++;
+        if (result.state.syncedTick > 57600) counters.after57600++;
+      }
       const current = new Set(identities(store.getState()));
       for (const old of before.recipeVersions) {
         if (!current.has(old.id)) deletedVersions.push(old.id);
@@ -72,6 +115,7 @@ for (const seed of [1, 2, 3, 20260101]) it(`seed ${seed}: 300 actions preserve P
       }
     } catch (error) { throw new Error(`seed ${seed}, step ${step}, ${action.type}, tick ${tick}: ${String(error)}`, { cause: error }); }
   }
+  console.info(`coverage seed ${seed}: ${JSON.stringify(counters)}`);
 }, 120000);
 
 describe('root cause regressions', () => {

@@ -25,3 +25,14 @@ export function tagSeries(d: MockDataset, tagId: string, fromTick: number, toTic
   for (let tick = fromTick; tick <= toTick; tick += step) out.push({ tick, ...readTag(ctx, tag, tick, overlay) });
   return out;
 }
+
+/** Scans an inclusive interval without building a series, stopping at the first matching reading. */
+export function firstTick(d: MockDataset, tagId: string, fromTick: number, toTick: number, overlay: Overlay | undefined, predicate: (reading: TagReading) => boolean): number | undefined {
+  assertTick(fromTick);
+  assertTick(toTick);
+  assertOverlay(overlay);
+  const ctx = contextOf(d), tag = ctx.tagById.get(tagId);
+  if (!tag) throw new Error(`unknown tag ${tagId}`);
+  for (let tick = fromTick; tick <= toTick; tick++) if (predicate(readTag(ctx, tag, tick, overlay))) return tick;
+  return undefined;
+}

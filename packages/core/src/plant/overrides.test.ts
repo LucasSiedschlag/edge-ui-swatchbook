@@ -25,11 +25,11 @@ const code = (state: PlantState, action: PlantAction, tick = 10) => {
 const reading = (s: PlantState, tick: number, id = SPEED) => simulate(d, tick, s.overlay).tags.find((r) => r.tagId === id);
 
 describe('Setpoint Override', () => {
-  it('applies the new setpoint from the next tick, and logs the old and new values with the reason', () => {
+  it('applies the new setpoint at the open action tick, and logs the old and new values with the reason', () => {
     expect(speed?.setpoint).not.toBe(mid);
     const r = ok(start(), { type: 'setpoint-override', tagId: SPEED, value: mid, reason: 'trial run' }, 100);
-    expect(reading(r.state, 100)?.setpoint).toBe(speed?.setpoint);
-    expect(reading(r.state, 101)?.setpoint).toBe(mid);
+    expect(reading(r.state, 99)?.setpoint).toBe(speed?.setpoint);
+    expect(reading(r.state, 100)?.setpoint).toBe(mid);
     expect(r.events).toHaveLength(1);
     expect(r.events[0]).toMatchObject({
       action: 'setpoint-override', targetKind: 'tag', target: SPEED, oldValue: speed?.setpoint, newValue: mid, note: 'trial run', at: simulatedTime(100),
@@ -38,8 +38,8 @@ describe('Setpoint Override', () => {
 
   it('does not redraw the past', () => {
     const r = ok(start(), { type: 'setpoint-override', tagId: SPEED, value: mid, reason: 'x' }, 100);
-    const before = tagSeries(d, SPEED, -200, 100, 1);
-    expect(JSON.stringify(tagSeries(d, SPEED, -200, 100, 1, r.state.overlay))).toBe(JSON.stringify(before));
+    const before = tagSeries(d, SPEED, -200, 99, 1);
+    expect(JSON.stringify(tagSeries(d, SPEED, -200, 99, 1, r.state.overlay))).toBe(JSON.stringify(before));
   });
 
   it('requires a reason', () => {
@@ -81,7 +81,7 @@ describe('Setpoint Override', () => {
   it('keeps one step when the same Tag is changed twice in the same tick, and logs both', () => {
     const a = ok(start(), { type: 'setpoint-override', tagId: SPEED, value: mid, reason: 'one' }, 100);
     const b = ok(a.state, { type: 'setpoint-override', tagId: SPEED, value: speed?.max ?? 0, reason: 'two' }, 100);
-    expect(b.state.overlay.setpoints?.get(SPEED)).toEqual([{ fromTick: 101, value: speed?.max }]);
+    expect(b.state.overlay.setpoints?.get(SPEED)).toEqual([{ fromTick: 100, value: speed?.max }]);
     expect(() => simulate(d, 150, b.state.overlay)).not.toThrow();
     expect(b.state.events.length).toBe(d.events.length + 2);
   });
@@ -103,10 +103,10 @@ describe('Setpoint Override', () => {
 describe('Reset to recipe value', () => {
   const overridden = () => ok(start(), { type: 'setpoint-override', tagId: SPEED, value: mid, reason: 'x' }, 100).state;
 
-  it('puts the setpoint of the active Recipe Version back from the next tick, and logs it', () => {
+  it('puts the setpoint of the active Recipe Version back at the open action tick, and logs it', () => {
     const r = ok(overridden(), { type: 'reset-to-recipe', tagId: SPEED }, 300);
-    expect(reading(r.state, 300)?.setpoint).toBe(mid);
-    expect(reading(r.state, 301)?.setpoint).toBe(speed?.setpoint);
+    expect(reading(r.state, 299)?.setpoint).toBe(mid);
+    expect(reading(r.state, 300)?.setpoint).toBe(speed?.setpoint);
     expect(r.events[0]).toMatchObject({ action: 'reset-to-recipe', targetKind: 'tag', target: SPEED, oldValue: mid, newValue: speed?.setpoint, at: simulatedTime(300) });
   });
 

@@ -1,13 +1,14 @@
+import { reconcileAt } from './alarms';
 import type { LineId } from '../mock/types';
 import type { LineStatus, PlantState, StopReason } from './types';
 
 const NEVER = Number.POSITIVE_INFINITY;
 
 function criticalAlarms(state: PlantState, lineId: LineId): number {
-  return state.alarms.filter((a) => a.lineId === lineId && a.priority === 'critical' && (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged')).length;
+  return reconcileAt(state).alarms.filter((a) => a.lineId === lineId && a.priority === 'critical' && (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged')).length;
 }
 
-/** Stop reasons use historical spans. Critical Alarm counts always reflect Alarms at syncedTick. */
+/** Stop reasons use historical spans. Critical Alarm counts include the open tick without finalizing its history. */
 export function lineStatus(state: PlantState, lineId: LineId, tick = state.syncedTick): LineStatus {
   const manual = (state.manualStops[lineId] ?? []).find(s => tick >= s.fromTick && tick < s.toTick);
   const fault = (state.faultStops[lineId] ?? []).some((s) => tick >= s.fromTick && tick < s.toTick);
