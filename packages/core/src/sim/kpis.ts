@@ -1,7 +1,8 @@
 import { IDEAL_UNITS_PER_MIN } from '../mock/batches';
-import type { ActiveBatch, Line, LineId, MockDataset } from '../mock/types';
+import type { ActiveBatch, HourlyRecord, Line, LineId, MockDataset } from '../mock/types';
 import { simulatedTime } from './clock';
 import { hash, smooth } from './noise';
+import { type Overlay, runTicksOf } from './overlay';
 import type { TagReading } from './tags';
 
 export const TAKT_SECONDS = 120;
@@ -24,14 +25,20 @@ export interface LineLive {
   batch: BatchProgress | null;
   outputThisShift: number;
   scrapThisShift: number;
+  /** Good units this Shift. */
+  shiftGoodUnits: number;
+  /** Ideal output for the time the Line made product this Shift. */
+  shiftTargetUnits: number;
+  /** Minutes the Line made product this Shift. */
+  shiftRunMin: number;
   availability: number;
   performance: number;
   quality: number;
   oee: number;
   /** Cycle time against takt, on Assembly Lines. */
-  cycle: { value: number; takt: number } | null;
+  cycle: { value: number; takt: number; stale: boolean } | null;
   /** Line speed, on the other Lines. */
-  lineSpeed: { value: number; unit: string } | null;
+  lineSpeed: { value: number; unit: string; stale: boolean } | null;
 }
 
 interface Baseline { availability: number; performance: number; quality: number }
@@ -58,8 +65,20 @@ function baselineOf(d: MockDataset, lineId: LineId): Baseline {
 const round3 = (x: number) => Math.round(x * 1000) / 1000;
 const clamp = (x: number) => Math.min(1, Math.max(0, x));
 
-function unitsAt(b: ActiveBatch, rate: number, tick: number): number {
-  return Math.min(b.targetUnits, b.producedUnits + Math.floor((rate * EFFICIENCY * tick) / 60));
+/** How one running Batch advances. It only advances while the Line runs, and stops when the target is reached. */
+function modelOf(active: ActiveBatch, rate: number, line: LineId, overlay?: Overlay) {
+  const perTick = (rate * EFFICIENCY) / 60;
+  const completeAfter = Math.ceil((active.targetUnits - active.producedUnits) / perTick);
+  const ran = (from: number, to: number) => runTicksOf(overlay, line, from, to);
+  const ratio = active.producedUnits > 0 ? active.scrapUnits / active.producedUnits : 0;
+  return {
+    /** Units made by a tick, good and scrap together. */
+    unitsAt: (tick: number) => Math.min(active.targetUnits, active.producedUnits + Math.floor(perTick * ran(0, tick))),
+    /** Ticks in a window in which the Line was making product. */
+    makingTicks: (from: number, to: number) => Math.min(ran(0, to), completeAfter) - Math.min(ran(0, from), completeAfter),
+    scrapOf: (units: number) => Math.floor(units * ratio),
+    ranIn: ran,
+  };
 }
 
 const SPEED_TAG: Partial<Record<LineId, string>> = {
@@ -70,31 +89,39 @@ const SPEED_TAG: Partial<Record<LineId, string>> = {
   C1: 'C1-cnc.feed-rate',
 };
 
-export function readLines(d: MockDataset, tick: number, readings: TagReading[]): LineLive[] {
-  const value = (id: string) => readings.find((r) => r.tagId === id)?.value;
+export function readLines(d: MockDataset, tick: number, readings: TagReading[], overlay?: Overlay): LineLive[] {
+  const reading = (id: string) => readings.find((r) => r.tagId === id);
   const unit = (id: string) => d.tags.find((t) => t.id === id)?.unit ?? '';
   return d.lines.map((line: Line) => {
     const active = d.activeBatches.find((b) => b.lineId === line.id);
-    const cycleValue = line.type === 'assembly' ? value(`${line.id}-corner-weld.cycle-time`) : undefined;
+    const cycleTag = line.type === 'assembly' ? `${line.id}-corner-weld.cycle-time` : undefined;
+    const cycleReading = cycleTag ? reading(cycleTag) : undefined;
     const speedTag = SPEED_TAG[line.id];
-    const speedValue = speedTag ? value(speedTag) : undefined;
+    const speedReading = speedTag ? reading(speedTag) : undefined;
     const base = {
       lineId: line.id,
-      cycle: cycleValue === undefined ? null : { value: cycleValue, takt: TAKT_SECONDS },
-      lineSpeed: speedTag && speedValue !== undefined ? { value: speedValue, unit: unit(speedTag) } : null,
+      cycle: cycleReading ? { value: cycleReading.value, takt: TAKT_SECONDS, stale: cycleReading.status === 'stale' } : null,
+      // An idle Line is not moving, whatever its feed Tag drifts around.
+      lineSpeed:
+        speedTag && speedReading
+          ? { value: active ? speedReading.value : 0, unit: unit(speedTag), stale: speedReading.status === 'stale' }
+          : null,
     };
     if (!active) {
-      return { ...base, batch: null, outputThisShift: 0, scrapThisShift: 0, availability: 0, performance: 0, quality: 0, oee: 0 };
+      return { ...base, batch: null, outputThisShift: 0, scrapThisShift: 0, shiftGoodUnits: 0, shiftTargetUnits: 0, shiftRunMin: 0, availability: 0, performance: 0, quality: 0, oee: 0 };
     }
     const rate = IDEAL_UNITS_PER_MIN[line.type] as number;
-    const produced = unitsAt(active, rate, tick);
+    const m = modelOf(active, rate, line.id, overlay);
     const shiftStart = Math.floor(tick / SHIFT_TICKS) * SHIFT_TICKS;
-    const output = produced - unitsAt(active, rate, shiftStart);
-    const scrapRatio = active.producedUnits > 0 ? active.scrapUnits / active.producedUnits : 0;
+    const produced = m.unitsAt(tick);
+    const output = produced - m.unitsAt(shiftStart);
+    const scrap = m.scrapOf(produced) - m.scrapOf(m.unitsAt(shiftStart));
+    // Time lost to Pauses and Emergency stops this Shift lowers Availability.
+    const ranFraction = tick > shiftStart ? m.ranIn(shiftStart, tick) / (tick - shiftStart) : 1;
     const b = baselineOf(d, line.id);
     const key = hash(line.id);
     const wobble = (salt: number, size: number) => (smooth(key + salt, tick, 300) - 0.5) * size;
-    const availability = round3(clamp(b.availability + wobble(1, 0.04)));
+    const availability = round3(clamp((b.availability + wobble(1, 0.04)) * ranFraction));
     const performance = round3(clamp(b.performance + wobble(2, 0.04)));
     const quality = round3(clamp(b.quality + wobble(3, 0.02)));
     return {
@@ -108,11 +135,37 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[]):
         elapsedMs: simulatedTime(tick) - active.start,
       },
       outputThisShift: output,
-      scrapThisShift: Math.floor(output * scrapRatio),
+      scrapThisShift: scrap,
+      shiftGoodUnits: output - scrap,
+      shiftTargetUnits: Math.round(output / EFFICIENCY),
+      shiftRunMin: Math.round(m.makingTicks(shiftStart, tick) / 60),
       availability,
       performance,
       quality,
       oee: round3(availability * performance * quality),
     };
   });
+}
+
+/** One record per Line for every hour started since load, shaped like the history records so Screen 4 can merge them. */
+export function readHours(d: MockDataset, tick: number, overlay?: Overlay): HourlyRecord[] {
+  const out: HourlyRecord[] = [];
+  const hours = Math.ceil(tick / 3600);
+  for (let h = 0; h < hours; h++) {
+    const from = h * 3600;
+    const to = Math.min(tick, from + 3600);
+    for (const line of d.lines) {
+      const active = d.activeBatches.find((b) => b.lineId === line.id);
+      const base = { hourStart: d.now + from * 1000, lineId: line.id };
+      if (!active) {
+        out.push({ ...base, runMin: 0, targetUnits: 0, goodUnits: 0, scrapUnits: 0 });
+        continue;
+      }
+      const m = modelOf(active, IDEAL_UNITS_PER_MIN[line.type] as number, line.id, overlay);
+      const made = m.unitsAt(to) - m.unitsAt(from);
+      const scrap = m.scrapOf(m.unitsAt(to)) - m.scrapOf(m.unitsAt(from));
+      out.push({ ...base, runMin: Math.round(m.makingTicks(from, to) / 60), targetUnits: Math.round(made / EFFICIENCY), goodUnits: made - scrap, scrapUnits: scrap });
+    }
+  }
+  return out;
 }

@@ -11,7 +11,8 @@ export interface MachineLink {
   errorCount: number;
 }
 
-const round1 = (x: number) => Math.round(x * 10) / 10;
+const round2 = (x: number) => Math.round(x * 100) / 100;
+const clamp = (x: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, x));
 
 /**
  * Link health of every Machine at a tick. A link keeps the status it has in the Mock Dataset,
@@ -25,13 +26,14 @@ export function readLinks(machines: Machine[], tick: number): MachineLink[] {
     if (c.status === 'offline') {
       return { machineId: m.id, status: 'offline', latencyMs: 0, packetLossPct: 100, lastSeenAt: c.lastHeartbeatAt, errorCount: c.errorCount };
     }
-    const wave = smooth(key, tick, 90);
+    // Each link starts at the numbers in the Mock Dataset and wanders from there.
+    const drift = smooth(key, tick, 90) - smooth(key, 0, 90);
     if (c.status === 'degraded') {
       return {
         machineId: m.id,
         status: 'degraded',
-        latencyMs: Math.round(120 + wave * 330),
-        packetLossPct: round1(1 + wave * 8),
+        latencyMs: clamp(Math.round(c.latencyMs + drift * 300), 100, 500),
+        packetLossPct: clamp(round2(c.packetLossPct + drift * 6), 1, 10),
         lastSeenAt: now - Math.floor(noise(key, tick) * 20) * 1000,
         errorCount: c.errorCount + Math.floor(tick / 60),
       };
@@ -39,8 +41,8 @@ export function readLinks(machines: Machine[], tick: number): MachineLink[] {
     return {
       machineId: m.id,
       status: 'online',
-      latencyMs: Math.round(4 + wave * 20),
-      packetLossPct: round1(wave * 0.8),
+      latencyMs: clamp(Math.round(c.latencyMs + drift * 14), 1, 30),
+      packetLossPct: clamp(round2(c.packetLossPct + drift * 0.5), 0, 0.9),
       lastSeenAt: now - Math.floor(noise(key, tick + 1) * 2) * 1000,
       errorCount: c.errorCount,
     };

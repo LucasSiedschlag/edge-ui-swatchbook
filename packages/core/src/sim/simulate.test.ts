@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
-import { raises } from './alarms';
+import { raises, returns } from './alarms';
+import { tagSeries } from './series';
+import { snapshotDigest } from './digest';
 import { simulate } from './simulate';
 
 const d = generateMockDataset();
@@ -111,9 +113,22 @@ describe('simulate: Alarms follow the Tags', () => {
 
   it('starts every active Alarm with its Tag out of limits in the matching direction', () => {
     expect(open.length).toBeGreaterThan(0);
-    for (const tick of [0, 300, 599]) {
+    for (const tick of [0, 150, 299]) {
       const s = simulate(d, tick);
       for (const a of open) expect(s.tags.find((r) => r.tagId === a.tagId)?.status).toBe(direction(a.message.key));
+    }
+  });
+
+  it('returns each open Alarm to normal at its own tick, and reports it', () => {
+    const list = returns(d, -1, 2000);
+    expect(list.map((r) => r.alarmId).sort()).toEqual(open.map((a) => a.id).sort());
+    expect(new Set(list.map((r) => r.tick)).size).toBeGreaterThan(1);
+    for (const r of list) {
+      expect(r.tick).toBeGreaterThanOrEqual(300);
+      expect(r.tick).toBeLessThan(900);
+      const a = open.find((x) => x.id === r.alarmId);
+      expect(simulate(d, r.tick - 1).tags.find((x) => x.tagId === a?.tagId)?.status).toBe(direction(a?.message.key ?? ''));
+      expect(simulate(d, r.tick).tags.find((x) => x.tagId === a?.tagId)?.status).toBe('normal');
     }
   });
 
@@ -126,8 +141,8 @@ describe('simulate: Alarms follow the Tags', () => {
 
   it('lets other Tags drift out of limits now and then, then come back', () => {
     const seen = new Map<string, number>();
-    let prev = simulate(d, 600).tags;
-    for (let tick = 601; tick < 3600; tick++) {
+    let prev = simulate(d, 900).tags;
+    for (let tick = 901; tick < 3600; tick++) {
       const cur = simulate(d, tick).tags;
       cur.forEach((r, i) => {
         if ((r.status === 'high' || r.status === 'low') && prev[i]?.status === 'normal') seen.set(r.tagId, (seen.get(r.tagId) ?? 0) + 1);
@@ -158,6 +173,18 @@ describe('raises', () => {
   it('gives the same list for the same range, and splits cleanly across ranges', () => {
     expect(JSON.stringify(raises(d, 0, 1800))).toBe(JSON.stringify(raises(d, 0, 1800)));
     expect(JSON.stringify([...raises(d, 0, 900), ...raises(d, 900, 1800)])).toBe(JSON.stringify(raises(d, 0, 1800)));
+  });
+
+  it('says when each raise ends, so Plant State can date the return to normal', () => {
+    for (const r of raises(d, 0, 3600)) {
+      expect(r.returnTick).toBeGreaterThan(r.tick);
+      expect(simulate(d, r.returnTick - 1).tags.find((x) => x.tagId === r.tagId)?.status).toBe(r.direction);
+      expect(simulate(d, r.returnTick).tags.find((x) => x.tagId === r.tagId)?.status).toBe('normal');
+    }
+  });
+
+  it('names the Batch running on the Line when it raises', () => {
+    for (const r of raises(d, 0, 3600)) expect(r.batchId).toBe(d.activeBatches.find((b) => b.lineId === r.lineId)?.id ?? null);
   });
 
   it('does not raise for Tags of the Offline Machine, or counters', () => {
@@ -249,9 +276,119 @@ describe('simulate: Lines, Batch progress and KPIs', () => {
   it('reads cycle time against the 120 s takt on Assembly Lines, and line speed on the others', () => {
     const s = simulate(d, 77);
     const reading = (id: string) => s.tags.find((t) => t.tagId === id)?.value;
-    expect(s.lines.find((l) => l.lineId === 'A1')?.cycle).toEqual({ value: reading('A1-corner-weld.cycle-time'), takt: 120 });
+    expect(s.lines.find((l) => l.lineId === 'A1')?.cycle).toEqual({ value: reading('A1-corner-weld.cycle-time'), takt: 120, stale: false });
     expect(s.lines.find((l) => l.lineId === 'A1')?.lineSpeed).toBeNull();
     expect(s.lines.find((l) => l.lineId === 'E1')?.cycle).toBeNull();
-    expect(s.lines.find((l) => l.lineId === 'E1')?.lineSpeed).toEqual({ value: reading('E1-puller.puller-speed'), unit: 'm/min' });
+    expect(s.lines.find((l) => l.lineId === 'E1')?.lineSpeed).toEqual({ value: reading('E1-puller.puller-speed'), unit: 'm/min', stale: false });
+  });
+});
+
+
+describe('tagSeries: history before load', () => {
+  const NOW_TICK = 0;
+  const raisedTick = (a: { raisedAt: number }) => Math.ceil((a.raisedAt - d.now) / 1000);
+  const statusOfAt = (tagId: string, tick: number) => tagSeries(d, tagId, tick, tick)[0]?.status;
+  const open = d.alarms.filter((a) => (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged') && a.tagId !== null);
+  const returned = d.alarms.filter((a) => a.state === 'returned-unacknowledged' && a.tagId !== null);
+
+  it('returns one point per step, and matches simulate from tick 0 on', () => {
+    const tag = d.tags[40]?.id ?? '';
+    const s = tagSeries(d, tag, -10, 10, 5);
+    expect(s.map((p) => p.tick)).toEqual([-10, -5, 0, 5, 10]);
+    for (const p of s.filter((x) => x.tick >= 0)) {
+      expect(p).toMatchObject(simulate(d, p.tick).tags.find((r) => r.tagId === tag) ?? {});
+    }
+  });
+
+  it('holds the Tag of an open Alarm in limits until the Alarm was raised, then out of limits', () => {
+    for (const a of open) {
+      const r = raisedTick(a);
+      const want = a.message.key === 'alarm.low-value' ? 'low' : 'high';
+      if (r > -7200) expect(statusOfAt(a.tagId as string, r - 1)).toBe('normal');
+      expect(statusOfAt(a.tagId as string, r)).toBe(want);
+      expect(statusOfAt(a.tagId as string, NOW_TICK - 1)).toBe(want);
+    }
+  });
+
+  it('shows a returned Alarm out of limits only between raised and returned', () => {
+    expect(returned.length).toBeGreaterThan(0);
+    for (const a of returned) {
+      const r = raisedTick(a);
+      const back = Math.ceil(((a.returnedAt as number) - d.now) / 1000);
+      const want = a.message.key === 'alarm.low-value' ? 'low' : 'high';
+      expect(statusOfAt(a.tagId as string, r)).toBe(want);
+      expect(statusOfAt(a.tagId as string, back - 1)).toBe(want);
+      expect(statusOfAt(a.tagId as string, back)).toBe('normal');
+    }
+  });
+
+  it('keeps every other Tag within limits in the 2 hours before load', () => {
+    const withAlarm = new Set([...open, ...returned].map((a) => a.tagId));
+    const offline = new Set(d.machines.filter((m) => m.comms.status === 'offline').map((m) => m.id));
+    for (const t of d.tags.filter((x) => !withAlarm.has(x.id) && !offline.has(x.machineId))) {
+      for (const p of tagSeries(d, t.id, -7200, -1, 30)) expect(p.status).toBe('normal');
+    }
+  });
+
+  it('turns Tags of the Offline Machine Stale at the last heartbeat, frozen at the value they had then', () => {
+    const off = d.machines.find((m) => m.comms.status === 'offline');
+    const hb = Math.ceil(((off?.comms.lastHeartbeatAt ?? 0) - d.now) / 1000);
+    const tag = d.tags.find((t) => t.machineId === off?.id)?.id ?? '';
+    const s = tagSeries(d, tag, hb - 3, hb + 600, 1);
+    for (const p of s.filter((x) => x.tick < hb)) expect(p.status).not.toBe('stale');
+    const stale = s.filter((x) => x.tick >= hb);
+    expect(stale.every((p) => p.status === 'stale')).toBe(true);
+    expect(new Set(stale.map((p) => p.value)).size).toBe(1);
+  });
+
+  it('is deterministic and cheap for a 2 hour window', () => {
+    const tag = d.tags[10]?.id ?? '';
+    expect(JSON.stringify(tagSeries(d, tag, -7200, 0, 1))).toBe(JSON.stringify(tagSeries(d, tag, -7200, 0, 1)));
+    expect(tagSeries(d, tag, -7200, 0, 1)).toHaveLength(7201);
+  });
+
+  it('rejects non-integer ticks', () => {
+    expect(() => simulate(d, 1.5)).toThrow();
+    expect(() => tagSeries(d, d.tags[0]?.id ?? '', 0.5, 3)).toThrow();
+  });
+});
+
+
+describe('simulate: starts where the dataset left off', () => {
+  it('begins each link at the latency and packet loss in the Mock Dataset', () => {
+    const s = simulate(d, 0);
+    for (const m of s.machines.filter((x) => x.status !== 'offline')) {
+      const c = d.machines.find((x) => x.id === m.machineId)?.comms;
+      expect(m.latencyMs).toBe(c?.latencyMs);
+      expect(m.packetLossPct).toBe(c?.packetLossPct);
+    }
+  });
+
+  it('marks a frozen cycle time or line speed as stale', () => {
+    for (const tick of [0, 500]) {
+      const s = simulate(d, tick);
+      const stale = (id: string) => s.tags.find((r) => r.tagId === id)?.status === 'stale';
+      for (const l of s.lines) {
+        if (l.cycle) expect(l.cycle.stale).toBe(stale(`${l.lineId}-corner-weld.cycle-time`));
+      }
+      expect(s.lines.some((l) => l.cycle !== null)).toBe(true);
+    }
+  });
+
+  it('shows the idle Line at zero speed', () => {
+    expect(simulate(d, 300).lines.find((l) => l.lineId === 'C1')?.lineSpeed).toMatchObject({ value: 0, unit: 'mm/min' });
+  });
+});
+
+describe('snapshotDigest', () => {
+  it('is the same for separate datasets, and changes with the ticks asked for', () => {
+    const ticks = [0, 1, 600, 3600];
+    expect(snapshotDigest(d, ticks)).toBe(snapshotDigest(generateMockDataset(), ticks));
+    expect(snapshotDigest(d, ticks)).not.toBe(snapshotDigest(d, [0, 1, 600, 3601]));
+  });
+
+  // Playwright (Issue 8) compares this value across Chromium, Firefox and WebKit. Update it only when the Simulator changes on purpose.
+  it('is stable for the default dataset', () => {
+    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('7980719d');
   });
 });

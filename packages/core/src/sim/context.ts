@@ -1,0 +1,63 @@
+import type { MockDataset, Tag } from '../mock/types';
+import { hash, noise } from './noise';
+
+export type Direction = 'high' | 'low';
+
+/** A stretch of ticks in which an Alarm from the Mock Dataset holds its Tag out of limits. */
+export interface AlarmWindow {
+  alarmId: string;
+  fromTick: number;
+  /** Exclusive. */
+  toTick: number;
+  direction: Direction;
+  /** True for Alarms still open at load. They return to normal at `toTick`. */
+  open: boolean;
+}
+
+export interface SimContext {
+  tagById: Map<string, Tag>;
+  windows: Map<string, AlarmWindow[]>;
+  /** Offline Machine id to the tick of its last heartbeat. */
+  heartbeat: Map<string, number>;
+}
+
+const tickOf = (d: MockDataset, t: number) => Math.ceil((t - d.now) / 1000);
+
+/** Open Alarms return to normal between 300 and 899 ticks after load, each at its own tick. */
+export function returnTickOf(alarmId: string): number {
+  return 300 + Math.floor(noise(hash(alarmId), 5) * 600);
+}
+
+const cache = new WeakMap<MockDataset, SimContext>();
+
+/** What the Simulator needs from the Mock Dataset, worked out once per dataset. */
+export function contextOf(d: MockDataset): SimContext {
+  const known = cache.get(d);
+  if (known) return known;
+  const windows = new Map<string, AlarmWindow[]>();
+  for (const a of d.alarms) {
+    if (a.tagId === null) continue;
+    const direction: Direction = a.message.key === 'alarm.low-value' ? 'low' : 'high';
+    let w: AlarmWindow | null = null;
+    if (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged') {
+      w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: returnTickOf(a.id), direction, open: true };
+    } else if (a.state === 'returned-unacknowledged' && a.returnedAt !== null) {
+      w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: tickOf(d, a.returnedAt), direction, open: false };
+    }
+    if (w) windows.set(a.tagId, [...(windows.get(a.tagId) ?? []), w]);
+  }
+  const heartbeat = new Map<string, number>();
+  for (const m of d.machines) if (m.comms.status === 'offline') heartbeat.set(m.id, tickOf(d, m.comms.lastHeartbeatAt));
+  const ctx = { tagById: new Map(d.tags.map((t) => [t.id, t])), windows, heartbeat };
+  cache.set(d, ctx);
+  return ctx;
+}
+
+/** The direction an Alarm holds this Tag at this tick, if any. */
+export function heldAt(ctx: SimContext, tagId: string, tick: number): Direction | undefined {
+  return ctx.windows.get(tagId)?.find((w) => tick >= w.fromTick && tick < w.toTick)?.direction;
+}
+
+export function assertTick(tick: number): void {
+  if (!Number.isInteger(tick)) throw new Error(`tick must be an integer, got ${tick}`);
+}
