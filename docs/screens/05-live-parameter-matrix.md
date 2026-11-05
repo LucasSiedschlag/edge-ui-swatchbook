@@ -15,7 +15,7 @@ Route `/parameters`. For Technicians. Raw Tags, live trends, setpoint changes an
 | Filter | By Line, Machine, status and Tag name search. |
 | Select Tags for the trend | Up to 4. A fifth shows a message and does nothing. |
 | Change trend window | One of the three live windows. |
-| Setpoint Override | On a writable Tag, set a new setpoint with a required reason. A value outside minimum and maximum is rejected with an error. A valid override is applied from the next tick and logged. |
+| Setpoint Override | On a writable Tag, set a new setpoint with a required reason. A value outside minimum and maximum is rejected with an error. A valid override applies from the tick it is made and logged, earlier ticks never change. |
 | Reset to recipe value | Restores the setpoint of the active Recipe Version. Logged. |
 
 ## States

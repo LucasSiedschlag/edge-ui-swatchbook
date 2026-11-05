@@ -120,6 +120,7 @@ const BROKEN_DRAFTS: Record<string, { key: string; value: number }> = {
   R01: { key: 'barrel-zone-3', value: 198 }, // rule 1, extrusion, PR1
   R05: { key: 'weld-temperature', value: 275 }, // rule 3, assembly, PR1
   R10: { key: 'cycle-time', value: 126 }, // rule 4, assembly, PR2
+  R06: { key: 'die-pressure', value: 255 }, // rule 2, extrusion, PR2: above the limit at any screw speed from 18 to 26 rpm
 };
 
 export function generateRecipes(rng: Rng): RecipeSection {
@@ -143,7 +144,7 @@ export function generateRecipes(rng: Rng): RecipeSection {
         prevApproved = created + rng.int(2 * HOUR, 48 * HOUR);
         recipeVersions.push(buildVersion(id, v, 'approved', base, created, prevApproved));
       }
-      // Drafts exist for every 3rd Recipe plus three deliberately broken ones, so Screen 2 has failing rules to show.
+      // Drafts exist for every 3rd Recipe plus four deliberately broken ones, so Screen 2 has failing rules to show.
       const broken = BROKEN_DRAFTS[id];
       if (broken || n % 3 === 0) {
         const draft = broken ? breakParam(base, broken.key, broken.value) : base;

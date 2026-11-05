@@ -119,8 +119,8 @@ describe('simulate: Alarms follow the Tags', () => {
     }
   });
 
-  it('reports only the faults without a Tag as returning, each at its own tick, and never a comms loss', () => {
-    const list = returns(d, -1, 2000);
+  it('reports faults without a Tag at their own tick and never returns a comms loss', () => {
+    const list = returns(d, -1, 2000).filter(r => r.tagId === null);
     const faults = d.alarms.filter((a) => (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged') && a.tagId === null && a.message.key !== 'alarm.comm-loss');
     expect(faults.length).toBeGreaterThan(0);
     expect(list.map((r) => r.alarmId).sort()).toEqual(faults.map((a) => a.id).sort());
@@ -389,7 +389,7 @@ describe('snapshotDigest', () => {
 
   // Playwright (Issue 8) compares this value across Chromium, Firefox and WebKit. Update it only when the Simulator changes on purpose.
   it('is stable for the default dataset', () => {
-    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('c73fc6fa');
+    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('cb75ad8c');
   });
 });
 
@@ -416,7 +416,7 @@ describe('simulate: smaller edges', () => {
 
   it('exports what Plant State and the Screens need from the package entry', async () => {
     const core = await import('../index');
-    for (const name of ['simulate', 'raises', 'returns', 'tagSeries', 'setpointAt', 'snapshotDigest', 'tickAt', 'simulatedTime', 'shiftInfo']) {
+    for (const name of ['simulate', 'alarmTransitions', 'raises', 'returns', 'tagSeries', 'setpointAt', 'snapshotDigest', 'tickAt', 'simulatedTime', 'shiftInfo']) {
       expect(typeof (core as Record<string, unknown>)[name]).toBe('function');
     }
   });

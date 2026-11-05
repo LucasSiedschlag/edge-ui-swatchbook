@@ -1,3 +1,4 @@
+import { activeRecipeParameter } from '../parameters';
 import type { MockDataset, Tag } from '../mock/types';
 import { hash, noise } from './noise';
 
@@ -10,8 +11,6 @@ export interface AlarmWindow {
   /** Exclusive. */
   toTick: number;
   direction: Direction;
-  /** True for Alarms still open at load. They return to normal at `toTick`. */
-  open: boolean;
 }
 
 /** The alarm state of one Tag, worked out forward from `START_TICK` and kept as a list of changes. */
@@ -56,15 +55,18 @@ export function contextOf(d: MockDataset): SimContext {
     const direction: Direction = a.message.key === 'alarm.low-value' ? 'low' : 'high';
     let w: AlarmWindow | null = null;
     if (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged') {
-      w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: returnTickOf(a.id), direction, open: true };
+      w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: returnTickOf(a.id), direction };
     } else if (a.state === 'returned-unacknowledged' && a.returnedAt !== null) {
-      w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: tickOf(d, a.returnedAt), direction, open: false };
+      w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: tickOf(d, a.returnedAt), direction };
     }
     if (w) windows.set(a.tagId, [...(windows.get(a.tagId) ?? []), w]);
   }
   const heartbeat = new Map<string, number>();
   for (const m of d.machines) if (m.comms.status === 'offline') heartbeat.set(m.id, tickOf(d, m.comms.lastHeartbeatAt));
-  const ctx: SimContext = { latches: new Map(), overlayLatches: new Map(), tagById: new Map(d.tags.map((t) => [t.id, t])), windows, heartbeat };
+  const ctx: SimContext = { latches: new Map(), overlayLatches: new Map(), tagById: new Map(d.tags.map((t) => {
+    const parameter = activeRecipeParameter(d, t);
+    return [t.id, parameter ? { ...t, setpoint: parameter.setpoint } : t];
+  })), windows, heartbeat };
   cache.set(d, ctx);
   return ctx;
 }
@@ -74,6 +76,9 @@ export function heldAt(ctx: SimContext, tagId: string, tick: number): Direction 
   return ctx.windows.get(tagId)?.find((w) => tick >= w.fromTick && tick < w.toTick)?.direction;
 }
 
+/** Supported session horizon: seven days after load. Negative history ticks remain available. */
+export const MAX_TICK = 7 * 86400;
+
 export function assertTick(tick: number): void {
-  if (!Number.isInteger(tick)) throw new Error(`tick must be an integer, got ${tick}`);
+  if (!Number.isSafeInteger(tick) || tick > MAX_TICK) throw new Error(`tick must be a safe integer at or below ${MAX_TICK}, got ${tick}`);
 }

@@ -1,13 +1,14 @@
 import type { LineId, Tag } from '../mock/types';
 
 export interface SetpointStep {
-  /** The first tick that uses `value`. Plant State applies an override from the next tick. */
+  /** The first tick that uses `value`. Plant State applies an override at the action tick. */
   fromTick: number;
   value: number;
 }
 
 /**
  * What Plant State (Issue #3) layers on top of the Simulator. The Mock Dataset stays untouched, so the past is never redrawn.
+ * An Overlay object is immutable. Any change requires a new object.
  * `setpoints` is a timeline per Tag, sorted by tick. `runTicks` says how many ticks a Line ran between two ticks, so a
  * Pause or an Emergency stop stops production.
  *
@@ -30,6 +31,11 @@ export interface Overlay {
 /** Refuses override steps that are not in strictly rising tick order, because the latch and the lookup rely on it. */
 export function assertOverlay(overlay: Overlay | undefined): void {
   for (const [tagId, steps] of overlay?.setpoints ?? []) {
+    for (const step of steps) {
+      if (!Number.isInteger(step.fromTick) || !Number.isFinite(step.value)) {
+        throw new Error(`override steps of ${tagId} need integer ticks and finite values`);
+      }
+    }
     for (let i = 1; i < steps.length; i++) {
       if ((steps[i] as SetpointStep).fromTick <= (steps[i - 1] as SetpointStep).fromTick) {
         throw new Error(`override steps of ${tagId} must be in rising tick order`);
