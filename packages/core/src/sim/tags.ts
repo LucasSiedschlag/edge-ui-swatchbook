@@ -56,7 +56,8 @@ function excursionAt(tag: Tag, tick: number): Direction | null {
 export function tagValue(tag: Tag, tick: number, held?: Direction | null, setpoint: number = tag.setpoint): number {
   const key = hash(tag.id);
   const range = tag.max - tag.min;
-  const out = held ?? excursionAt(tag, tick);
+  // An override that differs from the recipe value holds the Tag where it was put: no dips to the other side.
+  const out = held ?? (setpoint === tag.setpoint ? excursionAt(tag, tick) : null);
   if (out) {
     const over = range * (0.03 + 0.01 * noise(key, tick));
     return round3(out === 'high' ? tag.max + over : tag.min - over);
@@ -92,6 +93,7 @@ function reconcile(latch: Latch, steps: readonly SetpointStep[]): void {
   const old = latch.steps ?? [];
   let i = 0;
   while (i < old.length && i < steps.length && old[i]?.fromTick === steps[i]?.fromTick && old[i]?.value === steps[i]?.value) i++;
+  if (i === old.length && i === steps.length && latch.steps) return;
   if (i < old.length || i < steps.length) {
     const cut = Math.min(old[i]?.fromTick ?? Infinity, steps[i]?.fromTick ?? Infinity);
     if (cut <= latch.upTo) {

@@ -2,7 +2,7 @@ import type { AlarmPriority, LineId, MockDataset, TextRef, Timestamp } from '../
 import { simulatedTime } from './clock';
 import { assertTick, contextOf, type Direction, heldAt, returnTickOf } from './context';
 import { hash, noise } from './noise';
-import type { Overlay } from './overlay';
+import { assertOverlay, type Overlay } from './overlay';
 import { alarmedAt, canExcurse, EPOCH_TICKS, excursionOf } from './tags';
 
 export interface Raise {
@@ -38,6 +38,7 @@ function priorityOf(key: number, epoch: number): AlarmPriority {
 export function raises(d: MockDataset, fromTick: number, toTick: number, overlay?: Overlay): Raise[] {
   assertTick(fromTick);
   assertTick(toTick);
+  assertOverlay(overlay);
   const ctx = contextOf(d);
   const out: Raise[] = [];
   for (let epoch = Math.max(0, Math.floor(fromTick / EPOCH_TICKS)); epoch <= Math.floor(toTick / EPOCH_TICKS); epoch++) {

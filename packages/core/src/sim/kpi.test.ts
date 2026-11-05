@@ -68,6 +68,20 @@ describe('OEE while a Line waits for its first unit', () => {
   });
 });
 
+describe('a Line that stays stopped across the Shift change', () => {
+  it.each(['P1', 'A1', 'E1'])('does not jump from zero to the baseline on %s', (id) => {
+    const o = pausedBetween(100, 1e9, id);
+    let worst = 0;
+    let prev = line(28_700, id, o)?.oee ?? 0;
+    for (let tick = 28_701; tick <= 28_900; tick++) {
+      const cur = line(tick, id, o)?.oee ?? 0;
+      worst = Math.max(worst, cur - prev);
+      prev = cur;
+    }
+    expect(worst).toBeLessThanOrEqual(0.05);
+  });
+});
+
 describe('live KPIs agree with the hourly records', () => {
   it.each(['E1', 'RF1', 'A1', 'P1'])('on %s, once there is half an hour of data', (id) => {
     const tick = 5000;

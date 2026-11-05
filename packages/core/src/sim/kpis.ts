@@ -145,7 +145,9 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
     const key = hash(line.id);
     const wobble = (salt: number, size: number) => (smooth(key + salt, tick, 300) - 0.5) * size * (1 - w);
     const mix = (baseline: number, live: number, salt: number, size: number) => round3(clamp(baseline * (1 - w) + live * w + wobble(salt, size)));
-    const availability = mix(b.availability, elapsed > 0 ? makingTicks / elapsed : 0, 1, 0.04);
+    // The baseline only counts for the time the Line actually ran, so a Line stopped across a Shift change does not jump up.
+    const ranShare = elapsed > 0 ? ran / elapsed : runTicksOf(overlay, line.id, tick, tick + 1) > 0 ? 1 : 0;
+    const availability = mix(b.availability * ranShare, elapsed > 0 ? makingTicks / elapsed : 0, 1, 0.04);
     // Before the first unit of a Shift lands, a Line with work to do keeps the baseline instead of falling to 0 and jumping back up.
     const performance = mix(b.performance, output > 0 ? output / target : hasWork ? b.performance : 0, 2, 0.04);
     const quality = mix(b.quality, output > 0 ? (output - scrap) / output : hasWork ? b.quality : 0, 3, 0.02);

@@ -20,12 +20,32 @@ export interface Overlay {
   runTicks?: (lineId: LineId, fromTick: number, toTick: number) => number;
 }
 
+/** Refuses override steps that are not in strictly rising tick order, because the latch and the lookup rely on it. */
+export function assertOverlay(overlay: Overlay | undefined): void {
+  for (const [tagId, steps] of overlay?.setpoints ?? []) {
+    for (let i = 1; i < steps.length; i++) {
+      if ((steps[i] as SetpointStep).fromTick <= (steps[i - 1] as SetpointStep).fromTick) {
+        throw new Error(`override steps of ${tagId} must be in rising tick order`);
+      }
+    }
+  }
+}
+
 export function setpointAt(overlay: Overlay | undefined, tag: Tag, tick: number): number {
   const steps = overlay?.setpoints?.get(tag.id);
-  if (!steps) return tag.setpoint;
-  let value = tag.setpoint;
-  for (const s of steps) if (s.fromTick <= tick) value = s.value;
-  return value;
+  if (!steps || steps.length === 0) return tag.setpoint;
+  // Last step at or before the tick, by binary search over the sorted steps.
+  let lo = 0;
+  let hi = steps.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if ((steps[mid] as SetpointStep).fromTick <= tick) {
+      ans = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return ans < 0 ? tag.setpoint : (steps[ans] as SetpointStep).value;
 }
 
 export function runTicksOf(overlay: Overlay | undefined, lineId: LineId, fromTick: number, toTick: number): number {

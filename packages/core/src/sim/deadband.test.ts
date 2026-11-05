@@ -171,3 +171,36 @@ describe('deadband: the latch follows the override timeline', () => {
     for (const tick of [-20_000, -10_000, -7600]) expect(at(tick, o)).toBe(at(tick));
   });
 });
+
+
+describe('deadband: every writable Tag, held at a limit for half a day', () => {
+  const writable = d.tags.filter((x) => x.writable && x.unit !== 'pcs' && x.unit !== 'h' && !d.machines.some((m) => m.id === x.machineId && m.comms.status === 'offline'));
+  const hasAlarm = new Set(d.alarms.filter((a) => a.tagId !== null && (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged' || a.state === 'returned-unacknowledged')).map((a) => a.tagId));
+  const hold = (pick: (t: (typeof writable)[number]) => number): Overlay => ({ setpoints: new Map(writable.map((x) => [x.id, [{ fromTick: 100, value: pick(x) }]])) });
+  const atMax = hold((x) => x.max);
+  const atMin = hold((x) => x.min);
+
+  it.each([['max', atMax], ['min', atMin]] as const)('raises once per Tag held at %s, even when a dataset excursion would hit the other side', (_name, overlay) => {
+    const list = raises(d, 0, 43_200, overlay);
+    for (const x of writable) {
+      const n = list.filter((r) => r.tagId === x.id).length;
+      if (hasAlarm.has(x.id)) expect(n).toBeLessThanOrEqual(2);
+      else expect(n).toBe(1);
+    }
+  }, 120_000);
+});
+
+describe('overlay: steps must be sorted', () => {
+  const o = (steps: { fromTick: number; value: number }[]): Overlay => ({ setpoints: new Map([[id, steps]]) });
+
+  it('refuses steps that are out of order or repeat a tick', () => {
+    expect(() => simulate(d, 10, o([{ fromTick: 50, value: 1 }, { fromTick: 20, value: 2 }]))).toThrow();
+    expect(() => simulate(d, 10, o([{ fromTick: 20, value: 1 }, { fromTick: 20, value: 2 }]))).toThrow();
+    expect(() => raises(d, 0, 10, o([{ fromTick: 50, value: 1 }, { fromTick: 20, value: 2 }]))).toThrow();
+    expect(() => tagSeries(d, id, 0, 10, 1, o([{ fromTick: 50, value: 1 }, { fromTick: 20, value: 2 }]))).toThrow();
+  });
+
+  it('accepts sorted steps', () => {
+    expect(() => simulate(d, 10, o([{ fromTick: 20, value: 1 }, { fromTick: 50, value: 2 }]))).not.toThrow();
+  });
+});
