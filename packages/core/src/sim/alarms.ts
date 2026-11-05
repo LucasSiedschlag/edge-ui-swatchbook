@@ -6,7 +6,7 @@ import { assertOverlay, type Overlay } from './overlay';
 import { alarmedAt, canExcurse, EPOCH_TICKS, EXCURSION_TICKS, excursionOf, latchChanges, START_TICK, valueOnly } from './tags';
 
 export interface Raise {
-  /** Unique and stable: `RZ-<tick>-<tag id>`. */
+  /** Unique and stable: `RZ-<tick>-<tag id>-<high|low>`. The direction is part of the identity of the condition. */
   id: string;
   tick: number;
   time: Timestamp;
@@ -35,7 +35,7 @@ function priorityOf(key: number, epoch: number): AlarmPriority {
 /** One Alarm description for simulator transitions and admissions at the start of a run. */
 export function raiseAt(d: MockDataset, tag: Tag, tick: number, direction: Direction): Raise {
   return {
-    id: `RZ-${tick}-${tag.id}`, tick, time: simulatedTime(tick), tagId: tag.id,
+    id: `RZ-${tick}-${tag.id}-${direction}`, tick, time: simulatedTime(tick), tagId: tag.id,
     machineId: tag.machineId, lineId: tag.lineId,
     batchId: d.activeBatches.find(b => b.lineId === tag.lineId)?.id ?? null,
     direction, priority: priorityOf(hash(tag.id), Math.floor(tick / EPOCH_TICKS)),

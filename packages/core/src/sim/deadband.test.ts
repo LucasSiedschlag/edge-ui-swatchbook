@@ -41,7 +41,7 @@ describe('raises: identity and edges', () => {
   it('gives every raise a unique id made from its tick and Tag', () => {
     const list = raises(d, 0, 7200);
     expect(new Set(list.map((r) => r.id)).size).toBe(list.length);
-    for (const r of list) expect(r.id).toBe(`RZ-${r.tick}-${r.tagId}`);
+    for (const r of list) expect(r.id).toBe(`RZ-${r.tick}-${r.tagId}-${r.direction}`);
   });
 
   it('has no return tick, because Plant State watches the alarm state of each Tag', () => {

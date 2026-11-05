@@ -93,7 +93,7 @@ export function assertPlantInvariants(before: PlantState, action: PlantAction, t
   if (action.type === 'resume' && before.controls[action.lineId].paused && !state.controls[action.lineId].paused) check('successful Resume has no Critical Alarm', lineStatus(state, action.lineId).criticalAlarms === 0 ? undefined : action.lineId);
   const list = alarmList(state, effective), ctx = contextOf(state.dataset);
   check('unique Alarm identities', new Set(list.map(a => a.id)).size === list.length ? undefined : effective);
-  check('stable derived identities', list.find(a => a.id.startsWith('RZ-') && a.id !== `RZ-${(a.raisedAt - state.dataset.now) / 1000}-${a.tagId}`)?.id);
+  check('stable derived identities', list.find(a => a.id.startsWith('RZ-') && a.id !== `RZ-${(a.raisedAt - state.dataset.now) / 1000}-${a.tagId}-${a.message.key === 'alarm.low-value' ? 'low' : 'high'}`)?.id);
   const openByTag = new Map<string, (typeof list[number])[]>();
   for (const alarm of list) {
     if (alarm.tagId !== null && (alarm.state === 'active-unacknowledged' || alarm.state === 'active-acknowledged')) {

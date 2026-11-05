@@ -81,7 +81,7 @@ it('Resume followed immediately by an override derives the current condition wit
   const before = alarmList(s, 100);
   s = act(s, { type: 'setpoint-override', tagId: tag.id, value: tag.max, reason: 'trial' }, 101);
   expect(alarmedAt(ctx, tag, 101, s.overlay)).toBe('high');
-  expect(alarmList(s, 101).filter(a => a.tagId === tag.id && active(a))).toMatchObject([{ id: `RZ-101-${tag.id}`, raisedAt: simulatedTime(101) }]);
+  expect(alarmList(s, 101).filter(a => a.tagId === tag.id && active(a))).toMatchObject([{ id: `RZ-101-${tag.id}-high`, raisedAt: simulatedTime(101) }]);
   expect(alarmList(s, 100)).toEqual(before);
 });
 
@@ -137,7 +137,7 @@ it('same-tick Pause, Emergency stop, Reset, Resume and replacement overrides hav
   const plain = run(false), queried = run(true);
   for (const tick of [0, 100, 101, 150, 115200]) expect(alarmList(queried, tick)).toEqual(alarmList(plain, tick));
   expect(plain.setpoints.get(tag.id)).toEqual([{ fromTick: 101, value: tag.setpoint }]);
-  expect(alarmList(plain, 101).some(a => a.id === `RZ-101-${tag.id}`)).toBe(false);
+  expect(alarmList(plain, 101).some(a => a.id.startsWith(`RZ-101-${tag.id}`))).toBe(false);
 });
 
 it('a direction change returns the acknowledged Alarm and opens exactly one new Alarm at the exact tick', () => {
@@ -180,7 +180,7 @@ it('same-tick replacement can remove an acknowledged condition while retaining t
   let s = createPlantState(generateMockDataset());
   const tag = contextOf(s.dataset).tagById.get('E2-puller.puller-speed')!;
   s = act(s, { type: 'setpoint-override', tagId: tag.id, value: tag.max, reason: 'trial' }, 101);
-  const id = `RZ-101-${tag.id}`;
+  const id = `RZ-101-${tag.id}-high`;
   s = act(s, { type: 'acknowledge', alarmIds: [id] }, 101);
   s = act(s, { type: 'reset-to-recipe', tagId: tag.id }, 101);
   expect(alarmList(s, 101).some(a => a.id === id)).toBe(false);
@@ -188,3 +188,27 @@ it('same-tick replacement can remove an acknowledged condition while retaining t
   expect(s.acks.has(id)).toBe(true);
   levelsAgree(s, 101);
 });
+
+it('an acknowledgement does not carry over to the opposite condition when a same-tick change replaces it (seed 436)', () => {
+    const d = generateMockDataset(436);
+    const tag = 'A2-corner-weld.weld-time';
+    const run = (s: PlantState, a: PlantAction, tick: number) => {
+      const r = reduce(s, a, { tick });
+      if (!r.ok) throw new Error(r.error.code);
+      return r;
+    };
+    let s = createPlantState(d);
+    s = run(s, { type: 'setpoint-override', tagId: tag, value: 30, reason: 'x' }, 10).state;
+    s = run(s, { type: 'reset-to-recipe', tagId: tag }, 78).state;
+    const low = alarmList(s, 78).find((a) => a.tagId === tag && a.id.startsWith('RZ-78-'));
+    expect(low?.message.key).toBe('alarm.low-value');
+    s = run(s, { type: 'acknowledge', alarmIds: [low?.id ?? ''] }, 78).state;
+    s = run(s, { type: 'setpoint-override', tagId: tag, value: 40, reason: 'y' }, 78).state;
+
+    const high = alarmList(s, 79).find((a) => a.tagId === tag && a.message.key === 'alarm.high-value' && a.id.startsWith('RZ-78-'));
+    expect(high).toBeDefined();
+    expect(high?.id).not.toBe(low?.id);
+    expect(high?.state).toBe('active-unacknowledged');
+    const again = run(s, { type: 'acknowledge', alarmIds: [high?.id ?? ''] }, 79);
+    expect(again.events).toHaveLength(1);
+  });
