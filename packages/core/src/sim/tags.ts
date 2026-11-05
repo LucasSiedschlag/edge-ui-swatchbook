@@ -6,6 +6,11 @@ import { hash, noise, smooth } from './noise';
 export type TagStatus = 'normal' | 'high' | 'low' | 'stale';
 export type { Direction };
 
+/** The hold of an open dataset Alarm, unless an override that differs from the recipe value is in force: then the Tag follows the operator. */
+function holdOf(ctx: SimContext, tag: Tag, tick: number, setpoint: number): Direction | null {
+  return setpoint !== tag.setpoint ? null : (heldAt(ctx, tag.id, tick) ?? null);
+}
+
 export interface TagReading {
   tagId: string;
   value: number;
@@ -121,7 +126,8 @@ export function alarmedAt(ctx: SimContext, tag: Tag, tick: number, overlay?: Ove
   const range = tag.max - tag.min;
   const steps = overlay?.setpoints?.get(tag.id);
   const byValue = () => {
-    const v = tagValue(tag, tick, heldAt(ctx, tag.id, tick), setpointAt(overlay, tag, tick));
+    const sp = setpointAt(overlay, tag, tick);
+    const v = tagValue(tag, tick, holdOf(ctx, tag, tick, sp), sp);
     return v > tag.max ? 'high' : v < tag.min ? 'low' : null;
   };
   // A setpoint well inside the limits is always clearly inside again as soon as the value is back, so the value alone decides.
@@ -141,7 +147,8 @@ export function alarmedAt(ctx: SimContext, tag: Tag, tick: number, overlay?: Ove
   }
   const margin = range * DEADBAND;
   for (let t = latch.upTo + 1; t <= tick; t++) {
-    const v = tagValue(tag, t, heldAt(ctx, tag.id, t), setpointAt(overlay, tag, t));
+    const sp = setpointAt(overlay, tag, t);
+    const v = tagValue(tag, t, holdOf(ctx, tag, t, sp), sp);
     const hiBefore = latch.hiAt;
     const loBefore = latch.loAt;
     if (v > tag.max && latch.hiAt === null) latch.hiAt = t;
@@ -178,6 +185,6 @@ export function readTag(ctx: SimContext, tag: Tag, tick: number, overlay?: Overl
     return { tagId: tag.id, value: tagValue(tag, hb, null, sp), status: 'stale', setpoint: sp, alarm: null };
   }
   const setpoint = setpointAt(overlay, tag, tick);
-  const value = tagValue(tag, tick, heldAt(ctx, tag.id, tick), setpoint);
+  const value = tagValue(tag, tick, holdOf(ctx, tag, tick, setpoint), setpoint);
   return { tagId: tag.id, value, status: statusOf(tag, value), setpoint, alarm: alarmedAt(ctx, tag, tick, overlay) };
 }

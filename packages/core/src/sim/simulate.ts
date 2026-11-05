@@ -20,6 +20,7 @@ export interface Snapshot {
 /** Everything that changes over time, as a pure function of the Mock Dataset and the tick. */
 export function simulate(d: MockDataset, tick: number, overlay?: Overlay): Snapshot {
   assertTick(tick);
+  if (tick < 0) throw new Error('simulate needs a tick of 0 or more, use tagSeries for the time before load');
   assertOverlay(overlay);
   const ctx = contextOf(d);
   const machines = readLinks(d.machines, tick);

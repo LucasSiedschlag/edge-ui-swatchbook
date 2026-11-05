@@ -14,6 +14,13 @@ export interface SetpointStep {
  * Steps only ever get added at the end. Reset to recipe value is a new step with the recipe value, never the removal of earlier
  * steps, because that would redraw the past and change what the alarm history says. The alarm state of an overridden Tag is
  * kept from one call to the next and is cut back to the first changed step if the list changes.
+ *
+ * A second change of the same Tag in the same tick replaces the last step, so the list never repeats a tick. An override that
+ * differs from the recipe value (the Tag's setpoint in the Mock Dataset) also ends the hold of an Alarm open at load, so the
+ * Tag follows the operator from that tick.
+ *
+ * `runTicks` must be pure and additive: `runTicks(a, c)` equals `runTicks(a, b) + runTicks(b, c)`. The Simulator also asks about
+ * the next second (`tick`, `tick + 1`) to know whether a Line is making product now.
  */
 export interface Overlay {
   setpoints?: ReadonlyMap<string, readonly SetpointStep[]>;

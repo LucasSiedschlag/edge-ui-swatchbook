@@ -167,7 +167,7 @@ describe('deadband: the latch follows the override timeline', () => {
     const open = d.alarms.find((a) => a.state === 'active-unacknowledged' && a.tagId !== null);
     const t = d.tags.find((x) => x.id === open?.tagId);
     const o: Overlay = { setpoints: new Map([[t?.id ?? '', [{ fromTick: 100, value: t?.setpoint ?? 0 }]]]) };
-    const at = (tick: number, ov?: Overlay) => simulate(d, tick, ov).tags.find((r) => r.tagId === t?.id)?.alarm;
+    const at = (tick: number, ov?: Overlay) => tagSeries(d, t?.id ?? '', tick, tick, 1, ov)[0]?.alarm;
     for (const tick of [-20_000, -10_000, -7600]) expect(at(tick, o)).toBe(at(tick));
   });
 });
@@ -202,5 +202,39 @@ describe('overlay: steps must be sorted', () => {
 
   it('accepts sorted steps', () => {
     expect(() => simulate(d, 10, o([{ fromTick: 20, value: 1 }, { fromTick: 50, value: 2 }]))).not.toThrow();
+  });
+});
+
+
+describe('overlay: an override ends the hold of an open Alarm', () => {
+  const open = d.alarms.find((a) => a.state === 'active-unacknowledged' && a.tagId !== null);
+  const held = d.tags.find((x) => x.id === open?.tagId);
+  const mid = ((held?.min ?? 0) + (held?.max ?? 0)) / 2;
+  const reading = (tick: number, o?: Overlay) => simulate(d, tick, o).tags.find((r) => r.tagId === held?.id);
+
+  it('keeps the Tag out of limits until the Alarm window ends when nothing is overridden', () => {
+    expect(reading(150)?.status).not.toBe('normal');
+    expect(reading(150)?.alarm).not.toBeNull();
+  });
+
+  it('brings the Tag back inside limits from the tick an override that differs from the recipe value starts', () => {
+    expect(mid).not.toBe(held?.setpoint);
+    const o: Overlay = { setpoints: new Map([[held?.id ?? '', [{ fromTick: 100, value: mid }]]]) };
+    expect(reading(99, o)?.status).not.toBe('normal');
+    expect(reading(100, o)?.status).toBe('normal');
+    expect(reading(110, o)?.alarm).toBeNull();
+    expect(tagSeries(d, held?.id ?? '', 100, 140, 1, o).every((p) => p.status === 'normal')).toBe(true);
+  });
+
+  it('does not end the hold when the step only puts the recipe value back', () => {
+    const o: Overlay = { setpoints: new Map([[held?.id ?? '', [{ fromTick: 100, value: held?.setpoint ?? 0 }]]]) };
+    expect(reading(150, o)?.status).toBe(reading(150)?.status);
+  });
+});
+
+describe('simulate: ticks before load', () => {
+  it('refuses a negative tick for the full snapshot, and still allows it for Tag history', () => {
+    expect(() => simulate(d, -1)).toThrow();
+    expect(tagSeries(d, id, -5, 0)).toHaveLength(6);
   });
 });
