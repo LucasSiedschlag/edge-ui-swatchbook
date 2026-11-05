@@ -34,7 +34,7 @@ export function readLinks(machines: Machine[], tick: number): MachineLink[] {
         status: 'degraded',
         latencyMs: clamp(Math.round(c.latencyMs + drift * 300), 100, 500),
         packetLossPct: clamp(round2(c.packetLossPct + drift * 6), 1, 10),
-        lastSeenAt: now - Math.floor(noise(key, tick) * 20) * 1000,
+        lastSeenAt: Math.max(c.lastHeartbeatAt, now - Math.floor(noise(key, tick) * 20) * 1000),
         errorCount: c.errorCount + Math.floor(tick / 60),
       };
     }
@@ -43,7 +43,7 @@ export function readLinks(machines: Machine[], tick: number): MachineLink[] {
       status: 'online',
       latencyMs: clamp(Math.round(c.latencyMs + drift * 14), 1, 30),
       packetLossPct: clamp(round2(c.packetLossPct + drift * 0.5), 0, 0.9),
-      lastSeenAt: now - Math.floor(noise(key, tick + 1) * 2) * 1000,
+      lastSeenAt: Math.max(c.lastHeartbeatAt, now - Math.floor(noise(key, tick + 1) * 2) * 1000),
       errorCount: c.errorCount,
     };
   });

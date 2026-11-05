@@ -21,6 +21,6 @@ export function tagSeries(d: MockDataset, tagId: string, fromTick: number, toTic
   const tag = ctx.tagById.get(tagId);
   if (!tag) throw new Error(`unknown tag ${tagId}`);
   const out: SeriesPoint[] = [];
-  for (let tick = fromTick; tick <= toTick; tick += step) out.push({ tick, ...readTag(ctx, tag, tick, setpointAt(overlay, tag, tick)) });
+  for (let tick = fromTick; tick <= toTick; tick += step) out.push({ tick, ...readTag(ctx, tag, tick, (t) => setpointAt(overlay, tag, t)) });
   return out;
 }

@@ -1,5 +1,5 @@
 import { IDEAL_UNITS_PER_MIN } from '../mock/batches';
-import type { ActiveBatch, HourlyRecord, Line, LineId, MockDataset } from '../mock/types';
+import type { ActiveBatch, DowntimeReason, HourlyRecord, Line, LineId, MockDataset } from '../mock/types';
 import { simulatedTime } from './clock';
 import { hash, smooth } from './noise';
 import { type Overlay, runTicksOf } from './overlay';
@@ -9,6 +9,8 @@ export const TAKT_SECONDS = 120;
 const SHIFT_TICKS = 8 * 3600;
 /** A running Batch makes 95 percent of the ideal rate, the same factor the Mock Dataset used for its progress so far. */
 const EFFICIENCY = 0.95;
+/** Ticks over which the live KPIs take over from the history baseline at the start of a Shift. */
+const BLEND_TICKS = 1800;
 
 export interface BatchProgress {
   batchId: string;
@@ -17,6 +19,8 @@ export interface BatchProgress {
   targetUnits: number;
   /** Produced over target, one decimal. */
   percent: number;
+  /** True once produced reaches target. The Line stays Running but makes nothing more. */
+  complete: boolean;
   elapsedMs: number;
 }
 
@@ -31,6 +35,8 @@ export interface LineLive {
   shiftTargetUnits: number;
   /** Minutes the Line made product this Shift. */
   shiftRunMin: number;
+  /** Lost time this Shift so far. Pauses and stops are minor stops, time with no Batch to run is changeover. */
+  shiftDowntime: { reason: DowntimeReason; minutes: number }[];
   availability: number;
   performance: number;
   quality: number;
@@ -94,36 +100,52 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
   const unit = (id: string) => d.tags.find((t) => t.id === id)?.unit ?? '';
   return d.lines.map((line: Line) => {
     const active = d.activeBatches.find((b) => b.lineId === line.id);
+    const m = active ? modelOf(active, IDEAL_UNITS_PER_MIN[line.type] as number, line.id, overlay) : null;
+    // A Line that is paused, stopped, idle or finished with its Batch is not making product, so it has no speed or cycle time.
+    const making = m ? m.makingTicks(tick, tick + 1) > 0 : false;
     const cycleTag = line.type === 'assembly' ? `${line.id}-corner-weld.cycle-time` : undefined;
     const cycleReading = cycleTag ? reading(cycleTag) : undefined;
     const speedTag = SPEED_TAG[line.id];
     const speedReading = speedTag ? reading(speedTag) : undefined;
     const base = {
       lineId: line.id,
-      cycle: cycleReading ? { value: cycleReading.value, takt: TAKT_SECONDS, stale: cycleReading.status === 'stale' } : null,
-      // An idle Line is not moving, whatever its feed Tag drifts around.
+      cycle: cycleReading && making ? { value: cycleReading.value, takt: TAKT_SECONDS, stale: cycleReading.status === 'stale' } : null,
       lineSpeed:
         speedTag && speedReading
-          ? { value: active ? speedReading.value : 0, unit: unit(speedTag), stale: speedReading.status === 'stale' }
+          ? { value: making ? speedReading.value : 0, unit: unit(speedTag), stale: speedReading.status === 'stale' }
           : null,
     };
-    if (!active) {
-      return { ...base, batch: null, outputThisShift: 0, scrapThisShift: 0, shiftGoodUnits: 0, shiftTargetUnits: 0, shiftRunMin: 0, availability: 0, performance: 0, quality: 0, oee: 0 };
-    }
-    const rate = IDEAL_UNITS_PER_MIN[line.type] as number;
-    const m = modelOf(active, rate, line.id, overlay);
+
     const shiftStart = Math.floor(tick / SHIFT_TICKS) * SHIFT_TICKS;
+    const elapsed = tick - shiftStart;
+    const ran = runTicksOf(overlay, line.id, shiftStart, tick);
+    const makingTicks = m ? m.makingTicks(shiftStart, tick) : 0;
+    // Lost time this Shift: Pauses and stops are minor stops, the rest (no Batch to run) is changeover.
+    const elapsedMin = Math.round(elapsed / 60);
+    const runMin = Math.round(makingTicks / 60);
+    const pausedMin = Math.max(0, Math.min(Math.round((elapsed - ran) / 60), elapsedMin - runMin));
+    const changeoverMin = Math.max(0, elapsedMin - runMin - pausedMin);
+    const shiftDowntime: { reason: DowntimeReason; minutes: number }[] = [];
+    if (pausedMin > 0) shiftDowntime.push({ reason: 'minor-stops', minutes: pausedMin });
+    if (changeoverMin > 0) shiftDowntime.push({ reason: 'changeover', minutes: changeoverMin });
+
+    if (!active || !m) {
+      return { ...base, batch: null, outputThisShift: 0, scrapThisShift: 0, shiftGoodUnits: 0, shiftTargetUnits: 0, shiftRunMin: 0, shiftDowntime, availability: 0, performance: 0, quality: 0, oee: 0 };
+    }
     const produced = m.unitsAt(tick);
     const output = produced - m.unitsAt(shiftStart);
     const scrap = m.scrapOf(produced) - m.scrapOf(m.unitsAt(shiftStart));
-    // Time lost to Pauses and Emergency stops this Shift lowers Availability.
-    const ranFraction = tick > shiftStart ? m.ranIn(shiftStart, tick) / (tick - shiftStart) : 1;
+    const target = Math.round(output / EFFICIENCY);
+
+    // The first half hour of a Shift starts from the history baseline and moves to the live numbers.
     const b = baselineOf(d, line.id);
+    const w = making ? Math.min(1, elapsed / BLEND_TICKS) : 1;
     const key = hash(line.id);
-    const wobble = (salt: number, size: number) => (smooth(key + salt, tick, 300) - 0.5) * size;
-    const availability = round3(clamp((b.availability + wobble(1, 0.04)) * ranFraction));
-    const performance = round3(clamp(b.performance + wobble(2, 0.04)));
-    const quality = round3(clamp(b.quality + wobble(3, 0.02)));
+    const wobble = (salt: number, size: number) => (smooth(key + salt, tick, 300) - 0.5) * size * (1 - w);
+    const mix = (baseline: number, live: number, salt: number, size: number) => round3(clamp(baseline * (1 - w) + live * w + wobble(salt, size)));
+    const availability = mix(b.availability, elapsed > 0 ? makingTicks / elapsed : 0, 1, 0.04);
+    const performance = mix(b.performance, output > 0 ? output / target : 0, 2, 0.04);
+    const quality = mix(b.quality, output > 0 ? (output - scrap) / output : b.quality, 3, 0.02);
     return {
       ...base,
       batch: {
@@ -132,13 +154,15 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
         producedUnits: produced,
         targetUnits: active.targetUnits,
         percent: Math.round((produced / active.targetUnits) * 1000) / 10,
+        complete: produced >= active.targetUnits,
         elapsedMs: simulatedTime(tick) - active.start,
       },
       outputThisShift: output,
       scrapThisShift: scrap,
       shiftGoodUnits: output - scrap,
-      shiftTargetUnits: Math.round(output / EFFICIENCY),
-      shiftRunMin: Math.round(m.makingTicks(shiftStart, tick) / 60),
+      shiftTargetUnits: target,
+      shiftRunMin: runMin,
+      shiftDowntime,
       availability,
       performance,
       quality,

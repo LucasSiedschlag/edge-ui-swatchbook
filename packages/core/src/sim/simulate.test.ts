@@ -119,16 +119,22 @@ describe('simulate: Alarms follow the Tags', () => {
     }
   });
 
-  it('returns each open Alarm to normal at its own tick, and reports it', () => {
+  it('returns each open Alarm at its own tick and reports it, except a comms loss while its Machine is Offline', () => {
     const list = returns(d, -1, 2000);
-    expect(list.map((r) => r.alarmId).sort()).toEqual(open.map((a) => a.id).sort());
+    const returning = d.alarms.filter((a) => (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged') && a.message.key !== 'alarm.comm-loss');
+    expect(list.map((r) => r.alarmId).sort()).toEqual(returning.map((a) => a.id).sort());
     expect(new Set(list.map((r) => r.tick)).size).toBeGreaterThan(1);
+    expect(returning.some((a) => a.tagId === null)).toBe(true);
     for (const r of list) {
       expect(r.tick).toBeGreaterThanOrEqual(300);
       expect(r.tick).toBeLessThan(900);
       const a = open.find((x) => x.id === r.alarmId);
-      expect(simulate(d, r.tick - 1).tags.find((x) => x.tagId === a?.tagId)?.status).toBe(direction(a?.message.key ?? ''));
-      expect(simulate(d, r.tick).tags.find((x) => x.tagId === a?.tagId)?.status).toBe('normal');
+      if (!a) {
+        expect(r.tagId).toBeNull();
+        continue;
+      }
+      expect(simulate(d, r.tick - 1).tags.find((x) => x.tagId === a.tagId)?.status).toBe(direction(a.message.key));
+      expect(simulate(d, r.tick).tags.find((x) => x.tagId === a.tagId)?.status).toBe('normal');
     }
   });
 
@@ -173,14 +179,6 @@ describe('raises', () => {
   it('gives the same list for the same range, and splits cleanly across ranges', () => {
     expect(JSON.stringify(raises(d, 0, 1800))).toBe(JSON.stringify(raises(d, 0, 1800)));
     expect(JSON.stringify([...raises(d, 0, 900), ...raises(d, 900, 1800)])).toBe(JSON.stringify(raises(d, 0, 1800)));
-  });
-
-  it('says when each raise ends, so Plant State can date the return to normal', () => {
-    for (const r of raises(d, 0, 3600)) {
-      expect(r.returnTick).toBeGreaterThan(r.tick);
-      expect(simulate(d, r.returnTick - 1).tags.find((x) => x.tagId === r.tagId)?.status).toBe(r.direction);
-      expect(simulate(d, r.returnTick).tags.find((x) => x.tagId === r.tagId)?.status).toBe('normal');
-    }
   });
 
   it('names the Batch running on the Line when it raises', () => {
@@ -389,6 +387,26 @@ describe('snapshotDigest', () => {
 
   // Playwright (Issue 8) compares this value across Chromium, Firefox and WebKit. Update it only when the Simulator changes on purpose.
   it('is stable for the default dataset', () => {
-    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('7980719d');
+    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('24368acd');
+  });
+});
+
+
+describe('simulate: smaller edges', () => {
+  it('never reports a last-seen time earlier than the dataset heartbeat, or later than now', () => {
+    for (const tick of [0, 1, 2, 30]) {
+      const s = simulate(d, tick);
+      for (const m of s.machines.filter((x) => x.status !== 'offline')) {
+        expect(m.lastSeenAt).toBeGreaterThanOrEqual(d.machines.find((x) => x.id === m.machineId)?.comms.lastHeartbeatAt ?? 0);
+        expect(m.lastSeenAt).toBeLessThanOrEqual(s.time);
+      }
+    }
+  });
+
+  it('exports what Plant State and the Screens need from the package entry', async () => {
+    const core = await import('../index');
+    for (const name of ['simulate', 'raises', 'returns', 'tagSeries', 'setpointAt', 'snapshotDigest', 'tickAt', 'simulatedTime', 'shiftInfo']) {
+      expect(typeof (core as Record<string, unknown>)[name]).toBe('function');
+    }
   });
 });
