@@ -23,3 +23,7 @@ export { shiftInfo, simulatedTime, tickAt, TICK_MS, type ShiftInfo } from './sim
 export type { LineLive, BatchProgress } from './sim/kpis';
 export type { MachineLink } from './sim/links';
 export type { TagReading, TagStatus } from './sim/tags';
+export {
+  createPlantState, createPlantStore, lineStatus, recipeCheck, recipeList, reduce, checkRecipeVersion, diePressureLimit, failingRules,
+  type ActionResult, type PlantAction, type PlantError, type PlantState, type PlantStore, type RecipeRow, type RuleResult, type RuleViolation,
+} from './plant';
