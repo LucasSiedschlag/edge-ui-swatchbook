@@ -47,6 +47,27 @@ describe('a Pause early in a Shift', () => {
   });
 });
 
+describe('OEE while a Line waits for its first unit', () => {
+  const jumps = (id: string, from: number, to: number, o?: Overlay) => {
+    let worst = 0;
+    let prev = line(from, id, o)?.oee ?? 0;
+    for (let tick = from + 1; tick <= to; tick++) {
+      const cur = line(tick, id, o)?.oee ?? 0;
+      worst = Math.max(worst, cur - prev);
+      prev = cur;
+    }
+    return worst;
+  };
+
+  it.each(['A1', 'A2', 'P1', 'E1'])('does not jump up on %s when the first unit lands', (id) => {
+    expect(jumps(id, 0, 400)).toBeLessThanOrEqual(0.03);
+  });
+
+  it.each(['A1', 'P1'])('does not jump up on %s when output restarts after an early Pause', (id) => {
+    expect(jumps(id, 500, 1500, pausedBetween(600, 1200, id))).toBeLessThanOrEqual(0.03);
+  });
+});
+
 describe('live KPIs agree with the hourly records', () => {
   it.each(['E1', 'RF1', 'A1', 'P1'])('on %s, once there is half an hour of data', (id) => {
     const tick = 5000;

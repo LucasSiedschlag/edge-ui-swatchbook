@@ -70,9 +70,9 @@ export function raises(d: MockDataset, fromTick: number, toTick: number, overlay
     const tag = ctx.tagById.get(tagId);
     if (!tag || !canExcurse(tag) || ctx.heartbeat.has(tag.machineId)) continue;
     for (let tick = Math.max(fromTick, 0) + 1; tick <= toTick; tick++) {
-      if (heldAt(ctx, tag.id, tick) || heldAt(ctx, tag.id, tick - 1)) continue;
+      // A new raise is a Tag going into alarm, or switching from one side to the other.
       const now = alarmedAt(ctx, tag, tick, overlay);
-      if (now === null || alarmedAt(ctx, tag, tick - 1, overlay) !== null) continue;
+      if (now === null || now === alarmedAt(ctx, tag, tick - 1, overlay)) continue;
       out.push({
         id: `RZ-${tick}-${tag.id}`,
         tick,

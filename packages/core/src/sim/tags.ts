@@ -1,6 +1,6 @@
 import type { Tag } from '../mock/types';
 import { type Direction, heldAt, type Latch, type SimContext } from './context';
-import { type Overlay, setpointAt } from './overlay';
+import { type Overlay, type SetpointStep, setpointAt } from './overlay';
 import { hash, noise, smooth } from './noise';
 
 export type TagStatus = 'normal' | 'high' | 'low' | 'stale';
@@ -71,18 +71,8 @@ function statusOf(tag: Tag, value: number): TagStatus {
   return value > tag.max ? 'high' : value < tag.min ? 'low' : 'normal';
 }
 
-/** Alarm states are worked out forward from here. Nothing is in alarm before. */
+/** Alarm states are worked out forward from here. Before it, the value alone decides. */
 export const START_TICK = -7500;
-
-type Latches = Map<string, Latch>;
-const overlayLatches = new WeakMap<Overlay, Latches>();
-
-function latchesOf(ctx: SimContext, overlay: Overlay | undefined, tag: Tag): Latches {
-  if (!overlay?.setpoints?.has(tag.id)) return ctx.latches;
-  let m = overlayLatches.get(overlay);
-  if (!m) overlayLatches.set(overlay, (m = new Map()));
-  return m;
-}
 
 /** Most recent latch set wins when both are set. */
 function currentAlarm(hiAt: number | null, loAt: number | null): Direction | null {
@@ -90,43 +80,77 @@ function currentAlarm(hiAt: number | null, loAt: number | null): Direction | nul
   return hiAt !== null ? 'high' : loAt !== null ? 'low' : null;
 }
 
+function freshLatch(): Latch {
+  return { upTo: START_TICK - 1, hiAt: null, loAt: null, changes: [] };
+}
+
 /**
- * Alarm state at a tick, with a deadband on each side. The high side sets when the value goes above max and clears only at
- * `max - 5%` of the range or lower. The low side sets below min and clears at `min + 5%` or higher. It is worked out forward
- * and kept per Tag, so a value hovering at a limit stays in one alarm for as long as it hovers.
+ * Keeps the latch of an overridden Tag in step with the steps it is asked about. Steps that only grow at the end keep everything
+ * worked out before the new step. Any other change cuts the latch back to the first tick it affects.
+ */
+function reconcile(latch: Latch, steps: readonly SetpointStep[]): void {
+  const old = latch.steps ?? [];
+  let i = 0;
+  while (i < old.length && i < steps.length && old[i]?.fromTick === steps[i]?.fromTick && old[i]?.value === steps[i]?.value) i++;
+  if (i < old.length || i < steps.length) {
+    const cut = Math.min(old[i]?.fromTick ?? Infinity, steps[i]?.fromTick ?? Infinity);
+    if (cut <= latch.upTo) {
+      while (latch.changes.length > 0 && (latch.changes[latch.changes.length - 1] as { tick: number }).tick >= cut) latch.changes.pop();
+      const last = latch.changes[latch.changes.length - 1];
+      latch.hiAt = last?.hiAt ?? null;
+      latch.loAt = last?.loAt ?? null;
+      latch.upTo = Math.max(START_TICK - 1, cut - 1);
+    }
+  }
+  latch.steps = steps.map((s) => ({ fromTick: s.fromTick, value: s.value }));
+}
+
+/**
+ * Alarm state at a tick, with a deadband on each side. The high side sets above max and clears only at `max - 5%` of the range
+ * or lower. The low side sets below min and clears at `min + 5%` or higher. The most recently set side shows. It is worked
+ * out forward and kept per Tag, so a value hovering at a limit stays in one alarm for as long as it hovers.
  *
- * A change of Overlay must be a new object, because the latch is kept per Overlay object.
+ * Plant State returns the Alarm of a Tag when this is null, or when it no longer has the Alarm's direction.
+ * The steps of an override must only grow at the end: see `Overlay`.
  */
 export function alarmedAt(ctx: SimContext, tag: Tag, tick: number, overlay?: Overlay): Direction | null {
   const hb = ctx.heartbeat.get(tag.machineId);
   if (hb !== undefined && tick >= hb) return null;
   const range = tag.max - tag.min;
+  const steps = overlay?.setpoints?.get(tag.id);
+  const byValue = () => {
+    const v = tagValue(tag, tick, heldAt(ctx, tag.id, tick), setpointAt(overlay, tag, tick));
+    return v > tag.max ? 'high' : v < tag.min ? 'low' : null;
+  };
   // A setpoint well inside the limits is always clearly inside again as soon as the value is back, so the value alone decides.
   const central = tag.setpoint >= tag.min + range * 0.07 && tag.setpoint <= tag.max - range * 0.07;
-  if (central && !overlay?.setpoints?.has(tag.id)) {
-    const v = tagValue(tag, tick, heldAt(ctx, tag.id, tick));
-    return v > tag.max ? 'high' : v < tag.min ? 'low' : null;
+  if ((central && !steps) || tick < START_TICK) return byValue();
+
+  let latch: Latch;
+  if (steps) {
+    let known = ctx.overlayLatches.get(tag.id);
+    if (!known) ctx.overlayLatches.set(tag.id, (known = freshLatch()));
+    reconcile(known, steps);
+    latch = known;
+  } else {
+    let known = ctx.latches.get(tag.id);
+    if (!known) ctx.latches.set(tag.id, (known = freshLatch()));
+    latch = known;
   }
-  if (tick < START_TICK) return null;
-  const store = latchesOf(ctx, overlay, tag);
-  let latch = store.get(tag.id);
-  if (!latch) store.set(tag.id, (latch = { upTo: START_TICK - 1, hiAt: null, loAt: null, changes: [] }));
   const margin = range * DEADBAND;
-  let prev = latch.changes.length > 0 ? (latch.changes[latch.changes.length - 1] as { alarm: Direction | null }).alarm : null;
   for (let t = latch.upTo + 1; t <= tick; t++) {
     const v = tagValue(tag, t, heldAt(ctx, tag.id, t), setpointAt(overlay, tag, t));
+    const hiBefore = latch.hiAt;
+    const loBefore = latch.loAt;
     if (v > tag.max && latch.hiAt === null) latch.hiAt = t;
     else if (v <= tag.max - margin) latch.hiAt = null;
     if (v < tag.min && latch.loAt === null) latch.loAt = t;
     else if (v >= tag.min + margin) latch.loAt = null;
-    const now = currentAlarm(latch.hiAt, latch.loAt);
-    if (now !== prev) {
-      latch.changes.push({ tick: t, alarm: now });
-      prev = now;
+    if (latch.hiAt !== hiBefore || latch.loAt !== loBefore) {
+      latch.changes.push({ tick: t, alarm: currentAlarm(latch.hiAt, latch.loAt), hiAt: latch.hiAt, loAt: latch.loAt });
     }
   }
   latch.upTo = Math.max(latch.upTo, tick);
-  // Last change at or before the tick.
   let lo = 0;
   let hi = latch.changes.length - 1;
   let ans: Direction | null = null;

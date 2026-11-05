@@ -105,3 +105,69 @@ describe('deadband: an exact latch on each side', () => {
     }
   });
 });
+
+
+describe('deadband: a switch of side is a new raise', () => {
+  const swap = (tagId: string, hi: number, lo: number): Overlay => ({ setpoints: new Map([[tagId, [{ fromTick: 100, value: hi }, { fromTick: 400, value: lo }]]]) });
+
+  it('raises high, then low, when an override steps from max to min, for Tags that never pass through null', () => {
+    const t = d.tags.find((x) => x.id === 'E1-extruder.barrel-zone-1-temp');
+    const o = swap(t?.id ?? '', t?.max ?? 0, t?.min ?? 0);
+    const mine = raises(d, 0, 1200, o).filter((r) => r.tagId === t?.id);
+    expect(mine.map((r) => r.direction)).toEqual(['high', 'low']);
+    expect(simulate(d, mine[1]?.tick ?? 0, o).tags.find((r) => r.tagId === t?.id)?.alarm).toBe('low');
+  });
+
+  it('has a raise for every change of alarm direction on every writable Tag', () => {
+    const writable = d.tags.filter((x) => x.writable && x.unit !== 'pcs' && x.unit !== 'h');
+    const o: Overlay = {
+      setpoints: new Map(writable.map((x) => [x.id, [{ fromTick: 100, value: x.max }, { fromTick: 400, value: x.min }]])),
+    };
+    const list = raises(d, 0, 900, o);
+    let prev = simulate(d, 0, o).tags;
+    for (let tick = 1; tick <= 900; tick++) {
+      const cur = simulate(d, tick, o).tags;
+      cur.forEach((r, i) => {
+        const was = prev[i]?.alarm ?? null;
+        if (r.alarm !== null && r.alarm !== was && r.status !== 'stale') {
+          expect(list.some((x) => x.tick === tick && x.tagId === r.tagId && x.direction === r.alarm)).toBe(true);
+        }
+      });
+      prev = cur;
+    }
+  });
+});
+
+describe('deadband: the latch follows the override timeline', () => {
+  const max = tag?.max ?? 0;
+  const first: Overlay = { setpoints: new Map([[id, [{ fromTick: 100, value: max }]]]) };
+  const alarms = (o: Overlay, from: number, to: number) => Array.from({ length: to - from + 1 }, (_, k) => simulate(d, from + k, o).tags.find((r) => r.tagId === id)?.alarm);
+
+  it('gives the same answers from a new Overlay object with the same steps', () => {
+    const copy: Overlay = { setpoints: new Map([[id, [{ fromTick: 100, value: max }]]]) };
+    expect(alarms(copy, 90, 700)).toEqual(alarms(first, 90, 700));
+  });
+
+  it('leaves the past alone when a step is appended, and changes only what follows', () => {
+    const next: Overlay = { setpoints: new Map([[id, [{ fromTick: 100, value: max }, { fromTick: 500, value: tag?.setpoint ?? 0 }]]]) };
+    expect(alarms(next, 90, 499)).toEqual(alarms(first, 90, 499));
+    expect(alarms(next, 800, 810).every((a) => a === null)).toBe(true);
+    expect(alarms(first, 800, 810).every((a) => a === 'high')).toBe(true);
+  });
+
+  it('follows a step list edited in place', () => {
+    const steps = [{ fromTick: 100, value: max }];
+    const o: Overlay = { setpoints: new Map([[id, steps]]) };
+    expect(alarms(o, 300, 300)[0]).toBe('high');
+    steps[0] = { fromTick: 100, value: tag?.setpoint ?? 0 };
+    expect(alarms(o, 300, 300)[0]).toBeNull();
+  });
+
+  it('does not rewrite the alarm history before the latch starts when an override is added', () => {
+    const open = d.alarms.find((a) => a.state === 'active-unacknowledged' && a.tagId !== null);
+    const t = d.tags.find((x) => x.id === open?.tagId);
+    const o: Overlay = { setpoints: new Map([[t?.id ?? '', [{ fromTick: 100, value: t?.setpoint ?? 0 }]]]) };
+    const at = (tick: number, ov?: Overlay) => simulate(d, tick, ov).tags.find((r) => r.tagId === t?.id)?.alarm;
+    for (const tick of [-20_000, -10_000, -7600]) expect(at(tick, o)).toBe(at(tick));
+  });
+});

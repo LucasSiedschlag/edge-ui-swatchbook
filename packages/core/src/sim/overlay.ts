@@ -10,6 +10,10 @@ export interface SetpointStep {
  * What Plant State (Issue #3) layers on top of the Simulator. The Mock Dataset stays untouched, so the past is never redrawn.
  * `setpoints` is a timeline per Tag, sorted by tick. `runTicks` says how many ticks a Line ran between two ticks, so a
  * Pause or an Emergency stop stops production.
+ *
+ * Steps only ever get added at the end. Reset to recipe value is a new step with the recipe value, never the removal of earlier
+ * steps, because that would redraw the past and change what the alarm history says. The alarm state of an overridden Tag is
+ * kept from one call to the next and is cut back to the first changed step if the list changes.
  */
 export interface Overlay {
   setpoints?: ReadonlyMap<string, readonly SetpointStep[]>;
