@@ -1,7 +1,7 @@
 import { activeRecipeParameter } from '../parameters';
 import type { EventLogEntry, LineId } from '../mock/types';
 import { simulatedTime } from '../sim/clock';
-import { acknowledge, advanceTo, reconcileAt } from './alarms';
+import { acknowledge, alarmList, isActive } from './alarms';
 import { NEVER } from './lines';
 import { contextOf, MAX_TICK } from '../sim/context';
 import { type SetpointStep, setpointAt } from '../sim/overlay';
@@ -39,29 +39,30 @@ function setLine(state: PlantState, lineId: LineId, control: LineControl, spans:
 
 export function reduce(state: PlantState, action: PlantAction, ctx: ActionContext): ActionResult {
   if (!Number.isSafeInteger(ctx.tick) || ctx.tick < 0 || ctx.tick > MAX_TICK) return refuse('invalid-tick');
-  const tick = Math.max(ctx.tick, state.syncedTick);
-  const base = advanceTo(state, tick);
+  const tick = Math.max(ctx.tick, state.lastTick);
+  const base = tick === state.lastTick ? state : { ...state, lastTick: tick };
   if (action.type === 'set-user') {
     if (!state.dataset.users.some((u) => u.id === action.userId)) return refuse('unknown-user');
     return base.currentUserId === action.userId ? nothing(base) : { ok: true, state: { ...base, currentUserId: action.userId }, events: [] };
   }
-  if (action.type === 'advance') return { ok: true, state: base, events: [] };
   return apply(base, action, { tick });
 }
 
-function apply(state: PlantState, action: Exclude<PlantAction, { type: 'advance' | 'set-user' }>, ctx: ActionContext): ActionResult {
+function apply(state: PlantState, action: Exclude<PlantAction, { type: 'set-user' }>, ctx: ActionContext): ActionResult {
   const { tick } = ctx;
   if (action.type === 'acknowledge') {
-    if (action.alarmIds.some((id) => !state.alarms.some((a) => a.id === id))) return refuse('unknown-alarm');
-    const events: EventLogEntry[] = [];
-    const alarms = state.alarms.map((a) => {
-      if (!action.alarmIds.includes(a.id)) return a;
-      const next = acknowledge(a, tick, state.currentUserId);
-      if (!next) return a;
-      events.push({ ...entry({ ...state, ids: { ...state.ids, events: state.ids.events + events.length } }, tick, 'alarm-acknowledge', a.id, 'alarm', a.state, next.state) });
-      return next;
-    });
-    return events.length === 0 ? nothing(state) : commit(state, { alarms }, events);
+    const list = alarmList(state, tick);
+    if (action.alarmIds.some(id => !list.some(a => a.id === id))) return refuse('unknown-alarm');
+    const events: EventLogEntry[] = [], acks = new Map(state.acks);
+    const selected = new Set(action.alarmIds);
+    for (const alarm of list) {
+      if (!selected.has(alarm.id)) continue;
+      const next = acknowledge(alarm, tick, state.currentUserId);
+      if (!next) continue;
+      acks.set(alarm.id, { tick, userId: state.currentUserId });
+      events.push(entry({ ...state, ids: { ...state.ids, events: state.ids.events + events.length } }, tick, 'alarm-acknowledge', alarm.id, 'alarm', alarm.state, next.state));
+    }
+    return events.length === 0 ? nothing(state) : commit(state, { acks }, events);
   }
 
   if (action.type === 'setpoint-override' || action.type === 'reset-to-recipe') return setpoint(state, action, tick);
@@ -93,10 +94,7 @@ function apply(state: PlantState, action: Exclude<PlantAction, { type: 'advance'
       const changes = setLine(state, action.lineId, { ...control, paused: false }, closeStop(spans, tick));
       const tentative = { ...state, ...changes };
       tentative.overlay = buildOverlay(tentative.manualStops, tentative.faultStops, tentative.setpoints);
-      // Use the same reconciliation as advance, including returns and admissions at this tick.
-      // Its identities and Alarms are thrown away until the open tick is finalized.
-      const peek = reconcileAt(tentative);
-      if (peek.alarms.some(a => a.lineId === action.lineId && a.priority === 'critical' && (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged'))) return refuse('critical-alarm-active');
+      if (alarmList(tentative, tick).some(a => a.lineId === action.lineId && a.priority === 'critical' && isActive(a))) return refuse('critical-alarm-active');
       return commit(state, changes, [entry(state, tick, 'resume', action.lineId, 'line')]);
     }
   }
@@ -109,7 +107,7 @@ function setpoint(state: PlantState, action: Extract<PlantAction, { type: 'setpo
   if (!tag) return refuse('unknown-tag');
   const heartbeat = simulator.heartbeat.get(tag.machineId);
   if (heartbeat !== undefined && tick >= heartbeat) return refuse('tag-stale');
-  // The action tick is still open, so changes take effect at that tick.
+  // A change takes effect at the action tick and preserves all earlier values.
   const current = setpointAt(state.overlay, tag, tick);
 
   if (action.type === 'reset-to-recipe') {

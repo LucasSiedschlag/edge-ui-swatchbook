@@ -12,7 +12,7 @@ import { alarmedAt } from '../sim/tags';
 import { simulatedTime } from '../sim/clock';
 import { assertOverlay, setpointAt } from '../sim/overlay';
 import { actionSnapshot, assertPlantInvariants, completeAndSafe, identities, snapshot, stateSnapshot } from './invariants';
-import { createPlantState, createPlantStore, lineStatus, reduce } from './index';
+import { alarmList, createPlantState, createPlantStore, lineStatus, reduce } from './index';
 import type { PlantAction, PlantState } from './types';
 
 const kinds: StepKind[] = ['preheat', 'ramp', 'run', 'cooldown', 'load', 'process', 'inspect'];
@@ -64,11 +64,11 @@ for (const seed of [1, 2, 3, 20260101]) it(`seed ${seed}: 300 actions preserve P
     const pausedLines = d.lines.filter(l => before.controls[l.id].paused && !before.controls[l.id].latched);
     const resumable = pausedLines.length ? rng.pick(pausedLines).id : lineId;
     const actions: PlantAction[] = [
-      { type: 'advance' }, { type: 'pause', lineId }, { type: 'resume', lineId: resumable },
+      { type: 'set-user', userId: before.currentUserId }, { type: 'pause', lineId }, { type: 'resume', lineId: resumable },
       { type: 'emergency-stop', lineId, confirmed: rng.chance(0.7) }, { type: 'reset', lineId },
       { type: 'setpoint-override', tagId: tag.id, value: rng.pick([tag.min, tag.max, tag.min, tag.max, tag.setpoint, tag.max + 1, NaN]), reason: rng.pick(['trial', 'trial', '']) },
       { type: 'reset-to-recipe', tagId: overridden },
-      { type: 'acknowledge', alarmIds: [rng.pick([...before.alarms.filter(a => a.state === 'active-unacknowledged' || a.state === 'returned-unacknowledged').map(a => a.id), 'unknown'])] },
+      { type: 'acknowledge', alarmIds: [rng.pick([...alarmList(before, before.lastTick).filter(a => a.state === 'active-unacknowledged' || a.state === 'returned-unacknowledged').map(a => a.id), 'unknown'])] },
       { type: 'shift-handover', note: rng.pick(['handover', '']) },
       { type: 'set-user', userId: rng.pick([...d.users.map(u => u.id), 'unknown']) },
       { type: 'new-draft', versionId: source.id },
@@ -78,8 +78,8 @@ for (const seed of [1, 2, 3, 20260101]) it(`seed ${seed}: 300 actions preserve P
       { type: 'edit-parameter', versionId, parameterId: rng.chance(0.2) ? rng.pick([...deletedParameters, 'missing']) : parameterId, field: rng.pick(['min', 'max', 'setpoint'] as const), value: rng.pick([0, 180, 200, 1000, NaN]) },
     ];
     const action = rng.pick(actions);
-    const next = before.syncedTick + (rng.chance(0.25) ? rng.int(100, 3000) : rng.int(0, 12));
-    const tick = rng.chance(0.88) ? next : rng.pick([before.syncedTick, before.syncedTick - 10, -1, 1.5, NaN]);
+    const next = before.lastTick + (rng.chance(0.25) ? rng.int(100, 3000) : rng.int(0, 12));
+    const tick = rng.chance(0.88) ? next : rng.pick([before.lastTick, before.lastTick - 10, -1, 1.5, NaN]);
     const beforeSnapshot = actionSnapshot(before, action);
     try {
       const result = store.dispatch(action, tick);
@@ -101,9 +101,9 @@ for (const seed of [1, 2, 3, 20260101]) it(`seed ${seed}: 300 actions preserve P
           const t = d.tags.find(t => t.id === action.tagId)!;
           if (action.value === t.min || action.value === t.max) counters.limitOverrides++;
         }
-        if (action.type === 'resume' && changed && [...contextOf(d).tagById.values()].some(t => t.lineId === action.lineId && alarmedAt(contextOf(d), t, result.state.syncedTick, result.state.overlay) !== null)) counters.alarmResumes++;
-        if (result.state.syncedTick > 28800) counters.after28800++;
-        if (result.state.syncedTick > 57600) counters.after57600++;
+        if (action.type === 'resume' && changed && [...contextOf(d).tagById.values()].some(t => t.lineId === action.lineId && alarmedAt(contextOf(d), t, result.state.lastTick, result.state.overlay) !== null)) counters.alarmResumes++;
+        if (result.state.lastTick > 28800) counters.after28800++;
+        if (result.state.lastTick > 57600) counters.after57600++;
       }
       const current = new Set(identities(store.getState()));
       for (const old of before.recipeVersions) {
@@ -122,7 +122,7 @@ describe('root cause regressions', () => {
   it('rejects invalid ticks at ingress, including set-user', () => {
     for (const tick of [NaN, Infinity, -1, 1.5]) {
       const state = fresh();
-      for (const action of [{ type: 'advance' }, { type: 'set-user', userId: state.currentUserId }] as const) expect(reduce(state, action, { tick })).toMatchObject({ ok: false, error: { code: 'invalid-tick' } });
+      for (const action of [{ type: 'pause', lineId: 'E2' }, { type: 'set-user', userId: state.currentUserId }] as const) expect(reduce(state, action, { tick })).toMatchObject({ ok: false, error: { code: 'invalid-tick' } });
     }
   });
   it('makes duplicate Parameter keys impossible through add-step, including R11-v3', () => {
@@ -146,7 +146,7 @@ describe('root cause regressions', () => {
     expect(reduce(state, { type: 'remove-step', versionId: v.id, stepId: step.id }, { tick: 3 })).toMatchObject({ ok: false, error: { code: 'unknown-step' } });
     for (const p of step.parameters) expect(reduce(state, { type: 'edit-parameter', versionId: v.id, parameterId: p.id, field: 'setpoint', value: p.setpoint }, { tick: 3 })).toMatchObject({ ok: false, error: { code: 'unknown-parameter' } });
   });
-  it('clamps an earlier Resume to the synchronized clock', () => {
+  it('clamps an earlier Resume to the last accepted action clock', () => {
     let state = accepted(fresh(), { type: 'pause', lineId: 'E2' }, 100);
     state = accepted(state, { type: 'resume', lineId: 'E2' }, 50);
     expect(state.manualStops.E2[0]!.toTick).toBe(100);
@@ -154,7 +154,7 @@ describe('root cause regressions', () => {
   it('cannot rewrite an observed setpoint with an earlier override', () => {
     let state = fresh(); const tag = state.dataset.tags.find(t => t.id === 'E2-puller.puller-speed')!;
     state = accepted(state, { type: 'setpoint-override', tagId: tag.id, value: tag.max, reason: 'trial' }, 10);
-    state = accepted(state, { type: 'advance' }, 100);
+    state = accepted(state, { type: 'set-user', userId: state.currentUserId }, 100);
     const old = setpointAt(state.overlay, tag, 11);
     state = accepted(state, { type: 'setpoint-override', tagId: tag.id, value: tag.min, reason: 'trial' }, 5);
     expect(setpointAt(state.overlay, tag, 11)).toBe(old);
@@ -177,16 +177,15 @@ describe('root cause regressions', () => {
     let state = fresh(); const tag = state.dataset.tags.find(t => t.id === 'E2-puller.puller-speed')!;
     state = accepted(state, { type: 'pause', lineId: 'E2' }, 0);
     state = accepted(state, { type: 'setpoint-override', tagId: tag.id, value: tag.max, reason: 'trial' }, 0);
-    state = accepted(state, { type: 'advance' }, 100);
+    state = accepted(state, { type: 'set-user', userId: state.currentUserId }, 100);
     state = accepted(state, { type: 'resume', lineId: 'E2' }, 101);
-    state = accepted(state, { type: 'advance' }, 110);
-    expect(state.alarms.find(a => a.tagId === tag.id && a.raisedAt === simulatedTime(101))).toBeDefined();
+    expect(alarmList(state, 110).find(a => a.tagId === tag.id && a.raisedAt === simulatedTime(101))).toBeDefined();
   });
   it('does not admit the raise at tick 46 when Pause starts at 46', () => {
     const state = fresh(); const raise = raises(state.dataset, 45, 46)[0]!;
     expect(raise).toBeDefined();
     const paused = accepted(state, { type: 'pause', lineId: raise.lineId }, 46);
-    expect(paused.alarms.some(a => a.tagId === raise.tagId && a.raisedAt === raise.time)).toBe(false);
+    expect(alarmList(paused, 46).some(a => a.tagId === raise.tagId && a.raisedAt === raise.time)).toBe(false);
   });
   it('projects past status from the same spans as production', () => {
     let state = accepted(fresh(), { type: 'pause', lineId: 'E2' }, 100);
@@ -200,15 +199,15 @@ describe('root cause regressions', () => {
     expect(lineStatus(state, 'A2', 20).reason).toBe('fault');
     expect(state.overlay.runTicks!('A2', 0, 100)).toBe(0);
   });
-  it('has identical Alarm history for large and split advances with the same controls', () => {
+  it('has identical Alarm history for coarse and split queries with the same controls', () => {
     const run = (split: boolean) => {
       let state = fresh(); const tag = state.dataset.tags.find(t => t.id === 'E2-puller.puller-speed')!;
       state = accepted(state, { type: 'pause', lineId: 'E2' }, 0);
       state = accepted(state, { type: 'setpoint-override', tagId: tag.id, value: tag.max, reason: 'trial' }, 0);
-      for (const tick of split ? [10, 40, 100] : [100]) state = accepted(state, { type: 'advance' }, tick);
+      for (const tick of split ? [10, 40, 100] : [100]) alarmList(state, tick);
       state = accepted(state, { type: 'resume', lineId: 'E2' }, 101);
-      for (const tick of split ? [102, 120, 300, 1000] : [1000]) state = accepted(state, { type: 'advance' }, tick);
-      return state.alarms;
+      for (const tick of split ? [102, 120, 300, 1000] : [1000]) alarmList(state, tick);
+      return alarmList(state, 1000);
     };
     expect(run(false)).toEqual(run(true));
   });
@@ -263,7 +262,7 @@ describe('validated version boundary', () => {
   });
 });
 
-for (const seed of [1, 2, 3, 20260101]) it(`seed ${seed}: Alarm history is independent of advance chunk size with changing controls`, () => {
+for (const seed of [1, 2, 3, 20260101]) it(`seed ${seed}: Alarm history is independent of query order with changing controls`, () => {
   const d = generateMockDataset(seed), rng = createRng(seed);
   let whole = createPlantState(d), split = createPlantState(generateMockDataset(seed));
   let tick = 0;
@@ -276,13 +275,11 @@ for (const seed of [1, 2, 3, 20260101]) it(`seed ${seed}: Alarm history is indep
       { type: 'setpoint-override', tagId: tag.id, value: rng.pick([tag.min, tag.max]), reason: 'trial' },
       { type: 'reset-to-recipe', tagId: tag.id },
     ]);
-    for (let t = split.syncedTick + 3; t < tick; t += 3) split = accepted(split, { type: 'advance' }, t);
+    for (let t = split.lastTick + 3; t < tick; t += 3) alarmList(split, t);
     const a = reduce(whole, action, { tick }), b = reduce(split, action, { tick });
     expect(b.ok, `seed ${seed}, step ${step}, ${action.type}`).toBe(a.ok);
     if (a.ok) whole = a.state;
     if (b.ok) split = b.state;
-    whole = accepted(whole, { type: 'advance' }, tick);
-    split = accepted(split, { type: 'advance' }, tick);
-    expect(split.alarms, `seed ${seed}, step ${step}, ${action.type}`).toEqual(whole.alarms);
+    expect(alarmList(split, tick), `seed ${seed}, step ${step}, ${action.type}`).toEqual(alarmList(whole, tick));
   }
 });

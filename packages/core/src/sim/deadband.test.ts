@@ -51,7 +51,9 @@ describe('raises: identity and edges', () => {
   it('does not raise again for a Tag that an Alarm already holds out of limits', () => {
     const open = d.alarms.find((a) => a.state === 'active-unacknowledged' && a.tagId !== null);
     const held: Overlay = { setpoints: new Map([[open?.tagId as string, [{ fromTick: -500, value: d.tags.find((t) => t.id === open?.tagId)?.setpoint ?? 0 }]]]) };
-    expect(raises(d, -400, 0, held).filter((r) => r.tagId === open?.tagId)).toHaveLength(0);
+    const raisedTick = Math.ceil(((open?.raisedAt ?? d.now) - d.now) / 1000);
+    // The original dataset hold is itself a transition. Only another raise during that hold would be a duplicate.
+    expect(raises(d, Math.max(-400, raisedTick), 0, held).filter((r) => r.tagId === open?.tagId)).toHaveLength(0);
   });
 
   it('keeps the alarm state in step with tagSeries', () => {

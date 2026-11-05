@@ -15,7 +15,7 @@ export { DEFAULT_SEED, generateMockDataset } from './mock/generate';
 export type * from './mock/types';
 export { findBatch } from './mock/lookup';
 export { simulate, type Snapshot } from './sim/simulate';
-export { raises, returns, type Raise, type Return } from './sim/alarms';
+export { alarmTransitions, raises, returns, type AlarmTransition, type Raise, type Return } from './sim/alarms';
 export { MAX_TICK } from './sim/context';
 export { tagSeries, firstTick, type SeriesPoint } from './sim/series';
 export { snapshotDigest } from './sim/digest';
@@ -25,6 +25,6 @@ export type { LineLive, BatchProgress } from './sim/kpis';
 export type { MachineLink } from './sim/links';
 export type { TagReading, TagStatus } from './sim/tags';
 export {
-  createPlantState, createPlantStore, lineStatus, isDirty, recipeCheck, recipeList, reduce, checkRecipeVersion, diePressureLimit, failingRules,
+  createPlantState, createPlantStore, alarmList, criticalAlarms, lineStatus, isDirty, recipeCheck, recipeList, reduce, checkRecipeVersion, diePressureLimit, failingRules,
   type LineStatus, type StopReason, type PlantErrorCode, type HandoverNote, type ActionContext, type ActionResult, type PlantAction, type PlantError, type PlantState, type PlantStore, type RecipeRow, type RuleResult, type RuleViolation,
 } from './plant';

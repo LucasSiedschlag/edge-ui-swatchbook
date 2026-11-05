@@ -1,111 +1,119 @@
 import type { Alarm } from '../mock/types';
 import { simulatedTime } from '../sim/clock';
-import { raiseAt, raises, returns, type Raise } from '../sim/alarms';
-import { contextOf } from '../sim/context';
+import { alarmTransitions, raiseAt } from '../sim/alarms';
+import { assertTick, contextOf, returnTickOf, type Direction } from '../sim/context';
 import { alarmedAt } from '../sim/tags';
-import { firstTick } from '../sim/series';
+import type { Overlay } from '../sim/overlay';
 import type { PlantState } from './types';
 
-const isOpen = (a: Alarm) => a.state === 'active-unacknowledged' || a.state === 'active-acknowledged';
-const directionOf = (a: Alarm) => (a.message.key === 'alarm.low-value' ? 'low' : 'high');
+export const isActive = (a: Alarm): boolean => a.state === 'active-unacknowledged' || a.state === 'active-acknowledged';
+const directionOf = (a: Alarm): Direction => a.message.key === 'alarm.low-value' ? 'low' : 'high';
 
-/** An Alarm whose condition ended: unacknowledged waits to be acknowledged, acknowledged is cleared. */
 function applyReturn(a: Alarm, tick: number): Alarm {
   const time = simulatedTime(tick);
-  return a.state === 'active-unacknowledged' ? { ...a, state: 'returned-unacknowledged', returnedAt: time } : { ...a, state: 'cleared', returnedAt: time, clearedAt: time };
+  return a.state === 'active-unacknowledged' ? { ...a, state: 'returned-unacknowledged', returnedAt: time }
+    : { ...a, state: 'cleared', returnedAt: time, clearedAt: time };
 }
 
-/** Whether an Alarm covered this condition at a tick, even if this advance has already returned it. */
-function covers(alarm: Alarm, raise: Raise): boolean {
-  return alarm.tagId === raise.tagId && directionOf(alarm) === raise.direction && alarm.raisedAt <= raise.time &&
-    (alarm.returnedAt === null ? isOpen(alarm) : alarm.returnedAt > raise.time);
-}
-
-/** Finalizes ticks before the requested tick, leaving that tick open for all controls. */
-export function advanceTo(state: PlantState, tick: number): PlantState {
-  if (tick <= state.syncedTick) return state;
-  return { ...reconcileThrough(state, tick - 1), syncedTick: tick };
-}
-
-/** Inclusive view of the open tick. It does not finalize it or consume identities in the caller's state. */
-export function reconcileAt(state: PlantState): PlantState {
-  return reconcileThrough(state, state.syncedTick);
-}
-
-/**
- * Reconciles an inclusive interval. Transitions supply ordinary raises, and run boundaries recover levels first seen
- * while stopped. Candidates are ordered by tick and Tag before allocating ids, independent of advance chunk sizes.
- */
-function reconcileThrough(state: PlantState, tick: number): PlantState {
-  const d = state.dataset, from = state.syncedTick, ctx = contextOf(d);
-  let changed = false, alarmId = state.ids.alarms;
-  const returnTag = (alarm: Alarm, fromTick: number): Alarm => {
-    if (!isOpen(alarm) || alarm.tagId === null || fromTick > tick) return alarm;
-    const back = firstTick(d, alarm.tagId, fromTick, tick, state.overlay, p => p.alarm !== directionOf(alarm));
-    return back === undefined ? alarm : applyReturn(alarm, back);
-  };
-  const alarms = state.alarms.map(alarm => {
-    const next = returnTag(alarm, from);
-    if (next !== alarm) changed = true;
-    return next;
-  });
-  for (const returned of returns(d, from - 1, tick)) {
-    const index = alarms.findIndex(a => a.id === returned.alarmId);
-    const alarm = alarms[index];
-    if (alarm && isOpen(alarm)) { alarms[index] = applyReturn(alarm, returned.tick); changed = true; }
-  }
-
-  const candidates = raises(d, from - 1, tick, state.overlay);
-  // The first examined tick and every Resume are where a level can have lost its transition while stopped.
-  for (const line of d.lines) {
-    const boundaries = new Set([from]);
-    for (const span of [...state.manualStops[line.id], ...state.faultStops[line.id]]) {
-      if (span.toTick >= from && span.toTick <= tick) boundaries.add(span.toTick);
-    }
-    for (const boundary of boundaries) {
-      if (state.overlay.runTicks!(line.id, boundary, boundary + 1) === 0) continue;
-      for (const tag of ctx.tagById.values()) {
-        if (tag.lineId !== line.id) continue;
-        const direction = alarmedAt(ctx, tag, boundary, state.overlay);
-        if (direction !== null) candidates.push(raiseAt(d, tag, boundary, direction));
-      }
-    }
-  }
-  const admit = (raise: Raise) => {
-    if (state.overlay.runTicks!(raise.lineId, raise.tick, raise.tick + 1) === 0 || alarms.some(a => covers(a, raise))) return;
-    const fresh: Alarm = {
-      id: `AL-${String(++alarmId).padStart(4, '0')}`, priority: raise.priority,
-      state: 'active-unacknowledged', lineId: raise.lineId, machineId: raise.machineId,
-      tagId: raise.tagId, batchId: raise.batchId, message: raise.message, raisedAt: raise.time,
-      acknowledgedAt: null, acknowledgedBy: null, returnedAt: null, clearedAt: null,
-    };
-    alarms.push(returnTag(fresh, raise.tick + 1));
-    changed = true;
-  };
-  candidates.sort((a, b) => a.tick - b.tick || a.tagId.localeCompare(b.tagId)).forEach(admit);
-
-  // Safety net at the requested tick. Ordinary transitions and run boundaries normally cover every level already.
-  const missing: Raise[] = [];
-  for (const tag of ctx.tagById.values()) {
-    if (state.overlay.runTicks!(tag.lineId, tick, tick + 1) === 0) continue;
-    const direction = alarmedAt(ctx, tag, tick, state.overlay);
-    if (direction === null || alarms.some(a => isOpen(a) && a.tagId === tag.id && directionOf(a) === direction)) continue;
-    const resumes = [...state.manualStops[tag.lineId], ...state.faultStops[tag.lineId]].filter(s => s.toTick <= tick).map(s => s.toTick);
-    const first = Math.max(from, ...resumes);
-    missing.push(raiseAt(d, tag, first, direction));
-  }
-  missing.sort((a, b) => a.tick - b.tick || a.tagId.localeCompare(b.tagId)).forEach(admit);
-  return {
-    ...state,
-    ids: alarmId === state.ids.alarms ? state.ids : { ...state.ids, alarms: alarmId },
-    alarms: changed ? alarms : state.alarms,
-  };
-}
-
-/** Acknowledges one Alarm: active becomes acknowledged, returned to normal becomes cleared, anything else stays. */
+/** Acknowledges one Alarm. Repeated acknowledgements do not change it. */
 export function acknowledge(a: Alarm, tick: number, userId: string): Alarm | null {
   const time = simulatedTime(tick);
   if (a.state === 'active-unacknowledged') return { ...a, state: 'active-acknowledged', acknowledgedAt: time, acknowledgedBy: userId };
   if (a.state === 'returned-unacknowledged') return { ...a, state: 'cleared', acknowledgedAt: time, acknowledgedBy: userId, clearedAt: time };
   return null;
+}
+
+interface History {
+  initial: Alarm;
+  returnedTick?: number;
+}
+interface Timeline {
+  through: number;
+  history: History[];
+  open: Map<string, History[]>;
+}
+// An Overlay is immutable. Each timeline is only extended, and its records never escape the selector.
+const timelines = new WeakMap<Overlay, Timeline>();
+const views = new WeakMap<PlantState, { tick: number; list: readonly Alarm[] }>();
+
+function extend(state: PlantState, tick: number): Timeline {
+  let timeline = timelines.get(state.overlay);
+  if (!timeline) {
+    timeline = { through: -1, history: state.dataset.alarms.map(initial => ({ initial })), open: new Map() };
+    for (const h of timeline.history) if (isActive(h.initial) && h.initial.tagId !== null) {
+      const list = timeline.open.get(h.initial.tagId) ?? [];
+      list.push(h);
+      timeline.open.set(h.initial.tagId, list);
+    }
+    timelines.set(state.overlay, timeline);
+  }
+  if (tick <= timeline.through) return timeline;
+  const ctx = contextOf(state.dataset), from = timeline.through;
+  const changes = alarmTransitions(state.dataset, state.overlay, from, tick)
+    .map(c => ({ tick: c.tick, tagId: c.tagId, level: c.level }));
+  // Load and the start of each run span admit conditions that were already in alarm while stopped.
+  for (const line of state.dataset.lines) {
+    const boundaries = new Set<number>(from < 0 ? [0] : []);
+    for (const span of [...state.manualStops[line.id], ...state.faultStops[line.id]]) {
+      if (span.toTick > from && span.toTick <= tick) boundaries.add(span.toTick);
+    }
+    for (const boundary of boundaries) {
+      if (state.overlay.runTicks!(line.id, boundary, boundary + 1) === 0 && boundary !== 0) continue;
+      for (const tag of ctx.tagById.values()) if (tag.lineId === line.id) {
+        changes.push({ tick: boundary, tagId: tag.id, level: alarmedAt(ctx, tag, boundary, state.overlay) });
+      }
+    }
+  }
+  changes.sort((a, b) => a.tick - b.tick || a.tagId.localeCompare(b.tagId));
+  for (const change of changes) {
+    const tag = ctx.tagById.get(change.tagId)!;
+    const open = timeline.open.get(tag.id) ?? [];
+    const kept: History[] = [];
+    for (const h of open) {
+      if (directionOf(h.initial) !== change.level) h.returnedTick = change.tick;
+      else kept.push(h);
+    }
+    if (change.level !== null && kept.length === 0 && state.overlay.runTicks!(tag.lineId, change.tick, change.tick + 1) > 0) {
+      const r = raiseAt(state.dataset, tag, change.tick, change.level);
+      const h: History = { initial: {
+        id: r.id, priority: r.priority, state: 'active-unacknowledged', lineId: r.lineId, machineId: r.machineId,
+        tagId: r.tagId, batchId: r.batchId, message: r.message, raisedAt: r.time,
+        acknowledgedAt: null, acknowledgedBy: null, returnedAt: null, clearedAt: null,
+      } };
+      timeline.history.push(h);
+      kept.push(h);
+    }
+    timeline.open.set(tag.id, kept);
+  }
+  for (const h of timeline.history) if (h.initial.tagId === null && isActive(h.initial) && h.initial.message.key !== 'alarm.comm-loss') {
+    const back = returnTickOf(h.initial.id);
+    if (back <= tick) h.returnedTick = back;
+  }
+  timeline.through = tick;
+  return timeline;
+}
+
+/**
+ * Alarms at this tick, derived from the Simulator, run spans and acknowledgements. Queries do not change Plant State.
+ * The per-Overlay timeline extends only through new ticks. Historical views project its records back to the requested
+ * tick, so future queries cannot change earlier results. Acknowledgements are projected separately from condition history.
+ */
+export function alarmList(state: PlantState, tick: number): readonly Alarm[] {
+  assertTick(tick);
+  if (tick < 0) throw new Error('alarmList needs a tick of 0 or more');
+  const known = views.get(state);
+  if (known?.tick === tick) return known.list;
+  const timeline = extend(state, tick), time = simulatedTime(tick), list: Alarm[] = [];
+  for (const h of timeline.history) {
+    if (h.initial.raisedAt > time) continue;
+    let alarm = { ...h.initial };
+    const back = h.returnedTick !== undefined && h.returnedTick <= tick ? h.returnedTick : undefined;
+    const ack = state.acks.get(alarm.id);
+    if (back !== undefined && (!ack || back <= ack.tick)) alarm = applyReturn(alarm, back);
+    if (ack && ack.tick <= tick) alarm = acknowledge(alarm, ack.tick, ack.userId) ?? alarm;
+    if (back !== undefined && ack && back > ack.tick) alarm = applyReturn(alarm, back);
+    list.push(alarm);
+  }
+  views.set(state, { tick, list });
+  return list;
 }

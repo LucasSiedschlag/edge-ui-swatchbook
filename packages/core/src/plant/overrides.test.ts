@@ -3,7 +3,7 @@ import { generateMockDataset } from '../mock/generate';
 import { simulatedTime } from '../sim/clock';
 import { tagSeries } from '../sim/series';
 import { simulate } from '../sim/simulate';
-import { createPlantState, reduce } from './index';
+import { alarmList, createPlantState, reduce } from './index';
 import type { PlantAction, PlantState } from './index';
 
 const d = generateMockDataset();
@@ -25,7 +25,7 @@ const code = (state: PlantState, action: PlantAction, tick = 10) => {
 const reading = (s: PlantState, tick: number, id = SPEED) => simulate(d, tick, s.overlay).tags.find((r) => r.tagId === id);
 
 describe('Setpoint Override', () => {
-  it('applies the new setpoint at the open action tick, and logs the old and new values with the reason', () => {
+  it('applies the new setpoint at the action tick, and logs the old and new values with the reason', () => {
     expect(speed?.setpoint).not.toBe(mid);
     const r = ok(start(), { type: 'setpoint-override', tagId: SPEED, value: mid, reason: 'trial run' }, 100);
     expect(reading(r.state, 99)?.setpoint).toBe(speed?.setpoint);
@@ -95,15 +95,14 @@ describe('Setpoint Override', () => {
 
   it('raises one Alarm when an override puts a Tag on its limit', () => {
     const r = ok(start(), { type: 'setpoint-override', tagId: SPEED, value: speed?.max ?? 0, reason: 'x' }, 100);
-    const s = ok(r.state, { type: 'advance' }, 1500).state;
-    expect(s.alarms.filter((a) => a.tagId === SPEED && !d.alarms.some((x) => x.id === a.id))).toHaveLength(1);
+    expect(alarmList(r.state, 1500).filter((a) => a.tagId === SPEED && !d.alarms.some((x) => x.id === a.id))).toHaveLength(1);
   });
 });
 
 describe('Reset to recipe value', () => {
   const overridden = () => ok(start(), { type: 'setpoint-override', tagId: SPEED, value: mid, reason: 'x' }, 100).state;
 
-  it('puts the setpoint of the active Recipe Version back at the open action tick, and logs it', () => {
+  it('puts the setpoint of the active Recipe Version back at the action tick, and logs it', () => {
     const r = ok(overridden(), { type: 'reset-to-recipe', tagId: SPEED }, 300);
     expect(reading(r.state, 299)?.setpoint).toBe(mid);
     expect(reading(r.state, 300)?.setpoint).toBe(speed?.setpoint);

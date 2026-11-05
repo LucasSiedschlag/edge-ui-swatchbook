@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import { simulatedTime } from '../sim/clock';
-import { createPlantState, createPlantStore, reduce } from './index';
+import { alarmList, createPlantState, createPlantStore, reduce } from './index';
 import type { PlantAction, PlantState } from './index';
 
 const d = generateMockDataset();
@@ -49,11 +49,10 @@ describe('the Event Log', () => {
     }
   });
 
-  it('writes nothing for repeated Line actions, advance, set-user and an unchanged recipe setpoint', () => {
+  it('writes nothing for repeated Line actions, set-user and an unchanged recipe setpoint', () => {
     const noops: PlantAction[] = [
       { type: 'resume', lineId: 'E2' },
       { type: 'reset', lineId: 'E2' },
-      { type: 'advance' },
       { type: 'set-user', userId: d.users[3]?.id ?? '' },
       { type: 'reset-to-recipe', tagId: 'E2-puller.puller-speed' },
     ];
@@ -86,7 +85,7 @@ describe('the Event Log', () => {
         if (r.ok) s = r.state;
         tick += 7;
       }
-      return JSON.stringify([s.events, s.alarms, s.recipeVersions, [...s.setpoints], [...s.handovers], s.controls]);
+      return JSON.stringify([s.events, alarmList(s, s.lastTick), s.recipeVersions, [...s.setpoints], [...s.handovers], s.controls]);
     };
     expect(run()).toBe(run());
   });
@@ -98,13 +97,13 @@ describe('the store', () => {
     const heard: number[] = [];
     const off = store.subscribe((s) => heard.push(s.events.length));
     expect(store.dispatch({ type: 'pause', lineId: 'E2' }, 10).ok).toBe(true);
-    expect(store.dispatch({ type: 'pause', lineId: 'E2' }, 11).ok).toBe(true); // nothing to do
+    expect(store.dispatch({ type: 'pause', lineId: 'E2' }, 11).ok).toBe(true); // only lastTick changes
     expect(store.dispatch({ type: 'emergency-stop', lineId: 'E2', confirmed: false }, 12).ok).toBe(false);
-    expect(heard).toEqual([d.events.length + 1]);
+    expect(heard).toEqual([d.events.length + 1, d.events.length + 1]);
     expect(store.getState().controls.E2.paused).toBe(true);
     off();
     store.dispatch({ type: 'resume', lineId: 'E2' }, 20);
-    expect(heard).toHaveLength(1);
+    expect(heard).toHaveLength(2);
   });
 
   it('starts again from the Mock Dataset on every load, because nothing is saved', () => {
@@ -113,12 +112,12 @@ describe('the store', () => {
     const second = createPlantStore(d);
     expect(second.getState().controls.E2.paused).toBe(false);
     expect(second.getState().events).toHaveLength(d.events.length);
-    expect(JSON.stringify(createPlantState(d).alarms)).toBe(JSON.stringify(d.alarms));
+    expect(JSON.stringify(alarmList(createPlantState(d), 0))).toBe(JSON.stringify(d.alarms));
   });
 
   it('is available from the package entry', async () => {
     const core = await import('../index');
-    for (const name of ['createPlantStore', 'createPlantState', 'reduce', 'lineStatus', 'recipeList', 'recipeCheck', 'checkRecipeVersion', 'isDirty']) {
+    for (const name of ['createPlantStore', 'createPlantState', 'reduce', 'lineStatus', 'recipeList', 'alarmList', 'criticalAlarms', 'recipeCheck', 'checkRecipeVersion', 'isDirty']) {
       expect(typeof (core as Record<string, unknown>)[name]).toBe('function');
     }
   });

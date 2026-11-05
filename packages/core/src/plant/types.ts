@@ -1,4 +1,4 @@
-import type { Alarm, EventLogEntry, LineId, MockDataset, RecipeVersion, StepKind } from '../mock/types';
+import type { EventLogEntry, LineId, MockDataset, RecipeVersion, StepKind } from '../mock/types';
 import type { Overlay, SetpointStep } from '../sim/overlay';
 
 export type StopReason = 'paused' | 'emergency-stop' | 'fault';
@@ -14,7 +14,7 @@ export interface LineStatus {
   status: 'running' | 'stopped' | 'alarm';
   /** Why the Line is stopped, also while the status shows Alarm. Null when it is not stopped. */
   reason: StopReason | null;
-  /** Count at syncedTick, including when a historical stop reason is requested. */
+  /** Count from alarmList at the requested tick. */
   criticalAlarms: number;
 }
 
@@ -42,7 +42,6 @@ export interface PlantState {
   readonly ids: {
     versions: Readonly<Record<string, number>>;
     steps: Readonly<Record<string, number>>;
-    alarms: number;
     events: number;
   };
   readonly currentUserId: string;
@@ -59,9 +58,9 @@ export interface PlantState {
   readonly savedDrafts: ReadonlyMap<string, RecipeVersion>;
   /** Shift handover notes, by Shift (`YYYY-MM-DD/S1`), in the order they were written. */
   readonly handovers: ReadonlyMap<string, readonly HandoverNote[]>;
-  /** Ticks before this are final. This tick stays open for control changes. */
-  readonly syncedTick: number;
-  readonly alarms: readonly Alarm[];
+  /** Tick of the last accepted action. Earlier actions use this tick. */
+  readonly lastTick: number;
+  readonly acks: ReadonlyMap<string, { tick: number; userId: string }>;
   readonly events: readonly EventLogEntry[];
   /** What the Simulator needs. A new object whenever the state changes what it reads. */
   readonly overlay: Overlay;
@@ -109,7 +108,7 @@ export type PlantAction =
   | { type: 'emergency-stop'; lineId: LineId; confirmed: boolean }
   | { type: 'reset'; lineId: LineId }
   | { type: 'acknowledge'; alarmIds: readonly string[] }
-  /** Takes effect at the open action tick. The reason is required. */
+  /** Takes effect at the action tick. The reason is required. */
   | { type: 'setpoint-override'; tagId: string; value: number; reason: string }
   | { type: 'reset-to-recipe'; tagId: string }
   /** Records a note on the current Shift. The note is required. */
@@ -126,8 +125,6 @@ export type PlantAction =
   /** Allowed only for a Draft with no failing rule. The version becomes read-only. */
   | { type: 'approve'; versionId: string }
   | { type: 'discard-draft'; versionId: string }
-  /** Finalizes ticks before this tick, keeping the current tick open. Writes no log entry. */
-  | { type: 'advance' }
   | { type: 'set-user'; userId: string };
 
 export interface ActionContext {

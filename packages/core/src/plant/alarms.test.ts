@@ -3,7 +3,7 @@ import { generateMockDataset } from '../mock/generate';
 import { simulatedTime } from '../sim/clock';
 import { raises, returns } from '../sim/alarms';
 import { tagSeries } from '../sim/series';
-import { createPlantState, lineStatus, reduce } from './index';
+import { alarmList, createPlantState, lineStatus, reduce } from './index';
 import type { PlantAction, PlantState } from './index';
 
 const d = generateMockDataset();
@@ -14,8 +14,8 @@ function ok(state: PlantState, action: PlantAction, tick: number) {
   if (!r.ok) throw new Error(`refused: ${r.error.code}`);
   return r;
 }
-const alarm = (s: PlantState, id: string) => s.alarms.find((a) => a.id === id);
-const open = (s: PlantState) => s.alarms.filter((a) => a.state === 'active-unacknowledged' || a.state === 'active-acknowledged');
+const alarm = (s: PlantState, id: string) => alarmList(s, s.lastTick).find((a) => a.id === id);
+const open = (s: PlantState) => alarmList(s, s.lastTick).filter((a) => a.state === 'active-unacknowledged' || a.state === 'active-acknowledged');
 
 describe('Acknowledge', () => {
   const unack = d.alarms.find((a) => a.state === 'active-unacknowledged');
@@ -24,7 +24,7 @@ describe('Acknowledge', () => {
   const cleared = d.alarms.find((a) => a.state === 'cleared');
 
   it('starts with the Alarms of the Mock Dataset', () => {
-    expect(start().alarms).toEqual(d.alarms);
+    expect(alarmList(start(), 0)).toEqual(d.alarms);
   });
 
   it('turns an active unacknowledged Alarm into active acknowledged, by the current User, and logs it', () => {
@@ -71,9 +71,9 @@ describe('Acknowledge', () => {
 
 describe('Alarms follow the Simulator', () => {
   it('returns each open Alarm on a Tag when the Tag is back inside, and dates it at that tick', () => {
-    const s = ok(start(), { type: 'advance' }, 1000).state;
+    const s = start();
     for (const a of d.alarms.filter((x) => (x.state === 'active-unacknowledged' || x.state === 'active-acknowledged') && x.tagId !== null)) {
-      const now = alarm(s, a.id);
+      const now = alarmList(s, 1000).find(x => x.id === a.id);
       expect(now?.state).toBe(a.state === 'active-unacknowledged' ? 'returned-unacknowledged' : 'cleared');
       const dir = a.message.key === 'alarm.low-value' ? 'low' : 'high';
       const back = tagSeries(d, a.tagId as string, 1, 1000).find((p) => p.alarm !== dir)?.tick;
@@ -82,70 +82,75 @@ describe('Alarms follow the Simulator', () => {
   });
 
   it('returns open faults at their tick, and keeps a comms loss while its Machine is Offline', () => {
-    const s = ok(start(), { type: 'advance' }, 1000).state;
-    for (const r of returns(d, 0, 1000)) expect(['returned-unacknowledged', 'cleared']).toContain(alarm(s, r.alarmId)?.state);
+    const s = start();
+    for (const r of returns(d, 0, 1000).filter(r => r.tagId === null)) expect(['returned-unacknowledged', 'cleared']).toContain(alarmList(s, 1000).find(a => a.id === r.alarmId)?.state);
     const comms = d.alarms.find((a) => a.message.key === 'alarm.comm-loss' && a.state !== 'cleared');
-    expect(alarm(s, comms?.id ?? '')?.state).toBe(comms?.state);
+    expect(alarmList(s, 1000).find(a => a.id === comms?.id)?.state).toBe(comms?.state);
   });
 
   it('takes a Line out of Alarm when its Critical Alarm returns', () => {
     expect(lineStatus(start(), 'E1', 0).status).toBe('alarm');
-    expect(lineStatus(ok(start(), { type: 'advance' }, 1000).state, 'E1', 1000).status).toBe('running');
+    expect(lineStatus(start(), 'E1', 1000).status).toBe('running');
   });
 
-  it('turns each raise of the Simulator into a new active unacknowledged Alarm, numbered after the dataset ones', () => {
-    const s = ok(start(), { type: 'advance' }, 3600).state;
-    const fresh = s.alarms.filter((a) => !d.alarms.some((x) => x.id === a.id));
+  it('turns each raise of the Simulator into a new active unacknowledged Alarm, with stable transition ids', () => {
+    const s = start();
+    const fresh = alarmList(s, 3600).filter((a) => !d.alarms.some((x) => x.id === a.id));
     const list = raises(d, 0, 3600, start().overlay).filter((r) => r.lineId !== 'A2');
     expect(fresh.length).toBe(list.length);
     expect(fresh.length).toBeGreaterThan(0);
     fresh.forEach((a, i) => {
-      expect(a.id).toBe(`AL-${String(d.alarms.length + i + 1).padStart(4, '0')}`);
+      expect(a.id).toBe(list[i]?.id);
       expect(['active-unacknowledged', 'returned-unacknowledged']).toContain(a.state);
       expect(a).toMatchObject({ raisedAt: list[i]?.time, tagId: list[i]?.tagId, priority: list[i]?.priority, lineId: list[i]?.lineId, message: list[i]?.message });
     });
   });
 
-  it('gives the same Alarms whether time moves in one step or many', () => {
-    const once = ok(start(), { type: 'advance' }, 3000).state;
-    let many = start();
-    for (let tick = 250; tick <= 3000; tick += 250) many = ok(many, { type: 'advance' }, tick).state;
-    expect(JSON.stringify(many.alarms)).toBe(JSON.stringify(once.alarms));
+  it('gives the same Alarms for one query or many, including queries back in time', () => {
+    const once = start(), many = start();
+    const expected = alarmList(once, 3000);
+    for (let tick = 250; tick <= 3000; tick += 250) alarmList(many, tick);
+    expect(alarmList(many, 3000)).toEqual(expected);
+    const before = alarmList(many, 500);
+    alarmList(many, 2000);
+    expect(alarmList(many, 500)).toEqual(before);
   });
 
-  it('does not go back in time', () => {
-    const later = ok(start(), { type: 'advance' }, 2000).state;
-    const r = ok(later, { type: 'advance' }, 500);
-    expect(JSON.stringify(r.state.alarms)).toBe(JSON.stringify(later.alarms));
+  it('does not let an earlier action rewrite history', () => {
+    const later = ok(start(), { type: 'set-user', userId: start().currentUserId }, 2000).state;
+    const r = ok(later, { type: 'pause', lineId: 'E2' }, 500);
+    expect(r.state.lastTick).toBe(2000);
+    expect(alarmList(r.state, 1999)).toEqual(alarmList(later, 1999));
   });
 
   it('ignores raises on a Line that is stopped', () => {
     const list = raises(d, 0, 3600, start().overlay).filter((r) => r.lineId !== 'A2');
     const line = list[0]?.lineId ?? 'E2';
     const stopped = ok(start(), { type: 'pause', lineId: line }, 0).state;
-    const s = ok(stopped, { type: 'advance' }, 3600).state;
-    expect(s.alarms.filter((a) => !d.alarms.some((x) => x.id === a.id) && a.lineId === line)).toHaveLength(0);
-    expect(s.alarms.some((a) => !d.alarms.some((x) => x.id === a.id) && a.lineId !== line)).toBe(true);
+    const s = stopped;
+    expect(alarmList(s, 3600).filter((a) => !d.alarms.some((x) => x.id === a.id) && a.lineId === line)).toHaveLength(0);
+    expect(alarmList(s, 3600).some((a) => !d.alarms.some((x) => x.id === a.id) && a.lineId !== line)).toBe(true);
   });
 
   it('lets a new Alarm be acknowledged and then cleared by its return', () => {
     const raise = raises(d, 0, 3600, start().overlay).find(r => r.lineId !== 'A2')!;
     expect(raise).toBeDefined();
-    const s = ok(start(), { type: 'advance' }, raise.tick + 1).state;
-    const fresh = s.alarms.find(a => a.tagId === raise.tagId && a.raisedAt === raise.time)!;
+    const s = start();
+    const fresh = alarmList(s, raise.tick).find(a => a.tagId === raise.tagId && a.raisedAt === raise.time)!;
     expect(fresh).toBeDefined();
     expect(fresh.state).toBe('active-unacknowledged');
     const acked = ok(s, { type: 'acknowledge', alarmIds: [fresh.id] }, raise.tick + 1).state;
     expect(alarm(acked, fresh.id)?.state).toBe('active-acknowledged');
-    const later = ok(acked, { type: 'advance' }, raise.tick + 1000).state;
-    expect(alarm(later, fresh.id)?.state).toBe('cleared');
+    expect(alarmList(acked, raise.tick + 1000).find(a => a.id === fresh.id)?.state).toBe('cleared');
   });
 
   it('writes no Event Log entry for what the Simulator does', () => {
-    expect(ok(start(), { type: 'advance' }, 3600).state.events).toHaveLength(d.events.length);
+    const state = start();
+    alarmList(state, 3600);
+    expect(state.events).toHaveLength(d.events.length);
   });
 
-  it('sees every other action advance the Alarms to its tick first', () => {
+  it('lists Alarms at the action tick without an advance', () => {
     const viaPause = ok(start(), { type: 'pause', lineId: 'E2' }, 1000).state;
     expect(open(viaPause).filter((a) => a.tagId !== null && d.alarms.some((x) => x.id === a.id))).toHaveLength(0);
   });

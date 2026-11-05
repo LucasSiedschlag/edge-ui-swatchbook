@@ -11,8 +11,6 @@ export interface AlarmWindow {
   /** Exclusive. */
   toTick: number;
   direction: Direction;
-  /** True for Alarms still open at load. They return to normal at `toTick`. */
-  open: boolean;
 }
 
 /** The alarm state of one Tag, worked out forward from `START_TICK` and kept as a list of changes. */
@@ -57,9 +55,9 @@ export function contextOf(d: MockDataset): SimContext {
     const direction: Direction = a.message.key === 'alarm.low-value' ? 'low' : 'high';
     let w: AlarmWindow | null = null;
     if (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged') {
-      w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: returnTickOf(a.id), direction, open: true };
+      w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: returnTickOf(a.id), direction };
     } else if (a.state === 'returned-unacknowledged' && a.returnedAt !== null) {
-      w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: tickOf(d, a.returnedAt), direction, open: false };
+      w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: tickOf(d, a.returnedAt), direction };
     }
     if (w) windows.set(a.tagId, [...(windows.get(a.tagId) ?? []), w]);
   }

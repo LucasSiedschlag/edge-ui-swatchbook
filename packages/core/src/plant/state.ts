@@ -62,7 +62,7 @@ export function createPlantState(d: MockDataset): PlantState {
   const firstOperator = d.users.find((u) => u.role === 'operator') ?? (d.users[0] as { id: string });
   return {
     dataset: d,
-    ids: { versions, steps, alarms: lastId(d.alarms.map(a => a.id)), events: lastId(d.events.map(e => e.id)) },
+    ids: { versions, steps, events: lastId(d.events.map(e => e.id)) },
     currentUserId: firstOperator.id,
     controls,
     manualStops,
@@ -71,8 +71,8 @@ export function createPlantState(d: MockDataset): PlantState {
     savedDrafts: new Map(d.recipeVersions.filter((v) => v.status === 'draft').map((v) => [v.id, v])),
     setpoints: new Map(),
     handovers: new Map(),
-    syncedTick: 0,
-    alarms: d.alarms.map((a) => ({ ...a })),
+    lastTick: 0,
+    acks: new Map(),
     events: d.events.map((e) => ({ ...e })),
     overlay: buildOverlay(manualStops, faultStops),
   };

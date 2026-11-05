@@ -31,6 +31,7 @@ export function entry(
 /** Returns a new state with the changes, and the Event Log entries to add. */
 export function commit(state: PlantState, changes: Partial<PlantState>, events: EventLogEntry[]): ActionResult {
   const next: PlantState = { ...state, ...changes, ids: { ...(changes.ids ?? state.ids), events: state.ids.events + events.length }, events: [...state.events, ...events] };
-  return { ok: true, state: { ...next, overlay: buildOverlay(next.manualStops, next.faultStops, next.setpoints.size > 0 ? next.setpoints : undefined) }, events };
+  const overlayChanged = next.manualStops !== state.manualStops || next.faultStops !== state.faultStops || next.setpoints !== state.setpoints;
+  return { ok: true, state: overlayChanged ? { ...next, overlay: buildOverlay(next.manualStops, next.faultStops, next.setpoints.size > 0 ? next.setpoints : undefined) } : next, events };
 }
 

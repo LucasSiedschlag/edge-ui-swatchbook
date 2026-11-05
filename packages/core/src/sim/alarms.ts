@@ -1,9 +1,9 @@
 import type { AlarmPriority, LineId, MockDataset, Tag, TextRef, Timestamp } from '../mock/types';
 import { simulatedTime } from './clock';
-import { assertTick, contextOf, type Direction, heldAt, returnTickOf } from './context';
+import { assertTick, contextOf, type Direction, returnTickOf } from './context';
 import { hash, noise } from './noise';
 import { assertOverlay, type Overlay } from './overlay';
-import { alarmedAt, canExcurse, EPOCH_TICKS, excursionOf } from './tags';
+import { alarmedAt, canExcurse, EPOCH_TICKS, EXCURSION_TICKS, excursionOf, latchChanges, START_TICK, valueOnly } from './tags';
 
 export interface Raise {
   /** Unique and stable: `RZ-<tick>-<tag id>`. */
@@ -21,9 +21,10 @@ export interface Raise {
 
 export interface Return {
   tick: number;
-  alarmId: string;
-  /** Always null: only faults without a Tag are listed. */
-  tagId: null;
+  /** Null for a Tag condition: run spans decide which Alarm, if any, covered it. */
+  alarmId: string | null;
+  /** Null for a fault without a Tag. */
+  tagId: string | null;
 }
 
 function priorityOf(key: number, epoch: number): AlarmPriority {
@@ -31,7 +32,7 @@ function priorityOf(key: number, epoch: number): AlarmPriority {
   return r < 0.05 ? 'critical' : r < 0.25 ? 'high' : r < 0.65 ? 'medium' : 'low';
 }
 
-/** One Alarm description for both transitions and Plant State level reconciliation. */
+/** One Alarm description for simulator transitions and admissions at the start of a run. */
 export function raiseAt(d: MockDataset, tag: Tag, tick: number, direction: Direction): Raise {
   return {
     id: `RZ-${tick}-${tag.id}`, tick, time: simulatedTime(tick), tagId: tag.id,
@@ -45,54 +46,72 @@ export function raiseAt(d: MockDataset, tag: Tag, tick: number, direction: Direc
   };
 }
 
-/**
- * Tags that cross out of limits at a tick in (fromTick, toTick]. Plant State decides what to do with them.
- * Splitting a range in two gives the same list as asking for it whole.
- */
-export function raises(d: MockDataset, fromTick: number, toTick: number, overlay?: Overlay): Raise[] {
-  assertTick(fromTick);
-  assertTick(toTick);
-  assertOverlay(overlay);
-  const ctx = contextOf(d);
-  const out: Raise[] = [];
-  for (let epoch = Math.max(0, Math.floor(fromTick / EPOCH_TICKS)); epoch <= Math.floor(toTick / EPOCH_TICKS); epoch++) {
-    for (const tag of ctx.tagById.values()) {
-      if (!canExcurse(tag) || ctx.heartbeat.has(tag.machineId) || overlay?.setpoints?.has(tag.id)) continue;
-      const e = excursionOf(tag, epoch);
-      if (!e || e.start <= fromTick || e.start > toTick) continue;
-      // A Tag already held out of limits by an Alarm cannot cross again until that ends.
-      if (heldAt(ctx, tag.id, e.start) || heldAt(ctx, tag.id, e.start - 1)) continue;
-      if (alarmedAt(ctx, tag, e.start - 1) !== null) continue;
-      out.push(raiseAt(d, tag, e.start, e.direction));
-    }
-  }
-  // A Tag with a Setpoint Override is followed tick by tick, because its value can cross at any moment.
-  for (const tagId of overlay?.setpoints?.keys() ?? []) {
-    const tag = ctx.tagById.get(tagId);
-    if (!tag || !canExcurse(tag) || ctx.heartbeat.has(tag.machineId)) continue;
-    for (let tick = Math.max(fromTick, 0) + 1; tick <= toTick; tick++) {
-      // A new raise is a Tag going into alarm, or switching from one side to the other.
-      const now = alarmedAt(ctx, tag, tick, overlay);
-      if (now === null || now === alarmedAt(ctx, tag, tick - 1, overlay)) continue;
-      out.push(raiseAt(d, tag, tick, now));
-    }
-  }
-  return out.sort((a, b) => a.tick - b.tick || (a.tagId < b.tagId ? -1 : a.tagId > b.tagId ? 1 : 0));
+export interface AlarmTransition {
+  tick: number;
+  tagId: string;
+  machineId: string;
+  lineId: LineId;
+  level: Direction | null;
+  previous: Direction | null;
 }
 
 /**
- * Open Alarms that are not tied to a Tag (faults) and return to normal at a tick in (fromTick, toTick], each at its own tick.
- * Alarms tied to a Tag return when `alarm` is null on their Tag, so there is one rule for them. A comms loss is not listed,
- * because it stays until its Machine is back, and the Offline Machine never comes back.
+ * Exact level changes in (fromTick, toTick], ordered by tick and Tag. A value-only Tag can only change at a hold or
+ * excursion boundary. Evaluating their combined boundaries merges overlapping intervals, with the same hold precedence
+ * as alarmedAt. Other Tags use its latch change list, including natural crossings near a limit.
  */
-export function returns(d: MockDataset, fromTick: number, toTick: number): Return[] {
+export function alarmTransitions(d: MockDataset, overlay: Overlay | undefined, fromTick: number, toTick: number): AlarmTransition[] {
   assertTick(fromTick);
   assertTick(toTick);
-  const out: Return[] = [];
+  assertOverlay(overlay);
+  if (toTick <= fromTick) return [];
+  const ctx = contextOf(d), out: AlarmTransition[] = [];
+  for (const tag of ctx.tagById.values()) {
+    const hb = ctx.heartbeat.get(tag.machineId) ?? Infinity;
+    if (hb <= fromTick) continue;
+    const end = Math.min(toTick, hb), candidates = new Set<number>();
+    if (valueOnly(tag, overlay)) {
+      for (const w of ctx.windows.get(tag.id) ?? []) {
+        candidates.add(w.fromTick);
+        candidates.add(w.toTick);
+      }
+      if (canExcurse(tag)) for (let epoch = Math.max(0, Math.floor(fromTick / EPOCH_TICKS)); epoch <= Math.floor(end / EPOCH_TICKS); epoch++) {
+        const e = excursionOf(tag, epoch);
+        if (e) { candidates.add(e.start); candidates.add(e.start + EXCURSION_TICKS); }
+      }
+    } else {
+      // Before the latch origin the value alone decides, as in alarmedAt.
+      for (let t = fromTick + 1; t <= Math.min(end, START_TICK); t++) candidates.add(t);
+      for (const change of latchChanges(ctx, tag, end, overlay)) if (change.tick > fromTick && change.tick <= end) candidates.add(change.tick);
+    }
+    candidates.add(hb);
+    let previous = alarmedAt(ctx, tag, fromTick, overlay);
+    for (const tick of [...candidates].filter(t => t > fromTick && t <= toTick).sort((a, b) => a - b)) {
+      const level = alarmedAt(ctx, tag, tick, overlay);
+      if (level !== previous) out.push({ tick, tagId: tag.id, machineId: tag.machineId, lineId: tag.lineId, level, previous });
+      previous = level;
+    }
+  }
+  return out.sort((a, b) => a.tick - b.tick || a.tagId.localeCompare(b.tagId));
+}
+
+/** Every transition into a non-null level, including a direct change of direction. */
+export function raises(d: MockDataset, fromTick: number, toTick: number, overlay?: Overlay): Raise[] {
+  const ctx = contextOf(d);
+  return alarmTransitions(d, overlay, fromTick, toTick)
+    .filter(c => c.level !== null)
+    .map(c => raiseAt(d, ctx.tagById.get(c.tagId)!, c.tick, c.level!));
+}
+
+/** Returns of Tag conditions and dataset faults in (fromTick, toTick]. A communication loss never returns. */
+export function returns(d: MockDataset, fromTick: number, toTick: number, overlay?: Overlay): Return[] {
+  const out: Return[] = alarmTransitions(d, overlay, fromTick, toTick)
+    .filter(c => c.previous !== null)
+    .map(c => ({ tick: c.tick, tagId: c.tagId, alarmId: null }));
   for (const a of d.alarms) {
     if (a.tagId !== null || (a.state !== 'active-unacknowledged' && a.state !== 'active-acknowledged') || a.message.key === 'alarm.comm-loss') continue;
     const tick = returnTickOf(a.id);
     if (tick > fromTick && tick <= toTick) out.push({ tick, alarmId: a.id, tagId: null });
   }
-  return out.sort((x, y) => x.tick - y.tick || (x.alarmId < y.alarmId ? -1 : 1));
+  return out.sort((x, y) => x.tick - y.tick || (x.tagId ?? '').localeCompare(y.tagId ?? '') || (x.alarmId ?? '').localeCompare(y.alarmId ?? ''));
 }

@@ -5,8 +5,7 @@ import { raises, returns } from '../sim/alarms';
 import { simulatedTime } from '../sim/clock';
 import { simulate } from '../sim/simulate';
 import { firstTick, tagSeries } from '../sim/series';
-import { reconcileAt } from './alarms';
-import { createPlantState, lineStatus, reduce } from './index';
+import { alarmList, createPlantState, lineStatus, reduce } from './index';
 import type { PlantAction, PlantState } from './types';
 
 const fresh = () => createPlantState(generateMockDataset());
@@ -17,16 +16,17 @@ function act(state: PlantState, action: PlantAction, tick: number): PlantState {
   if (!result.ok) throw new Error(result.error.code);
   return result.state;
 }
-const history = (s: PlantState) => ({ alarms: s.alarms, events: s.events });
+const history = (s: PlantState, tick = s.lastTick) => ({ alarms: alarmList(s, tick), events: s.events });
 
-describe('open action tick', () => {
-  it('keeps tick 46 open until the next advance, including an advance before Pause', () => {
+describe('queries and the action tick', () => {
+  it('queries at tick 46 do not affect a Pause at 46 or the past', () => {
     const start = fresh();
     const direct = act(start, { type: 'pause', lineId: 'E1' }, 46);
-    const split = act(act(start, { type: 'advance' }, 46), { type: 'pause', lineId: 'E1' }, 46);
-    expect(direct.alarms).toHaveLength(160);
+    alarmList(start, 46);
+    const split = act(start, { type: 'pause', lineId: 'E1' }, 46);
+    expect(alarmList(direct, 46)).toHaveLength(160);
     expect(history(split)).toEqual(history(direct));
-    expect(history(act(split, { type: 'advance' }, 47))).toEqual(history(act(direct, { type: 'advance' }, 47)));
+    expect(history(split, 47)).toEqual(history(direct, 47));
   });
 
   it('refuses Resume when its inclusive admission would introduce a Critical Alarm at 7010', () => {
@@ -39,27 +39,26 @@ describe('open action tick', () => {
     const paused = act(fresh(), { type: 'pause', lineId: 'E1' }, 0);
     const resumed = act(paused, { type: 'resume', lineId: 'E1' }, 467);
     expect(lineStatus(resumed, 'E1').criticalAlarms).toBe(0);
-    const finalized = act(resumed, { type: 'advance' }, 468);
-    expect(finalized.alarms.find(a => a.id === 'AL-0160')?.returnedAt).toBe(simulatedTime(467));
-    expect(lineStatus(finalized, 'E1').criticalAlarms).toBe(0);
+    expect(alarmList(resumed, 468).find(a => a.id === 'AL-0160')?.returnedAt).toBe(simulatedTime(467));
+    expect(lineStatus(resumed, 'E1', 468).criticalAlarms).toBe(0);
   });
 
-  it('uses identical dated admissions and identities for an inclusive Resume peek and its later finalization', () => {
+  it('uses identical dated admissions and identities across repeated queries after Resume', () => {
     let state = act(fresh(), { type: 'pause', lineId: 'E2' }, 0);
     const tag = state.dataset.tags.find(t => t.id === speed)!;
     state = act(state, { type: 'setpoint-override', tagId: speed, value: tag.max, reason: 'trial' }, 0);
     state = act(state, { type: 'resume', lineId: 'E2' }, 101);
     const before = history(state), ids = state.ids;
-    const peek = reconcileAt(state);
-    expect(peek.alarms.some(a => a.tagId === speed && a.raisedAt === simulatedTime(101))).toBe(true);
-    expect(history(act(state, { type: 'advance' }, 102))).toEqual(history(peek));
+    const peek = alarmList(state, 101);
+    expect(peek.some(a => a.tagId === speed && a.raisedAt === simulatedTime(101))).toBe(true);
+    expect(alarmList(state, 102)).toEqual(peek);
     expect(state.ids).toBe(ids);
     expect(history(state)).toEqual(before);
-    expect(reconcileAt(state).alarms).toEqual(peek.alarms);
+    expect(alarmList(state, 101)).toEqual(peek);
   });
 
   for (const tick of [46, 467, 1000]) for (const type of ['pause', 'resume', 'setpoint-override', 'reset-to-recipe', 'emergency-stop', 'reset'] as const) {
-    it(`${type} at ${tick} has identical history with advance at the action tick`, () => {
+    it(`${type} at ${tick} has identical history with a query at the action tick`, () => {
       let start = fresh();
       const tag = start.dataset.tags.find(t => t.id === speed)!;
       if (type === 'resume') start = act(start, { type: 'pause', lineId: 'E2' }, 0);
@@ -69,9 +68,10 @@ describe('open action tick', () => {
         : type === 'reset-to-recipe' ? { type, tagId: speed }
         : type === 'emergency-stop' ? { type, lineId: 'E1', confirmed: true } : { type, lineId: type === 'pause' ? 'E1' : 'E2' };
       const direct = act(start, action, tick);
-      const split = act(act(start, { type: 'advance' }, tick), action, tick);
+      alarmList(start, tick);
+      const split = act(start, action, tick);
       expect(history(split)).toEqual(history(direct));
-      expect(history(act(split, { type: 'advance' }, tick + 100))).toEqual(history(act(direct, { type: 'advance' }, tick + 100)));
+      expect(history(split, tick + 100)).toEqual(history(direct, tick + 100));
     });
   }
 
@@ -90,11 +90,11 @@ describe('open action tick', () => {
     const run = (partitions: number[]) => {
       let state = fresh();
       for (const [tick, action] of schedule) {
-        for (const t of partitions.filter(t => t >= state.syncedTick && t <= tick)) state = act(state, { type: 'advance' }, t);
+        for (const t of partitions.filter(t => t >= state.lastTick && t <= tick)) alarmList(state, t);
         state = act(state, action, tick);
       }
-      for (const t of partitions.filter(t => t > state.syncedTick)) state = act(state, { type: 'advance' }, t);
-      return history(act(state, { type: 'advance' }, 3000));
+      for (const t of partitions.filter(t => t > state.lastTick)) alarmList(state, t);
+      return history(state, 3000);
     };
     expect(run([0, 1, 45, 46, 47, 100, 101, 466, 467, 500, 600, 700, 800, 850, 999, 1000, 1001, 1500, 2999])).toEqual(run([]));
   });
@@ -106,7 +106,7 @@ describe('bounded session', () => {
     expect(max).toBe(7 * 86400);
     const state = fresh(), tagId = state.dataset.tags[0]!.id;
     for (const tick of [max + 1, Number.MAX_SAFE_INTEGER + 1]) {
-      for (const action of [{ type: 'advance' }, { type: 'set-user', userId: state.currentUserId }] as const) {
+      for (const action of [{ type: 'pause', lineId: 'E2' }, { type: 'set-user', userId: state.currentUserId }] as const) {
         expect(reduce(state, action, { tick })).toMatchObject({ ok: false, error: { code: 'invalid-tick' } });
       }
       expect(() => simulate(state.dataset, tick)).toThrow();
@@ -115,15 +115,17 @@ describe('bounded session', () => {
       expect(() => raises(state.dataset, 0, tick)).toThrow();
       expect(() => raises(state.dataset, tick, tick)).toThrow();
       expect(() => returns(state.dataset, 0, tick)).toThrow();
+      expect(() => returns(state.dataset, tick, 0)).toThrow();
+      expect(() => core.alarmTransitions(state.dataset, undefined, tick, 0)).toThrow();
     }
   });
-  it('supports control and an inclusive peek at the exact horizon', () => {
-    let state = act(fresh(), { type: 'advance' }, core.MAX_TICK);
+  it('supports control and an Alarm query at the exact horizon', () => {
+    let state = fresh();
     // Put a fresh condition on a Tag whose low limit is crossed at the horizon.
     const tag = state.dataset.tags.find(t => t.id === speed)!;
     state = act(state, { type: 'setpoint-override', tagId: speed, value: tag.min, reason: 'horizon' }, core.MAX_TICK);
     expect(tagSeries(state.dataset, speed, core.MAX_TICK, core.MAX_TICK, 1, state.overlay)[0]!.alarm).toBe('low');
-    expect(() => reconcileAt(state)).not.toThrow();
+    expect(() => alarmList(state, core.MAX_TICK)).not.toThrow();
     expect(() => simulate(state.dataset, core.MAX_TICK, state.overlay)).not.toThrow();
     expect(tagSeries(state.dataset, speed, core.MAX_TICK, core.MAX_TICK, 1, state.overlay)).toHaveLength(1);
   });
@@ -137,13 +139,13 @@ describe('bounded session', () => {
     expect(() => firstTick(state.dataset, speed, 0, core.MAX_TICK + 1, undefined, () => true)).toThrow();
   });
 
-  it('catches up across shifts within a generous 2500 ms bound', () => {
+  it('lists Alarms across shifts within a generous 2500 ms bound', () => {
     for (const tick of [28800, 57600, 115200]) {
       const state = fresh(), start = performance.now();
-      act(state, { type: 'advance' }, tick);
+      alarmList(state, tick);
       const ms = performance.now() - start;
-      console.info(`catch-up ${tick}: ${ms.toFixed(1)} ms`);
-      expect(ms, `advance to ${tick}`).toBeLessThan(2500);
+      console.info(`alarmList ${tick}: ${ms.toFixed(1)} ms`);
+      expect(ms, `alarmList at ${tick}`).toBeLessThan(2500);
     }
   }, 120000);
 });

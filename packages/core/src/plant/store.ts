@@ -4,6 +4,7 @@ import { createPlantState } from './state';
 import type { ActionResult, PlantAction, PlantState } from './types';
 
 export interface PlantStore {
+  /** Libraries read alarmList(getState(), tick) each frame. No clock action is needed. */
   getState(): PlantState;
   /** Applies an action at a tick. The state changes only when the result is ok. Listeners hear about every change. */
   dispatch(action: PlantAction, tick: number): ActionResult;
@@ -21,9 +22,7 @@ export function createPlantStore(d: MockDataset): PlantStore {
       if (result.ok) {
         const previous = state;
         state = result.state;
-        // Moving the clock forward alone is not a change: listeners hear about new Alarms, returns and actions.
-        const changed = (Object.keys(state) as (keyof PlantState)[]).some((k) => k !== 'syncedTick' && state[k] !== previous[k]);
-        if (changed) for (const l of [...listeners]) l(state);
+        if (state !== previous) for (const l of [...listeners]) l(state);
       }
       return result;
     },

@@ -1,13 +1,14 @@
 import type { LineId, Tag } from '../mock/types';
 
 export interface SetpointStep {
-  /** The first tick that uses `value`. Plant State applies an override at the open action tick. */
+  /** The first tick that uses `value`. Plant State applies an override at the action tick. */
   fromTick: number;
   value: number;
 }
 
 /**
  * What Plant State (Issue #3) layers on top of the Simulator. The Mock Dataset stays untouched, so the past is never redrawn.
+ * An Overlay object is immutable. Any change requires a new object.
  * `setpoints` is a timeline per Tag, sorted by tick. `runTicks` says how many ticks a Line ran between two ticks, so a
  * Pause or an Emergency stop stops production.
  *

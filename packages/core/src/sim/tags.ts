@@ -131,8 +131,7 @@ export function alarmedAt(ctx: SimContext, tag: Tag, tick: number, overlay?: Ove
     return v > tag.max ? 'high' : v < tag.min ? 'low' : null;
   };
   // A setpoint well inside the limits is always clearly inside again as soon as the value is back, so the value alone decides.
-  const central = tag.setpoint >= tag.min + range * 0.07 && tag.setpoint <= tag.max - range * 0.07;
-  if ((central && !steps) || tick < START_TICK) return byValue();
+  if (valueOnly(tag, overlay) || tick < START_TICK) return byValue();
 
   let latch: Latch;
   if (steps) {
@@ -172,6 +171,19 @@ export function alarmedAt(ctx: SimContext, tag: Tag, tick: number, overlay?: Ove
     } else hi = mid - 1;
   }
   return ans;
+}
+
+/** Whether exact hold and excursion intervals fully describe this Tag's alarm levels. */
+export function valueOnly(tag: Tag, overlay?: Overlay): boolean {
+  const range = tag.max - tag.min;
+  return tag.setpoint >= tag.min + range * 0.07 && tag.setpoint <= tag.max - range * 0.07 && !overlay?.setpoints?.has(tag.id);
+}
+
+/** The same latch changes used by alarmedAt, extended through the requested tick. */
+export function latchChanges(ctx: SimContext, tag: Tag, tick: number, overlay?: Overlay): readonly { tick: number; alarm: Direction | null }[] {
+  const hb = ctx.heartbeat.get(tag.machineId);
+  alarmedAt(ctx, tag, Math.min(tick, hb === undefined ? tick : hb - 1), overlay);
+  return (overlay?.setpoints?.has(tag.id) ? ctx.overlayLatches : ctx.latches).get(tag.id)?.changes ?? [];
 }
 
 /**
