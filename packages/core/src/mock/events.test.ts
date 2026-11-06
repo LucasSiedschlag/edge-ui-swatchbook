@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from './generate';
-import { DAY, NOW } from './time';
+import { DAY, HOUR, NOW, shiftAt, spDate } from './time';
 
 const d = generateMockDataset();
 const tag = new Map(d.tags.map((t) => [t.id, t]));
@@ -153,11 +153,14 @@ describe('notes', () => {
     }
   });
 
-  it('hands over at every Shift change, naming the Shift it hands over to', () => {
+  it('hands over at every Shift change, recorded on the Shift that ends, like a handover made in the session', () => {
     const h = byAction('shift-handover');
     expect(h.length).toBeGreaterThanOrEqual(250);
     expect(new Set(h.map((e) => `${e.oldValue}>${e.newValue}`))).toEqual(new Set(['S3>S1', 'S1>S2', 'S2>S3']));
-    for (const e of h) expect(e.target.endsWith(`/${e.newValue}`)).toBe(true);
+    for (const e of h) {
+      expect(e.target.endsWith(`/${e.oldValue}`)).toBe(true);
+      expect(e.target).toBe(`${spDate(e.at - 8 * HOUR)}/${shiftAt(e.at - 8 * HOUR)}`);
+    }
   });
 });
 
