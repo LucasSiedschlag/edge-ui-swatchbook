@@ -24,7 +24,7 @@ export interface TrendSeries {
   points: TrendPoint[];
 }
 
-export type TrendView = { series: TrendSeries[] } | { error: 'trend-limit' | 'unknown-tag' | 'duplicate-tag' } | { empty: true };
+export type TrendView = { series: TrendSeries[] } | { error: 'trend-limit' | 'trend-units' | 'unknown-tag' | 'duplicate-tag' } | { empty: true };
 
 /**
  * Exact point counts on a fixed grid: the aligned end is included and the window's left boundary is excluded.
@@ -44,6 +44,7 @@ export function trendView(d: MockDataset, tagIds: readonly string[], window: Tre
   if (new Set(tagIds).size !== tagIds.length) return { error: 'duplicate-tag' };
   if (!tagIds.length) return { empty: true };
   if (tagIds.some((id) => !d.tags.some((tag) => tag.id === id))) return { error: 'unknown-tag' };
+  if (new Set(d.tags.filter((tag) => tagIds.includes(tag.id)).map((tag) => tag.unit)).size > 2) return { error: 'trend-units' };
   const grid = trendTicks(window, tick);
   const from = grid[0]!;
   const to = grid[grid.length - 1]!;
