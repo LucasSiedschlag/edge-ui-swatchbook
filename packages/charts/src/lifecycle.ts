@@ -7,7 +7,7 @@ export function createChart(element: HTMLDivElement) {
   const observer = typeof ResizeObserver === 'undefined' ? undefined : new ResizeObserver(() => chart.resize());
   observer?.observe(element);
   return {
-    update(option: ChartOption) { chart.setOption(option, { notMerge: true }); },
+    update(option: ChartOption) { chart.setOption(option, { replaceMerge: ['series', 'xAxis', 'yAxis'] }); },
     dispose() { observer?.disconnect(); chart.dispose(); },
   };
 }

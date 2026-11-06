@@ -1,3 +1,4 @@
+import type { MessageKey } from '../i18n/messages';
 import type { Rng } from './prng';
 import { DAY, HISTORY_DAYS, HOUR, MINUTE, NOW, shiftAt, spDate } from './time';
 import type {
@@ -17,8 +18,8 @@ export interface EventSection {
   tags: Tag[];
 }
 
-const OVERRIDE_REASONS = ['quality-adjust', 'material-change', 'trial', 'compensation'];
-const HANDOVER_NOTES = ['all-normal', 'watch-alarm', 'material-low', 'maintenance-planned'];
+const OVERRIDE_REASONS = ['note.override-reason.quality-adjust', 'note.override-reason.material-change', 'note.override-reason.trial', 'note.override-reason.compensation'] as const satisfies readonly MessageKey[];
+const HANDOVER_NOTES = ['note.handover.all-normal', 'note.handover.watch-alarm', 'note.handover.material-low', 'note.handover.maintenance-planned'] as const satisfies readonly MessageKey[];
 
 /** Idle stretches between two finished Batches on the same Line. */
 function gapsOf(batches: Batch[]): Gap[] {
@@ -68,7 +69,7 @@ export function generateEvents(
   // A handover at every Shift change inside the window, recorded on the Shift that ends, as a handover made in the session is.
   for (let k = 1; k < HISTORY_DAYS * 3; k++) {
     const at = WINDOW_START + k * 8 * HOUR;
-    add('shift-handover', 'shift', rng.pick(operators).id, `${spDate(at - 8 * HOUR)}/${shiftAt(at - 8 * HOUR)}`, at, shiftAt(at - 1), shiftAt(at), { key: `note.handover.${rng.pick(HANDOVER_NOTES)}` });
+    add('shift-handover', 'shift', rng.pick(operators).id, `${spDate(at - 8 * HOUR)}/${shiftAt(at - 8 * HOUR)}`, at, shiftAt(at - 1), shiftAt(at), { key: rng.pick(HANDOVER_NOTES) });
   }
 
   // Pauses and Emergency stops sit inside gaps between Batches, never on top of a run, and always end with the Line running again.
@@ -120,7 +121,7 @@ export function generateEvents(
     next = Math.min(high, Math.max(low, next));
     if (next === old) next = old === low ? high : low;
     current.set(t.id, next);
-    add('setpoint-override', 'tag', rng.pick(technicians).id, t.id, at, old, next, { key: `note.override-reason.${rng.pick(OVERRIDE_REASONS)}` });
+    add('setpoint-override', 'tag', rng.pick(technicians).id, t.id, at, old, next, { key: rng.pick(OVERRIDE_REASONS) });
   }
 
   // Recipe work, taken from the version times so Batches and the Event Log agree. Version 1 predates the window.

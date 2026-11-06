@@ -17,7 +17,7 @@ it('keeps one SVG instance for updates, observes size and disposes on cleanup', 
   instance.update({ animation: false });
   instance.update({ animation: false, series: [] });
   expect(init).toHaveBeenCalledExactlyOnceWith(element, null, { renderer: 'svg' });
-  expect(chart.setOption.mock.calls).toEqual([[{ animation: false }, { notMerge: true }], [{ animation: false, series: [] }, { notMerge: true }]]);
+  expect(chart.setOption.mock.calls).toEqual([[{ animation: false }, { replaceMerge: ['series', 'xAxis', 'yAxis'] }], [{ animation: false, series: [] }, { replaceMerge: ['series', 'xAxis', 'yAxis'] }]]);
   expect(observe).toHaveBeenCalledWith(element);
   resize();
   expect(chart.resize).toHaveBeenCalledOnce();

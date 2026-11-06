@@ -1,10 +1,14 @@
+import { generateMockDataset, performanceView } from '@swatchbook/core';
+import { renderToStaticMarkup } from 'react-dom/server';
+import { createElement } from 'react';
+import { ParetoChart } from './components';
 import { expect, it } from 'vitest';
 import { buildOutputOption, buildParetoOption } from './options';
 import { lightChartTheme } from './theme';
 
 const theme = lightChartTheme;
 const pareto = {
-  data: [{ reason: 'change', minutes: 60 }, { reason: 'jam', minutes: 30 }, { reason: 'other', minutes: 10 }],
+  data: [{ reason: 'change', minutes: 60, sharePct: 60, cumulativePct: 60 }, { reason: 'jam', minutes: 30, sharePct: 30, cumulativePct: 90 }, { reason: 'other', minutes: 10, sharePct: 10, cumulativePct: 100 }],
   labels: { caption: 'Downtime', empty: 'No downtime', reason: 'Reason', minutes: 'Minutes', share: 'Share', cumulative: 'Cumulative' },
   formatters: { formatReason: (reason: string) => `reason:${reason}`, formatMinutes: (value: number) => `${value} min`, formatPercent: (value: number) => `${value}%` },
   theme,
@@ -22,7 +26,7 @@ it('preserves Pareto order and shows cumulative percentages on a fixed secondary
 });
 
 it('avoids invalid percentages when all downtime is zero', () => {
-  expect(buildParetoOption({ ...pareto, data: [{ reason: 'zero', minutes: 0 }] }).series).toMatchObject([{}, { data: [0] }]);
+  expect(buildParetoOption({ ...pareto, data: [{ reason: 'zero', minutes: 0, sharePct: 0, cumulativePct: 0 }] }).series).toMatchObject([{}, { data: [0] }]);
 });
 
 it('stacks good and scrap counts with the target as a separate line', () => {
@@ -41,4 +45,18 @@ it('stacks good and scrap counts with the target as a separate line', () => {
   ]);
   const series = option.series as { data: number[] }[];
   expect(series[0]!.data.map((good, i) => good + series[1]!.data[i]!)).toEqual([15, 10]);
+});
+
+
+it('uses the exact rounded core Pareto percentages in the chart and table', () => {
+  const dataset = generateMockDataset();
+  const data = performanceView(dataset, [], 0, { kind: 'site' }, 'last-7d').pareto;
+  expect(data.length).toBeGreaterThan(0);
+  const option = buildParetoOption({ ...pareto, data });
+  expect(option.series).toMatchObject([{}, { data: data.map(row => row.cumulativePct) }]);
+  const markup = renderToStaticMarkup(createElement(ParetoChart, { ...pareto, data, testId: 'pareto', height: 200 }));
+  for (const row of data) {
+    expect(markup).toContain(`<td>${row.sharePct}%</td>`);
+    expect(markup).toContain(`<td>${row.cumulativePct}%</td>`);
+  }
 });

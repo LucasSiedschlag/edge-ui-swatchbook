@@ -25,7 +25,7 @@ export const TOUR_MESSAGES: Record<'en' | 'pt-BR', Record<TourKey, string>> = {
   'pt-BR': {
     'tour.deck.note': 'Veja como aparecem o status da Linha, o banner de Alarme crítico e os KPIs ao vivo. Depois acione a Parada de emergência e observe como ela pede confirmação.',
     'tour.recipes.note': 'Veja como um Rascunho que viola uma Regra de dependência é mostrado. Confira como o Salvar fica bloqueado até a correção.',
-    'tour.ledger.note': 'Veja a grade densa: ordenação, filtros por coluna e seleção de até 4 linhas. Depois abra a gaveta lateral.',
+    'tour.ledger.note': 'Veja a grade densa: ordenação, filtros por coluna e seleção de até 4 itens. Depois abra a gaveta lateral.',
     'tour.performance.note': 'Veja o OEE e suas partes, o Pareto de paradas e a produção em relação à meta.',
     'tour.parameters.note': 'Veja a grade de Tags, a tendência de várias Tags juntas e o formulário de alteração manual de setpoint.',
     'tour.control.note': 'Veja a lista de Alarmes com Reconhecer, o Registro de eventos e o diagnóstico de comunicação.',

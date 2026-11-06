@@ -1,4 +1,17 @@
 /**
+ * FOR REVIEW
+ * - Removed term.batch-run and its terminology row to follow GLOSSARY.md.
+ * - Tag statuses use feminine agreement: Normal, Alta, Baixa, Desatualizada.
+ *   plant-error.tag-stale also agrees with a Tag.
+ * - Table rows use item: shortcut.open-details and tour.ledger.note (in their modules).
+ *   shortcut.focus-search now names both filtro and busca.
+ * - screen.ledger is Registro de lotes de produção.
+ * - action.* uses imperative button wording, including Novo rascunho and Aplicar alteração.
+ * - event-action.* describes past events, including Linha pausada, Alarme reconhecido,
+ *   Setpoint restaurado para a receita and Novo rascunho criado.
+ * - Extruder barrel uses cilindro in Parameters and the Dependency Rule name.
+ * - New trend errors, Dependency Rule names, rule statuses and violation kinds.
+ *
  * Main terminology for the product owner's pt-BR review.
  * | English | pt-BR |
  * | Alarm | Alarme |
@@ -6,7 +19,6 @@
  * | Acknowledged | reconhecido |
  * | Line | Linha |
  * | Batch | Lote de produção |
- * | Batch run | Corrida |
  * | Lot | Lote rastreável |
  * | Recipe | Receita |
  * | Recipe Version | Versão da receita |
@@ -30,6 +42,34 @@ import type { BaseKey, MessageKey } from './messages';
 
 /** The messages written here. A key missing from this object, or an extra one, fails the build. */
 const base: Record<BaseKey, string> = {
+  "trend-error.trend-limit": "Selecione no máximo quatro Tags.",
+  "trend-error.unknown-tag": "Tag não encontrada.",
+  "trend-error.duplicate-tag": "Selecione cada Tag apenas uma vez.",
+  "trend-error.trend-units": "Selecione Tags com no máximo duas unidades distintas.",
+  "trend-error.nothing-selected": "Selecione Tags para mostrar uma tendência.",
+  "dependency-rule.barrel-temperature-window": "Faixa de temperatura do cilindro",
+  "dependency-rule.die-pressure-limit": "Limite de pressão da matriz",
+  "dependency-rule.weld-window": "Faixa de soldagem",
+  "dependency-rule.takt-limit": "Limite de takt",
+  "rule-status.pass": "Atendida",
+  "rule-status.fail": "Não atendida",
+  "rule-status.not-applicable": "Não aplicável",
+  "violation.below-min": "Abaixo do mínimo",
+  "violation.above-max": "Acima do máximo",
+  "violation.adjacent-too-far": "Zonas adjacentes com diferença excessiva",
+  "violation.missing": "Ausente",
+  "action.pause": "Pausar",
+  "action.resume": "Retomar",
+  "action.emergency-stop": "Parada de emergência",
+  "action.reset": "Rearmar",
+  "action.alarm-acknowledge": "Reconhecer",
+  "action.setpoint-override": "Aplicar alteração",
+  "action.reset-to-recipe": "Restaurar valor da receita",
+  "action.shift-handover": "Passar turno",
+  "action.recipe-new-draft": "Novo rascunho",
+  "action.recipe-save": "Salvar rascunho",
+  "action.recipe-approve": "Aprovar",
+  "action.recipe-discard": "Descartar rascunho",
   "area.extrusion": "Extrusão",
   "area.metalworking": "Metalurgia",
   "area.assembly": "Montagem",
@@ -74,13 +114,13 @@ const base: Record<BaseKey, string> = {
   "step.load": "Carregamento",
   "step.process": "Processamento",
   "step.inspect": "Inspeção",
-  "parameter.barrel-preheat": "Pré-aquecimento do canhão",
+  "parameter.barrel-preheat": "Pré-aquecimento do cilindro",
   "parameter.ramp-rate": "Taxa da rampa",
-  "parameter.barrel-zone-1": "Zona 1 do canhão",
-  "parameter.barrel-zone-2": "Zona 2 do canhão",
-  "parameter.barrel-zone-3": "Zona 3 do canhão",
-  "parameter.barrel-zone-4": "Zona 4 do canhão",
-  "parameter.barrel-zone-5": "Zona 5 do canhão",
+  "parameter.barrel-zone-1": "Zona 1 do cilindro",
+  "parameter.barrel-zone-2": "Zona 2 do cilindro",
+  "parameter.barrel-zone-3": "Zona 3 do cilindro",
+  "parameter.barrel-zone-4": "Zona 4 do cilindro",
+  "parameter.barrel-zone-5": "Zona 5 do cilindro",
   "parameter.screw-speed": "Rotação da rosca",
   "parameter.die-pressure": "Pressão na matriz",
   "parameter.puller-speed": "Velocidade do puxador",
@@ -136,27 +176,27 @@ const base: Record<BaseKey, string> = {
   "link-status.degraded": "Comunicação degradada",
   "link-status.offline": "Desconectado",
   "tag-status.normal": "Normal",
-  "tag-status.high": "Alto",
-  "tag-status.low": "Baixo",
-  "tag-status.stale": "Desatualizado",
+  "tag-status.high": "Alta",
+  "tag-status.low": "Baixa",
+  "tag-status.stale": "Desatualizada",
   "line-status.running": "Em operação",
   "line-status.stopped": "Parada",
   "line-status.alarm": "Alarme",
   "stop-reason.paused": "Pausada pelo operador",
   "stop-reason.emergency-stop": "Parada de emergência",
   "stop-reason.fault": "Falha",
-  "event-action.alarm-acknowledge": "Reconhecer alarme",
+  "event-action.alarm-acknowledge": "Alarme reconhecido",
   "event-action.setpoint-override": "Alteração manual de setpoint",
-  "event-action.pause": "Pausar",
-  "event-action.resume": "Retomar",
-  "event-action.emergency-stop": "Parada de emergência",
-  "event-action.reset": "Rearmar",
+  "event-action.pause": "Linha pausada",
+  "event-action.resume": "Linha retomada",
+  "event-action.emergency-stop": "Parada de emergência acionada",
+  "event-action.reset": "Linha rearmada",
   "event-action.shift-handover": "Passagem de turno",
-  "event-action.reset-to-recipe": "Restaurar valor da receita",
-  "event-action.recipe-new-draft": "Novo rascunho de receita",
-  "event-action.recipe-save": "Salvar receita",
-  "event-action.recipe-approve": "Aprovar receita",
-  "event-action.recipe-discard": "Descartar rascunho de receita",
+  "event-action.reset-to-recipe": "Setpoint restaurado para a receita",
+  "event-action.recipe-new-draft": "Novo rascunho criado",
+  "event-action.recipe-save": "Rascunho salvo",
+  "event-action.recipe-approve": "Receita aprovada",
+  "event-action.recipe-discard": "Rascunho descartado",
   "line-type.extrusion": "Extrusão",
   "line-type.roll-forming": "Perfilação",
   "line-type.stamping": "Estampagem",
@@ -214,7 +254,7 @@ const base: Record<BaseKey, string> = {
   "shell.app-title": "edge-ui-swatchbook",
   "screen.deck": "Painel de operação ao vivo",
   "screen.recipes": "Laboratório interativo de receitas",
-  "screen.ledger": "Registro de lotes de produção e rastreáveis",
+  "screen.ledger": "Registro de lotes de produção",
   "screen.performance": "Central de desempenho da planta",
   "screen.parameters": "Matriz de parâmetros ao vivo",
   "screen.control": "Central de comando da sala de controle",
@@ -234,7 +274,6 @@ const base: Record<BaseKey, string> = {
   "tour.finish": "Concluir",
   "tour.progress": "Etapa {current} de {total}",
   "term.batch": "Lote de produção",
-  "term.batch-run": "Corrida",
   "term.lot": "Lote rastreável",
   "term.recipe": "Receita",
   "term.setpoint": "Setpoint",

@@ -1,2 +1,2 @@
-export type Locale = 'en' | 'pt-BR';
+export type { Locale } from '../screens';
 export type MessageParams = Readonly<Record<string, string | number>>;

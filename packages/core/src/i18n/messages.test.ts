@@ -40,12 +40,55 @@ describe('dictionaries', () => {
   });
 
   it('provides dictionary keys for every typed enumeration mapping', () => {
-    expect(Object.keys(labels)).toHaveLength(22);
-    for (const mapping of Object.values(labels)) {
+    const mappings = Object.values(labels).filter(value => typeof value !== 'function');
+    expect(mappings).toHaveLength(27);
+    for (const mapping of mappings) {
       for (const key of Object.values(mapping)) {
         expect(Object.hasOwn(en, key), key).toBe(true);
         expect(Object.hasOwn(ptBR, key), key).toBe(true);
       }
     }
   });
+});
+
+it('covers trend errors, Dependency Rules, statuses and violations', () => {
+  for (const key of [
+    'trend-error.trend-limit', 'trend-error.unknown-tag', 'trend-error.duplicate-tag', 'trend-error.trend-units', 'trend-error.nothing-selected',
+    'dependency-rule.barrel-temperature-window', 'dependency-rule.die-pressure-limit', 'dependency-rule.weld-window', 'dependency-rule.takt-limit',
+    'rule-status.pass', 'rule-status.fail', 'rule-status.not-applicable',
+    'violation.below-min', 'violation.above-max', 'violation.adjacent-too-far', 'violation.missing',
+  ]) {
+    expect(Object.hasOwn(en, key), key).toBe(true);
+    expect(Object.hasOwn(ptBR, key), key).toBe(true);
+  }
+});
+
+it('separates button actions from past Event Log entries in both languages', () => {
+  expect(en['action.pause']).toBe('Pause');
+  expect(en['event-action.pause']).toBe('Line paused');
+  expect(en['event-action.setpoint-override']).toBe('Setpoint manually overridden');
+  expect(en['shortcut.focus-search']).toBe('Focus the filter or search field');
+  expect(ptBR['shortcut.focus-search']).toBe('Focar o campo de filtro ou busca');
+  expect(ptBR['action.recipe-new-draft']).toBe('Novo rascunho');
+  expect(ptBR['event-action.recipe-new-draft']).toBe('Novo rascunho criado');
+  expect(ptBR['tag-status.high']).toBe('Alta');
+  expect(ptBR['tag-status.low']).toBe('Baixa');
+  expect(ptBR['tag-status.stale']).toBe('Desatualizada');
+  expect(ptBR['screen.ledger']).toBe('Registro de lotes de produção');
+  expect(ptBR['tour.ledger.note']).toContain('seleção de até 4 itens');
+  expect(ptBR['shortcut.open-details']).toContain('item em foco');
+  expect(Object.hasOwn(en, 'term.batch-run')).toBe(false);
+  expect(JSON.stringify(ptBR)).not.toContain('canhão');
+});
+
+it('chooses Event Log value labels by action, never by the value alone', () => {
+  for (const [action, value, expected] of [
+    ['alarm-acknowledge', 'active-unacknowledged', 'alarm-state.active-unacknowledged'],
+    ['alarm-acknowledge', 'cleared', 'alarm-state.cleared'],
+    ['shift-handover', 'S1', 'shift.first'], ['shift-handover', 'S2', 'shift.second'],
+    ['recipe-approve', 'draft', 'recipe-status.draft'], ['recipe-approve', 'approved', 'recipe-status.approved'],
+    ['setpoint-override', 42, null], ['reset-to-recipe', 0, null], ['pause', 'S1', null],
+    ['recipe-approve', 'S1', null], ['shift-handover', 'draft', null],
+    ['alarm-acknowledge', null, null], ['alarm-acknowledge', 'toString', null],
+  ] as const) expect(labels.eventValueLabelKey(action, value)).toBe(expected);
 });

@@ -10,11 +10,30 @@ const normalize = (text: string): string => text
 export interface NumberOptions { decimals?: number }
 export interface TimeOptions { seconds?: boolean }
 
+// Formatter construction is expensive. The finite combinations used by the UI share instances.
+const numberFormats = new Map<string, Intl.NumberFormat>();
+const dateFormats = new Map<string, Intl.DateTimeFormat>();
+function optionsKey(locale: string, options: object): string {
+  return JSON.stringify([locale, Object.entries(options).sort(([a], [b]) => a.localeCompare(b))]);
+}
+function numberFormat(locale: string, options: Intl.NumberFormatOptions): Intl.NumberFormat {
+  const key = optionsKey(locale, options);
+  let format = numberFormats.get(key);
+  if (!format) { format = new Intl.NumberFormat(locale, options); numberFormats.set(key, format); }
+  return format;
+}
+function dateFormat(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
+  const key = optionsKey(locale, options);
+  let format = dateFormats.get(key);
+  if (!format) { format = new Intl.DateTimeFormat(locale, options); dateFormats.set(key, format); }
+  return format;
+}
+
 function numeric(locale: Locale, value: number, decimals: number, style: 'decimal' | 'percent'): string {
   if (!Number.isFinite(value)) return '-';
   // Restrict precision to the range supported consistently by browser and Node Intl implementations.
   if (!Number.isInteger(decimals) || decimals < 0 || decimals > 20) throw new RangeError('decimals must be an integer from 0 to 20');
-  const parts = new Intl.NumberFormat(INTL_LOCALES[locale], {
+  const parts = numberFormat(INTL_LOCALES[locale], {
     style, numberingSystem: 'latn', useGrouping: true,
     minimumIntegerDigits: 1, minimumFractionDigits: decimals, maximumFractionDigits: decimals,
     notation: 'standard', signDisplay: 'auto',
@@ -33,9 +52,14 @@ export function formatPercent(locale: Locale, fraction: number, decimals = 1): s
   return numeric(locale, fraction, decimals, 'percent');
 }
 
+/** Input is a percentage from 0 to 100. */
+export function formatPercentValue(locale: Locale, percent: number, decimals = 1): string {
+  return formatPercent(locale, percent / 100, decimals);
+}
+
 function dateTime(locale: Locale, ts: Timestamp, options: Intl.DateTimeFormatOptions): string {
   if (!Number.isFinite(ts) || !Number.isFinite(new Date(ts).getTime())) return '-';
-  return normalize(new Intl.DateTimeFormat(INTL_LOCALES[locale], {
+  return normalize(dateFormat(INTL_LOCALES[locale], {
     timeZone: TIME_ZONE, calendar: 'gregory', numberingSystem: 'latn', ...options,
   }).formatToParts(ts).map((p) => p.value).join(''));
 }
@@ -61,7 +85,7 @@ export function formatDateTime(locale: Locale, ts: Timestamp): string {
 export function formatDuration(totalSeconds: number): string {
   if (!Number.isFinite(totalSeconds) || totalSeconds < 0) return '-';
   const seconds = Math.floor(totalSeconds);
-  const integer = (n: number) => new Intl.NumberFormat('en-US', {
+  const integer = (n: number) => numberFormat('en-US', {
     numberingSystem: 'latn', useGrouping: false, maximumFractionDigits: 0,
   }).format(n);
   const pair = (n: number) => integer(n).padStart(2, '0');

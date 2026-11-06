@@ -29,7 +29,7 @@ describe('SHORTCUTS table', () => {
 describe('resolveShortcut', () => {
   it('resolves every binding', () => {
     expect(resolveShortcut({ key: '/' })).toEqual({ type: 'focus-search' });
-    expect(resolveShortcut({ key: 'Enter' })).toEqual({ type: 'open-details' });
+    expect(resolveShortcut({ key: 'Enter' }, { rowFocused: true })).toEqual({ type: 'open-details' });
     expect(resolveShortcut({ key: 'Escape' })).toEqual({ type: 'close' });
     expect(resolveShortcut({ key: 'a' })).toEqual({ type: 'acknowledge' });
   });
@@ -88,10 +88,10 @@ describe('resolveShortcut', () => {
     expect(resolveShortcut({ key: 'a', target: { tagName: 'TR' } })).toEqual({ type: 'acknowledge' });
   });
 
-  it('lets Escape through while a text field has focus', () => {
-    expect(resolveShortcut({ key: 'Escape', target: { tagName: 'INPUT', type: 'text' } })).toEqual({ type: 'close' });
-    expect(resolveShortcut({ key: 'Escape' }, { textFieldFocused: true })).toEqual({ type: 'close' });
-    expect(resolveShortcut({ key: 'Escape', target: { tagName: 'TEXTAREA' } })).toEqual({ type: 'close' });
+  it('leaves Escape to the focused text field', () => {
+    expect(resolveShortcut({ key: 'Escape', target: { tagName: 'INPUT', type: 'text' } })).toBeNull();
+    expect(resolveShortcut({ key: 'Escape' }, { textFieldFocused: true })).toBeNull();
+    expect(resolveShortcut({ key: 'Escape', target: { tagName: 'TEXTAREA' } })).toBeNull();
   });
 });
 
@@ -143,4 +143,48 @@ describe('help and messages', () => {
   it('uses no em or en dashes', () => {
     expect(JSON.stringify(SHORTCUT_MESSAGES)).not.toMatch(new RegExp(String.fromCharCode(91, 0x2013, 0x2014, 93)));
   });
+});
+
+
+it('ignores handled and composing events including IME Escape and 229 Enter', () => {
+  for (const event of [
+    { key: 'Escape', isComposing: true }, { key: 'Enter', keyCode: 229 },
+    { key: '/', defaultPrevented: true },
+    ...['Process', 'Dead', 'Unidentified'].map(key => ({ key })),
+  ]) expect(resolveShortcut(event, { rowFocused: true })).toBeNull();
+});
+
+it('inspects the complete path for shadow inputs, custom controls and editable roles', () => {
+  for (const target of [
+    { tagName: 'INPUT', type: 'date' }, { tagName: 'UI5-INPUT' },
+    ...['textbox', 'combobox', 'searchbox', 'spinbutton'].map(role => ({ tagName: 'DIV', role })),
+    ...['', 'true', 'plaintext-only'].map(contentEditable => ({ tagName: 'DIV', contentEditable })),
+  ]) {
+    for (const key of ['/', 'Enter', 'Escape', 'a', '1']) {
+      expect(resolveShortcut({ key, target })).toBeNull();
+      expect(resolveShortcut({ key, target: { tagName: 'SPAN' }, composedPath: () => [{ tagName: 'SPAN' }, target] })).toBeNull();
+    }
+  }
+  for (const type of ['range', 'color', 'file']) expect(isTextEntryTarget({ tagName: 'INPUT', type })).toBe(false);
+});
+
+it('requires a focused row and preserves native activation on buttons and links', () => {
+  expect(resolveShortcut({ key: 'Enter' })).toBeNull();
+  for (const target of [{ tagName: 'TR' }, { role: 'row' }]) expect(resolveShortcut({ key: 'Enter', target })).toEqual({ type: 'open-details' });
+  expect(resolveShortcut({ key: 'Enter', target: { tagName: 'SPAN' }, composedPath: () => [{ role: 'row' }] })).toEqual({ type: 'open-details' });
+  for (const tagName of ['BUTTON', 'A', 'INPUT', 'SELECT', 'TEXTAREA']) {
+    expect(resolveShortcut({ key: 'Enter', target: { tagName }, composedPath: () => [{ role: 'row' }] }, { rowFocused: true })).toBeNull();
+    expect(resolveShortcut({ key: 'Enter', target: { tagName }, composedPath: () => [{ role: 'dialog' }] })).toBeNull();
+  }
+});
+
+it('accepts AltGr slash on ABNT2 while rejecting command modifiers', () => {
+  expect(resolveShortcut({ key: '/', ctrlKey: true, altKey: true, getModifierState: key => key === 'AltGraph' })).toEqual({ type: 'focus-search' });
+  expect(resolveShortcut({ key: '/', ctrlKey: true, altKey: true, getModifierState: () => false })).toBeNull();
+});
+
+it('does not mistake a lone command modifier for the ctrl+alt AltGr pair', () => {
+  for (const modifiers of [{ ctrlKey: true }, { altKey: true }, { metaKey: true }]) {
+    expect(resolveShortcut({ key: '/', ...modifiers, getModifierState: () => true })).toBeNull();
+  }
 });

@@ -54,7 +54,7 @@ A salesperson in a shop spreads out samples so you can compare them side by side
 - **Release scope.** v1 has 3 libraries, v2 adds 3 more (6 in total), and the rest stay in a backlog. Adding a library later is cheap because each one is a separate app over the shared core. See [Libraries](#libraries).
 - **Theme and density.** The shell has light/dark and compact/comfortable toggles plus presets. Each library maps them to its own theming. Where density is not supported, the toggle shows it as unavailable.
 - **Guided tour.** v1 is linear and neutral: one step per screen, a short note on what to look for, defined as shared data.
-- **Languages.** English (`en`) and Brazilian Portuguese (`pt-BR`). The default follows the browser language, with English as the fallback. Typed dictionaries live in the core. Mock data text is stored as translation keys plus parameters, and identifiers (batch IDs, tag names) stay untranslated. Numbers and dates use `Intl`, units are never translated, and the plant time zone is `America/Sao_Paulo`.
+- **Languages.** English (`en`) and Brazilian Portuguese (`pt-BR`). The default follows the browser language, with English as the fallback. Every English variant uses en-US formats: dates are MM/DD/YYYY and time uses a 24 hour clock. Typed dictionaries live in the core. Mock data text is stored as translation keys plus parameters, and identifiers (batch IDs, tag names) stay untranslated. Numbers and dates use `Intl`, units are never translated, and the plant time zone is `America/Sao_Paulo`.
 - **Preferences.** Language, theme and density persist in `localStorage`, shared across the apps on the same origin.
 - **Docs language.** `README.md`, `GLOSSARY.md` and `docs/` stay in English. Only the product UI is bilingual.
 

@@ -1,3 +1,4 @@
+import { LOCALES } from '../screens';
 import { resolveLocale } from './translate';
 import type { Locale } from './types';
 
@@ -25,7 +26,7 @@ export function loadPreferences(storage: StorageLike | undefined, languages: rea
     if (value === null || typeof value !== 'object' || Array.isArray(value)) return defaults;
     const prefs = value as Record<string, unknown>;
     return {
-      language: prefs.language === 'en' || prefs.language === 'pt-BR' ? prefs.language : defaults.language,
+      language: LOCALES.some(locale => locale === prefs.language) ? prefs.language as Locale : defaults.language,
       theme: prefs.theme === 'light' || prefs.theme === 'dark' ? prefs.theme : defaults.theme,
       density: prefs.density === 'comfortable' || prefs.density === 'compact' ? prefs.density : defaults.density,
     };

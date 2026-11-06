@@ -71,3 +71,29 @@ describe('duration formatting', () => {
     expect(formatDuration(seconds)).toBe(expected);
   });
 });
+
+it('caches Intl instances by locale and options', async () => {
+  vi.resetModules();
+  const number = vi.spyOn(Intl, 'NumberFormat');
+  const date = vi.spyOn(Intl, 'DateTimeFormat');
+  try {
+    const fresh = await import('./format');
+    for (let i = 0; i < 3; i++) {
+      fresh.formatNumber('en', i);
+      fresh.formatNumber('en', i, { decimals: 2 });
+      fresh.formatNumber('pt-BR', i);
+      fresh.formatDate('en', 0);
+      fresh.formatTime('en', 0);
+      fresh.formatTime('pt-BR', 0, { seconds: true });
+    }
+    expect(number).toHaveBeenCalledTimes(3);
+    expect(date).toHaveBeenCalledTimes(3);
+  } finally { number.mockRestore(); date.mockRestore(); }
+});
+
+it('formats caller percentages on the 0 to 100 scale', async () => {
+  const { formatPercentValue } = await import('./format');
+  expect(formatPercentValue('en', 62.1)).toBe('62.1%');
+  expect(formatPercentValue('pt-BR', 62.1)).toBe('62,1%');
+  expect(formatPercentValue('en', NaN)).toBe('-');
+});

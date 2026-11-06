@@ -2,11 +2,13 @@ import type { TextRef } from '../mock/types';
 import { en, ptBR, type MessageKey } from './messages';
 import type { Locale, MessageParams } from './types';
 
-export function resolveLocale(languages: readonly string[]): Locale {
+/** Every English variant uses en-US dates (MM/DD/YYYY) and a 24 hour clock. */
+export function resolveLocale(languages: readonly unknown[]): Locale {
   for (const language of languages) {
+    if (typeof language !== 'string') continue;
     const lower = language.toLowerCase();
-    if (lower.startsWith('pt')) return 'pt-BR';
-    if (lower.startsWith('en')) return 'en';
+    if (/^pt(?:-|$)/.test(lower)) return 'pt-BR';
+    if (/^en(?:-|$)/.test(lower)) return 'en';
   }
   return 'en';
 }

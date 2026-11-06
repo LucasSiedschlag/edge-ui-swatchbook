@@ -1,13 +1,13 @@
+import type { ScreenId } from '../screens';
 import type { AlarmPriority, AlarmState, AreaId, BatchStatus, DowntimeReason, EventAction, EventTargetKind, LineType, LinkStatus, MachineKind, RecipeStatus, Role, ShiftId, StepKind } from '../mock/types';
 import type { LineStatus, PlantErrorCode, StopReason } from '../plant/types';
 import type { TagStatus } from '../sim/tags';
 import type { Scope } from '../views/performance';
 import type { RangeId } from '../views/ranges';
-import type { TrendWindowId } from '../views/trend';
+import type { TrendWindowId, TrendView } from '../views/trend';
+import type { RuleId, RuleResult, ViolationKind } from '../plant/rules';
 import type { MessageKey } from './messages';
 
-// Screen ids are checked against the root SCREENS constant in the type tests.
-type ScreenId = 'deck' | 'recipes' | 'ledger' | 'performance' | 'parameters' | 'control';
 
 export const areaLabels: Record<AreaId, MessageKey> = {
   "extrusion": "area.extrusion",
@@ -206,3 +206,36 @@ export const eventTargetLabels: Record<EventTargetKind, MessageKey> = {
   "shift": "event-target.shift",
 };
 
+
+export const trendErrorLabels: Record<Extract<TrendView, { error: string }>['error'], MessageKey> = {
+  'trend-limit': 'trend-error.trend-limit', 'unknown-tag': 'trend-error.unknown-tag',
+  'duplicate-tag': 'trend-error.duplicate-tag', 'trend-units': 'trend-error.trend-units',
+};
+
+export const dependencyRuleLabels: Record<RuleId, MessageKey> = {
+  1: 'dependency-rule.barrel-temperature-window', 2: 'dependency-rule.die-pressure-limit',
+  3: 'dependency-rule.weld-window', 4: 'dependency-rule.takt-limit',
+};
+export const ruleStatusLabels: Record<RuleResult['status'], MessageKey> = {
+  pass: 'rule-status.pass', fail: 'rule-status.fail', 'not-applicable': 'rule-status.not-applicable',
+};
+export const violationLabels: Record<ViolationKind, MessageKey> = {
+  'below-min': 'violation.below-min', 'above-max': 'violation.above-max',
+  'adjacent-too-far': 'violation.adjacent-too-far', missing: 'violation.missing',
+};
+
+export const actionLabels: Record<EventAction, MessageKey> = {
+  'alarm-acknowledge': 'action.alarm-acknowledge', 'setpoint-override': 'action.setpoint-override',
+  pause: 'action.pause', resume: 'action.resume', 'emergency-stop': 'action.emergency-stop', reset: 'action.reset',
+  'shift-handover': 'action.shift-handover', 'reset-to-recipe': 'action.reset-to-recipe',
+  'recipe-new-draft': 'action.recipe-new-draft', 'recipe-save': 'action.recipe-save',
+  'recipe-approve': 'action.recipe-approve', 'recipe-discard': 'action.recipe-discard',
+};
+
+/** Only these actions carry translated enumeration values in the Event Log. */
+export function eventValueLabelKey(action: EventAction, value: unknown): MessageKey | null {
+  const mapping = action === 'alarm-acknowledge' ? alarmStateLabels
+    : action === 'shift-handover' ? shiftLabels : action === 'recipe-approve' ? recipeStatusLabels : null;
+  if (!mapping || typeof value !== 'string' || !Object.hasOwn(mapping, value)) return null;
+  return (mapping as Record<string, MessageKey>)[value] ?? null;
+}

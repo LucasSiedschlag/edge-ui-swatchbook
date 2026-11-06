@@ -14,7 +14,7 @@ export interface ChartInput<Data, Labels, Formatters> {
 }
 
 /** Numeric coordinates may be epoch milliseconds or caller-defined ticks. */
-export type LineTrendPoint = ({ time: number; tick?: never } | { tick: number; time?: never }) & { value: number; status: string };
+export type LineTrendPoint = ({ time: number; tick?: never } | { tick: number; time?: never }) & { value: number | null; status: string; setpoint?: number };
 export interface LineTrendSeries {
   id: string;
   name: string;
@@ -25,6 +25,7 @@ export interface LineTrendSeries {
   setpoint?: number;
 }
 export interface LineTrendLabels extends ChartLabels {
+  unsupported: string;
   series: string; time: string; value: string; status: string;
   minimum: string; maximum: string; setpoint: string;
 }
@@ -37,7 +38,7 @@ export type LineTrendInput = ChartInput<LineTrendSeries, LineTrendLabels, LineTr
 
 export function pointTime(point: LineTrendPoint): number { return point.time ?? point.tick; }
 
-export interface ParetoRow { reason: string; minutes: number }
+export interface ParetoRow { reason: string; minutes: number; sharePct: number; cumulativePct: number }
 export interface ParetoLabels extends ChartLabels { reason: string; minutes: string; share: string; cumulative: string }
 export interface ParetoFormatters {
   formatReason: (reason: string) => string;
@@ -52,12 +53,11 @@ export interface OutputLabels extends ChartLabels { bucket: string; value: strin
 export interface OutputFormatters { formatBucket: (start: number) => string; formatValue: (value: number) => string }
 export type OutputInput = ChartInput<OutputBucket, OutputLabels, OutputFormatters>;
 
-/** Keep the chart and accessible table on the same percentages, including zero totals. */
-export function paretoPercentages(data: readonly ParetoRow[]): { share: number; cumulative: number }[] {
-  const total = data.reduce((sum, row) => sum + row.minutes, 0);
-  let sum = 0;
-  return data.map((row, index) => {
-    sum += row.minutes;
-    return { share: total ? row.minutes / total * 100 : 0, cumulative: total ? (index === data.length - 1 ? 100 : sum / total * 100) : 0 };
-  });
+/** Never pass absent readings through Number(), which would turn null into zero. */
+export function formatChartValue(value: unknown, format: (value: number) => string): string {
+  return typeof value === 'number' && Number.isFinite(value) ? format(value) : '-';
+}
+
+export function unsupportedTrend(data: LineTrendInput['data']): boolean {
+  return data.length > 4 || new Set(data.map(series => series.unit)).size > 2;
 }

@@ -33,3 +33,9 @@ describe('translation', () => {
     }
   });
 });
+
+it('matches complete language prefixes and ignores malformed entries', () => {
+  expect(resolveLocale(['ptx', 'en'])).toBe('en');
+  expect(resolveLocale([undefined, null, 42, {}, 'PT-br'])).toBe('pt-BR');
+  expect(resolveLocale(['en-GB'])).toBe('en');
+});

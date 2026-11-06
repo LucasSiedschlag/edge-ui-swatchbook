@@ -10,9 +10,9 @@ it('exports the complete public wrapper API', () => {
   }
 });
 
-it('keeps supplied limits and setpoints inside each unit axis, including zero', () => {
+it('keeps supplied limits and setpoints inside each unit axis, with padding', () => {
   const option = buildLineTrendOption({ ...trendInput, data: [{ ...trendInput.data[0]!, min: 0, max: 30, setpoint: 40 }] });
-  expect(option.yAxis).toMatchObject([{ min: 0, max: 40 }]);
+  expect(option.yAxis).toMatchObject([{ min: -2, max: 42, scale: true }]);
   expect(option.series).toMatchObject([{ markLine: { data: [{ yAxis: 0 }, { yAxis: 30 }, { yAxis: 40 }] } }]);
 });
 
@@ -42,7 +42,7 @@ it('gets every explicit color and font from the supplied Library tokens, includi
 
 it('builds four 180-point series and 1000 Pareto bars well below 20 ms', () => {
   const trend = { ...trendInput, data: Array.from({ length: 4 }, (_, index) => ({ ...trendInput.data[0]!, id: `tag${index}`, points: Array.from({ length: 180 }, (_, tick) => ({ tick, value: tick + index, status: 'normal' })) })) };
-  const pareto = { ...paretoInput, data: Array.from({ length: 1000 }, (_, i) => ({ reason: `reason${i}`, minutes: 1000 - i })) };
+  const pareto = { ...paretoInput, data: Array.from({ length: 1000 }, (_, i) => ({ reason: `reason${i}`, minutes: 1000 - i, sharePct: 0.1, cumulativePct: (i + 1) / 10 })) };
   buildLineTrendOption(trend);
   buildParetoOption(pareto);
   const start = performance.now();

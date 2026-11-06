@@ -66,3 +66,17 @@ it('renders explicit caller-labelled empty states and empty accessible tables', 
     expect(tableRows(markup)).toEqual([]);
   }
 });
+
+
+it('renders an explicit unsupported trend state without throwing', () => {
+  const data = ['°C', 'bar', 'rpm'].map((unit, index) => ({ ...trendInput.data[0]!, id: String(index), unit }));
+  const markup = renderToStaticMarkup(<LineTrendChart {...trendInput} data={data} labels={{ ...trendInput.labels, unsupported: 'Unsupported units' }} testId="trend" height={200} />);
+  expect(markup).toContain('Unsupported units');
+  expect(markup).toContain('data-empty="true"');
+});
+
+it('keeps point setpoints and missing values in the accessible table', () => {
+  const data = [{ ...trendInput.data[0]!, points: [null, NaN, Infinity].map((value, tick) => ({ tick, value, status: 'stale', setpoint: 20 + tick })) }];
+  const markup = renderToStaticMarkup(<LineTrendChart {...trendInput} data={data} testId="trend" height={200} />);
+  expect(tableRows(markup).map(row => [row[2], row[6]])).toEqual([['-', '20 °C'], ['-', '21 °C'], ['-', '22 °C']]);
+});
