@@ -87,6 +87,47 @@ function modelOf(active: ActiveBatch, rate: number, line: LineId, overlay?: Over
   };
 }
 
+/** The shared live hour calculation. A partial hour plans only its elapsed minutes, rounded to whole minutes. */
+function readHour(d: MockDataset, lineId: LineId, m: ReturnType<typeof modelOf> | null, from: number, to: number, overlay?: Overlay): HourlyRecord {
+  const plannedMin = Math.round((to - from) / 60);
+  const runMin = m ? Math.round(m.makingTicks(from, to) / 60) : 0;
+  const ran = runTicksOf(overlay, lineId, from, to);
+  // Keep rounding inside the minute budget: Pauses are minor stops, and time with nothing to run is changeover.
+  const pausedMin = Math.max(0, Math.min(Math.round((to - from - ran) / 60), plannedMin - runMin));
+  const changeoverMin = plannedMin - runMin - pausedMin;
+  const downtime: HourlyRecord['downtime'] = [];
+  if (pausedMin > 0) downtime.push({ reason: 'minor-stops', minutes: pausedMin });
+  if (changeoverMin > 0) downtime.push({ reason: 'changeover', minutes: changeoverMin });
+  const made = m ? m.unitsAt(to) - m.unitsAt(from) : 0;
+  const scrap = m ? m.scrapOf(m.unitsAt(to)) - m.scrapOf(m.unitsAt(from)) : 0;
+  return {
+    hourStart: d.now + from * 1000, lineId, plannedMin, runMin, downtime,
+    targetUnits: Math.round(made / EFFICIENCY), goodUnits: made - scrap, scrapUnits: scrap,
+  };
+}
+
+/** A live Shift sums the same hour records that Screen 4 reads. */
+function readShift(d: MockDataset, lineId: LineId, m: ReturnType<typeof modelOf> | null, from: number, to: number, overlay?: Overlay) {
+  let runMin = 0;
+  let goodUnits = 0;
+  let scrapUnits = 0;
+  let targetUnits = 0;
+  const downtime: HourlyRecord['downtime'] = [];
+  for (let start = from; start < to; start += 3600) {
+    const h = readHour(d, lineId, m, start, Math.min(to, start + 3600), overlay);
+    runMin += h.runMin;
+    goodUnits += h.goodUnits;
+    scrapUnits += h.scrapUnits;
+    targetUnits += h.targetUnits;
+    for (const x of h.downtime) {
+      const existing = downtime.find((d) => d.reason === x.reason);
+      if (existing) existing.minutes += x.minutes;
+      else downtime.push({ ...x });
+    }
+  }
+  return { runMin, goodUnits, scrapUnits, targetUnits, downtime };
+}
+
 const SPEED_TAG: Partial<Record<LineId, string>> = {
   E1: 'E1-puller.puller-speed',
   E2: 'E2-puller.puller-speed',
@@ -120,22 +161,16 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
     const elapsed = tick - shiftStart;
     const ran = runTicksOf(overlay, line.id, shiftStart, tick);
     const makingTicks = m ? m.makingTicks(shiftStart, tick) : 0;
-    // Lost time this Shift: Pauses and stops are minor stops, the rest (no Batch to run) is changeover.
-    const elapsedMin = Math.round(elapsed / 60);
-    const runMin = Math.round(makingTicks / 60);
-    const pausedMin = Math.max(0, Math.min(Math.round((elapsed - ran) / 60), elapsedMin - runMin));
-    const changeoverMin = Math.max(0, elapsedMin - runMin - pausedMin);
-    const shiftDowntime: { reason: DowntimeReason; minutes: number }[] = [];
-    if (pausedMin > 0) shiftDowntime.push({ reason: 'minor-stops', minutes: pausedMin });
-    if (changeoverMin > 0) shiftDowntime.push({ reason: 'changeover', minutes: changeoverMin });
+    const totals = readShift(d, line.id, m, shiftStart, tick, overlay);
+    const shiftDowntime = totals.downtime;
 
     if (!active || !m) {
       return { ...base, batch: null, outputThisShift: 0, scrapThisShift: 0, shiftGoodUnits: 0, shiftTargetUnits: 0, shiftRunMin: 0, shiftDowntime, availability: 0, performance: 0, quality: 0, oee: 0 };
     }
     const produced = m.unitsAt(tick);
-    const output = produced - m.unitsAt(shiftStart);
-    const scrap = m.scrapOf(produced) - m.scrapOf(m.unitsAt(shiftStart));
-    const target = Math.round(output / EFFICIENCY);
+    const output = totals.goodUnits + totals.scrapUnits;
+    const scrap = totals.scrapUnits;
+    const target = totals.targetUnits;
 
     // The first half hour of a Shift starts from the history baseline and moves to the live numbers.
     const b = baselineOf(d, line.id);
@@ -166,7 +201,7 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
       scrapThisShift: scrap,
       shiftGoodUnits: output - scrap,
       shiftTargetUnits: target,
-      shiftRunMin: runMin,
+      shiftRunMin: totals.runMin,
       shiftDowntime,
       availability,
       performance,
@@ -176,24 +211,19 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
   });
 }
 
-/** One record per Line for every hour started since load, shaped like the history records so Screen 4 can merge them. */
+/** One record per Line for every hour started since load. Partial hours plan elapsed minutes, rounded to whole minutes. */
 export function readHours(d: MockDataset, tick: number, overlay?: Overlay): HourlyRecord[] {
   const out: HourlyRecord[] = [];
+  const models = new Map(d.lines.map((line) => {
+    const active = d.activeBatches.find((b) => b.lineId === line.id);
+    return [line.id, active ? modelOf(active, IDEAL_UNITS_PER_MIN[line.type] as number, line.id, overlay) : null];
+  }));
   const hours = Math.ceil(tick / 3600);
   for (let h = 0; h < hours; h++) {
     const from = h * 3600;
     const to = Math.min(tick, from + 3600);
     for (const line of d.lines) {
-      const active = d.activeBatches.find((b) => b.lineId === line.id);
-      const base = { hourStart: d.now + from * 1000, lineId: line.id };
-      if (!active) {
-        out.push({ ...base, runMin: 0, targetUnits: 0, goodUnits: 0, scrapUnits: 0 });
-        continue;
-      }
-      const m = modelOf(active, IDEAL_UNITS_PER_MIN[line.type] as number, line.id, overlay);
-      const made = m.unitsAt(to) - m.unitsAt(from);
-      const scrap = m.scrapOf(m.unitsAt(to)) - m.scrapOf(m.unitsAt(from));
-      out.push({ ...base, runMin: Math.round(m.makingTicks(from, to) / 60), targetUnits: Math.round(made / EFFICIENCY), goodUnits: made - scrap, scrapUnits: scrap });
+      out.push(readHour(d, line.id, models.get(line.id) ?? null, from, to, overlay));
     }
   }
   return out;
