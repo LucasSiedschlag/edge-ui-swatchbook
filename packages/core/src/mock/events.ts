@@ -65,10 +65,10 @@ export function generateEvents(
     add('alarm-acknowledge', 'alarm', a.acknowledgedBy, a.id, a.acknowledgedAt, afterReturn ? 'returned-unacknowledged' : 'active-unacknowledged', afterReturn ? 'cleared' : 'active-acknowledged');
   }
 
-  // A handover at every Shift change, recorded on the Shift that starts.
-  for (let k = 0; k < HISTORY_DAYS * 3; k++) {
+  // A handover at every Shift change inside the window, recorded on the Shift that ends, as a handover made in the session is.
+  for (let k = 1; k < HISTORY_DAYS * 3; k++) {
     const at = WINDOW_START + k * 8 * HOUR;
-    add('shift-handover', 'shift', rng.pick(operators).id, `${spDate(at)}/${shiftAt(at)}`, at, shiftAt(at - 1), shiftAt(at), { key: `note.handover.${rng.pick(HANDOVER_NOTES)}` });
+    add('shift-handover', 'shift', rng.pick(operators).id, `${spDate(at - 8 * HOUR)}/${shiftAt(at - 8 * HOUR)}`, at, shiftAt(at - 1), shiftAt(at), { key: `note.handover.${rng.pick(HANDOVER_NOTES)}` });
   }
 
   // Pauses and Emergency stops sit inside gaps between Batches, never on top of a run, and always end with the Line running again.
@@ -112,9 +112,13 @@ export function generateEvents(
   for (const at of times) {
     const t = rng.pick(candidates);
     const old = current.get(t.id) ?? t.setpoint;
-    let next = Math.round((old + (t.max - t.min) * rng.float(0.02, 0.1) * (rng.chance(0.5) ? 1 : -1)) * 100) / 100;
-    next = Math.min(t.max, Math.max(t.min, next));
-    if (next === old) next = Math.round((old === t.min ? t.min + (t.max - t.min) * 0.05 : t.min) * 100) / 100;
+    // Stay 3 percent of the range away from both limits, more than the 2 percent the Simulator drifts a Tag by.
+    const range = t.max - t.min;
+    const low = Math.ceil((t.min + range * 0.03) * 100) / 100;
+    const high = Math.floor((t.max - range * 0.03) * 100) / 100;
+    let next = Math.round((old + range * rng.float(0.02, 0.1) * (rng.chance(0.5) ? 1 : -1)) * 100) / 100;
+    next = Math.min(high, Math.max(low, next));
+    if (next === old) next = old === low ? high : low;
     current.set(t.id, next);
     add('setpoint-override', 'tag', rng.pick(technicians).id, t.id, at, old, next, { key: `note.override-reason.${rng.pick(OVERRIDE_REASONS)}` });
   }

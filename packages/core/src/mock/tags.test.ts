@@ -75,3 +75,18 @@ describe('tags', () => {
     for (const t of coil) expect(t.parameterKey).toBe('coil-tension');
   });
 });
+
+describe('tag setpoints and the normal drift', () => {
+  // The Simulator drifts a Tag by up to 2 percent of its range. A seeded Setpoint Override must therefore leave at least
+  // 3 percent of the range to each limit, or the Tag would leave its limits with no Alarm to explain it.
+  it.each([1, 2, 3, 436, 20260101])('keeps every overridden Tag well inside its limits (seed %i)', (seed) => {
+    const data = generateMockDataset(seed);
+    const overridden = new Set(data.events.filter((e) => e.action === 'setpoint-override').map((e) => e.target));
+    expect(overridden.size).toBeGreaterThan(0);
+    for (const t of data.tags.filter((x) => overridden.has(x.id))) {
+      const margin = (t.max - t.min) * 0.03;
+      expect(t.setpoint).toBeGreaterThanOrEqual(t.min + margin);
+      expect(t.setpoint).toBeLessThanOrEqual(t.max - margin);
+    }
+  });
+});
