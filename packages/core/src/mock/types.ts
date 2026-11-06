@@ -173,7 +173,10 @@ export interface HourlyRecord {
   /** Start of the hour, epoch ms. */
   hourStart: Timestamp;
   lineId: LineId;
+  /** History is 60 minutes; live partial hours use elapsed minutes rounded to the nearest minute. */
+  plannedMin: number;
   runMin: number;
+  downtime: { reason: DowntimeReason; minutes: number }[];
   targetUnits: number;
   goodUnits: number;
   scrapUnits: number;
@@ -210,6 +213,6 @@ export interface MockDataset {
   alarms: Alarm[];
   events: EventLogEntry[];
   shiftHistory: ShiftRecord[];
-  /** Last 7 days, by hour. */
+  /** All 90 days, ordered by hour then Line order. Shift history sums these records. */
   hourlyOutput: HourlyRecord[];
 }

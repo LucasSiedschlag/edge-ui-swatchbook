@@ -1,4 +1,5 @@
 import type { LineId, MockDataset } from '../mock/types';
+import { validateDataset } from './validate';
 import { validateVersion } from './validation';
 import { contextOf } from '../sim/context';
 import type { Overlay } from '../sim/overlay';
@@ -37,6 +38,7 @@ export function buildOverlay(
 
 /** The state at load. Plant State resets on reload, so this is the only way to get one. */
 export function createPlantState(d: MockDataset): PlantState {
+  validateDataset(d);
   const versions: Record<string, number> = {}, steps: Record<string, number> = {};
   for (const version of d.recipeVersions) {
     const lineType = d.recipes.find(r => r.id === version.recipeId)!.lineType;
