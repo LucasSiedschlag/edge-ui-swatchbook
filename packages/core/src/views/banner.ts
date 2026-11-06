@@ -1,3 +1,4 @@
+import { assertSessionTick } from '../sim/context';
 import type { LineId, TextRef } from '../mock/types';
 import { criticalAlarms } from '../plant';
 import type { PlantState } from '../plant';
@@ -14,6 +15,7 @@ export interface BannerRow {
  * shows `count` and can expand only when there is something to list. Rows are oldest first, like the Alarm list.
  */
 export function criticalBannerView(state: PlantState, tick: number, lineId: LineId): { count: number; expandable: boolean; rows: BannerRow[] } {
+  assertSessionTick(tick);
   const rows = criticalAlarms(state, lineId, tick)
     .map((a) => ({ alarmId: a.id, machineId: a.machineId, message: a.message, ageSeconds: a.age, raisedAt: a.raisedAt }))
     .sort((a, b) => a.raisedAt - b.raisedAt || (a.alarmId < b.alarmId ? -1 : 1))

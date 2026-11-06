@@ -1,3 +1,4 @@
+import { assertSessionTick } from '../sim/context';
 import type { AlarmPriority, AlarmState, AreaId, LineId, TextRef, Timestamp } from '../mock/types';
 import { alarmList } from '../plant';
 import type { PlantState } from '../plant';
@@ -34,6 +35,7 @@ const DEFAULT_STATES: AlarmState[] = ['active-unacknowledged', 'active-acknowled
  * then id. Cleared Alarms are hidden unless `states` asks for them. Filters combine with AND.
  */
 export function alarmListView(state: PlantState, tick: number, filters: AlarmFilters = {}): { rows: AlarmRow[]; empty: boolean } {
+  assertSessionTick(tick);
   const now = simulatedTime(tick);
   const states = filters.states ?? DEFAULT_STATES;
   const areaOfLine = new Map(state.dataset.lines.map((l) => [l.id, l.areaId]));

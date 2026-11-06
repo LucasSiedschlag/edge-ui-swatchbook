@@ -82,3 +82,9 @@ export const MAX_TICK = 7 * 86400;
 export function assertTick(tick: number): void {
   if (!Number.isSafeInteger(tick) || tick > MAX_TICK) throw new Error(`tick must be a safe integer at or below ${MAX_TICK}, got ${tick}`);
 }
+
+/** Screen selectors operate after load; Tag series alone can read negative history ticks. */
+export function assertSessionTick(tick: number): void {
+  assertTick(tick);
+  if (tick < 0) throw new Error('tick must be 0 or more');
+}

@@ -5,7 +5,7 @@ import { simulatedTime } from './clock';
 export interface MachineLink {
   machineId: string;
   status: LinkStatus;
-  latencyMs: number;
+  latencyMs: number | null;
   packetLossPct: number;
   lastSeenAt: Timestamp;
   errorCount: number;
@@ -24,7 +24,7 @@ export function readLinks(machines: Machine[], tick: number): MachineLink[] {
     const key = hash(m.id);
     const c = m.comms;
     if (c.status === 'offline') {
-      return { machineId: m.id, status: 'offline', latencyMs: 0, packetLossPct: 100, lastSeenAt: c.lastHeartbeatAt, errorCount: c.errorCount };
+      return { machineId: m.id, status: 'offline', latencyMs: null, packetLossPct: 100, lastSeenAt: c.lastHeartbeatAt, errorCount: c.errorCount };
     }
     // Each link starts at the numbers in the Mock Dataset and wanders from there.
     const drift = smooth(key, tick, 90) - smooth(key, 0, 90);

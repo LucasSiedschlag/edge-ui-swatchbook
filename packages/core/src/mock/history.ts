@@ -121,17 +121,25 @@ export function generateHistory(rng: Rng, lines: Line[], batches: Batch[], activ
     hourBuckets.set(line.id, buckets);
   }
 
+  // Only the final idle tail has no next Batch. Gaps between Batches keep their Line-type reasons.
+  const idleSince = new Map(lines.filter((line) => !active.some((b) => b.lineId === line.id))
+    .map((line) => [line.id, Math.max(-Infinity, ...batches.filter((b) => b.lineId === line.id).map((b) => b.end))]));
   const hourlyOutput: HourlyRecord[] = [];
   for (let k = 0; k < hourCount; k++) {
     for (const line of lines) {
       const b = (hourBuckets.get(line.id) as Bucket[])[k] as Bucket;
       const runMin = Math.min(60, Math.round(b.runMs / MINUTE));
+      const hourStart = hourOrigin + k * HOUR;
+      const tailStart = idleSince.get(line.id);
+      // Draw the usual allocation first so the seed keeps other Lines and earlier gaps unchanged.
+      const downtime = allocateDowntime(rng, line.type, 60 - runMin);
+      const idleTail = tailStart !== undefined && hourStart + HOUR > tailStart;
       hourlyOutput.push({
-        hourStart: hourOrigin + k * HOUR,
+        hourStart,
         lineId: line.id,
         plannedMin: 60,
         runMin,
-        downtime: allocateDowntime(rng, line.type, 60 - runMin),
+        downtime: idleTail && runMin < 60 ? [{ reason: 'changeover', minutes: 60 - runMin }] : downtime,
         targetUnits: b.target,
         goodUnits: b.good,
         scrapUnits: b.scrap,

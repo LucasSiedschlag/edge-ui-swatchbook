@@ -25,10 +25,10 @@ const entry = (id: string, at: number): EventLogEntry => ({
 });
 
 describe('eventLogView', () => {
-  it('lists newest first, ties by id descending', () => {
+  it('lists newest first, ties by later insertion', () => {
     const now = simulatedTime(0);
     const s = withEvents([entry('EV-0001', now - 10), entry('EV-0003', now - 5), entry('EV-0002', now - 5)]);
-    expect(eventLogView(s, 0).rows.map((r) => r.id)).toEqual(['EV-0003', 'EV-0002', 'EV-0001']);
+    expect(eventLogView(s, 0).rows.map((r) => r.id)).toEqual(['EV-0002', 'EV-0003', 'EV-0001']);
   });
 
   it('shows the whole dataset log with the User name and Role', () => {
@@ -130,3 +130,13 @@ describe('eventLogView', () => {
     expect(JSON.stringify(s.events)).toBe(before);
   });
 });
+
+it('orders EV-9999, EV-10000 and EV-10001 by insertion after real actions', () => {
+  let state = start();
+  while (state.ids.events < 9998) {
+    state = ok(state, { type: state.controls.E2.paused ? 'resume' : 'pause', lineId: 'E2' }, 0);
+  }
+  for (const note of ['first', 'second', 'third']) state = ok(state, { type: 'shift-handover', note }, 0);
+  expect(eventLogView(state, 0, { actions: ['shift-handover'], range: 'last-7d' }).rows.slice(0, 3).map((row) => [row.id, row.note]))
+    .toEqual([['EV-10001', 'third'], ['EV-10000', 'second'], ['EV-9999', 'first']]);
+}, 20000);

@@ -1,8 +1,8 @@
-import { HOUR, shiftAt, spDate } from '../mock/time';
+import { HOUR, shiftAt, spDate, spHour } from '../mock/time';
 import type { AreaId, DowntimeReason, HourlyRecord, LineId, MockDataset, ShiftId } from '../mock/types';
-import { shiftInfo } from '../sim/clock';
+import { shiftInfo, simulatedTime } from '../sim/clock';
 
-import { type RangeId, rangeWindow } from './ranges';
+import { type RangeId, performanceWindow } from './ranges';
 export type { RangeId } from './ranges';
 export type Scope = { kind: 'site' } | { kind: 'area'; areaId: AreaId } | { kind: 'line'; lineId: LineId };
 
@@ -10,7 +10,7 @@ export interface OeeParts {
   value: number;
   availability: number;
   performance: number;
-  quality: number;
+  quality: number | null;
 }
 
 export interface ParetoRow {
@@ -22,6 +22,8 @@ export interface ParetoRow {
 
 export interface OutputBucket {
   start: number;
+  date: string;
+  hour: number;
   targetUnits: number;
   goodUnits: number;
   scrapUnits: number;
@@ -42,7 +44,7 @@ export interface PerformanceShift {
 }
 
 export interface PerformanceView {
-  oee: OeeParts & { previous: OeeParts; change: OeeParts };
+  oee: (OeeParts & { previous: OeeParts | null; change: OeeParts | null }) | null;
   pareto: ParetoRow[];
   output: OutputBucket[];
   shifts: PerformanceShift[];
@@ -59,6 +61,7 @@ interface Totals {
 
 const SHIFT = 8 * HOUR;
 const round3 = (x: number) => Math.round(x * 1000) / 1000;
+const hasProduction = (t: Totals) => t.runMin > 0 || t.goodUnits > 0 || t.scrapUnits > 0;
 const totals = (): Totals => ({ plannedMin: 0, runMin: 0, targetUnits: 0, goodUnits: 0, scrapUnits: 0 });
 
 function add(to: Totals, h: HourlyRecord): void {
@@ -71,12 +74,11 @@ function add(to: Totals, h: HourlyRecord): void {
 
 function oee(t: Totals): OeeParts {
   const made = t.goodUnits + t.scrapUnits;
-  const availability = t.plannedMin ? t.runMin / t.plannedMin : 0;
-  const performance = t.targetUnits ? made / t.targetUnits : 0;
-  const quality = made ? t.goodUnits / made : 0;
-  // Multiply the raw ratios so rounding the displayed parts does not change OEE.
-  return { value: round3(availability * performance * quality), availability: round3(availability),
-    performance: round3(performance), quality: round3(quality) };
+  const availability = round3(t.plannedMin ? t.runMin / t.plannedMin : 0);
+  const performance = round3(t.targetUnits ? made / t.targetUnits : 0);
+  const quality = made ? round3(t.goodUnits / made) : null;
+  // Use the displayed parts, matching LineLive. No units means quality has no value.
+  return { value: round3(availability * performance * (quality ?? 0)), availability, performance, quality };
 }
 
 function paretoOf(minutes: Map<DowntimeReason, number>): ParetoRow[] {
@@ -99,15 +101,14 @@ function paretoOf(minutes: Map<DowntimeReason, number>): ParetoRow[] {
 }
 
 /**
- * now = simulatedTime(tick). Last Shift is the eight hours before shiftInfo(tick).startsAt.
- * Other ranges contain 24, 168 or 720 hour slots ending with the current hour, including its real partial minutes.
- * The previous range is the same number of hour slots immediately before. Only supplied hourly records add minutes.
- * Day buckets use America/Sao_Paulo dates and start at their first included hour, allowing partial first and last days.
- * The last 30 completed Shifts depend on scope alone, with missing hours contributing zero production and minutes.
+ * All blocks sum the same hourly records. The previous window is adjacent and equal in length.
+ * Long ranges end at load; short ranges use the Event Log windows.
+ * Day buckets use America/Sao_Paulo dates, including partial boundary days.
  */
 export function performanceView(d: MockDataset, live: readonly HourlyRecord[], tick: number, scope: Scope, range: RangeId): PerformanceView {
-  const shiftEnd = shiftInfo(tick).startsAt;
-  const { start, end, hours } = rangeWindow(range, tick);
+  const { start, end, hours } = performanceWindow(range, tick);
+  const daily = range === 'last-7d' || range === 'last-30d';
+  const shiftEnd = daily ? simulatedTime(0) : shiftInfo(tick).startsAt;
   const previousStart = start - hours * HOUR;
   const lines = new Set(d.lines.filter((line) => scope.kind === 'site' ||
     (scope.kind === 'area' ? line.areaId === scope.areaId : line.id === scope.lineId)).map((line) => line.id));
@@ -117,14 +118,13 @@ export function performanceView(d: MockDataset, live: readonly HourlyRecord[], t
   const shiftTotals = Array.from({ length: 30 }, totals);
   const output: OutputBucket[] = [];
   const byHour = new Map<number, OutputBucket>();
-  const daily = range === 'last-7d' || range === 'last-30d';
   let date = '';
   let bucket: OutputBucket | undefined;
   // Empty slots preserve hour and local day boundaries, even at tick 0 or for an idle Line.
   for (let h = start; h < end; h += HOUR) {
     const nextDate = daily ? spDate(h) : '';
     if (!bucket || !daily || date !== nextDate) {
-      bucket = { start: h, targetUnits: 0, goodUnits: 0, scrapUnits: 0, ...(daily ? { hours: 0 } : {}) };
+      bucket = { start: h, date: spDate(h), hour: spHour(h), targetUnits: 0, goodUnits: 0, scrapUnits: 0, ...(daily ? { hours: 0 } : {}) };
       output.push(bucket);
       date = nextDate;
     }
@@ -152,29 +152,36 @@ export function performanceView(d: MockDataset, live: readonly HourlyRecord[], t
     out.scrapUnits += h.scrapUnits;
   }
 
-  const shifts: PerformanceShift[] = shiftTotals.map((t, i) => {
-    const startsAt = shiftEnd - (i + 1) * SHIFT;
-    return { date: spDate(startsAt), shift: shiftAt(startsAt), startsAt, oee: oee(t).value,
-      goodUnits: t.goodUnits, scrapUnits: t.scrapUnits, targetUnits: t.targetUnits, best: false, worst: false };
-  });
-  // Scan oldest first so equal displayed OEE values choose the earliest Shift.
-  let best = shifts[29]!;
-  let worst = best;
-  for (let i = 28; i >= 0; i--) {
-    const shift = shifts[i]!;
-    if (shift.oee > best.oee) best = shift;
-    if (shift.oee < worst.oee) worst = shift;
+  if (!hasProduction(current)) return { hasProduction: false, oee: null, pareto: [], output: [], shifts: [] };
+
+  const shifts: PerformanceShift[] = shiftTotals.map((t, i) => ({ t, i }))
+    .filter(({ t }) => t.plannedMin > 0 || hasProduction(t)).map(({ t, i }) => {
+      const startsAt = shiftEnd - (i + 1) * SHIFT;
+      return { date: spDate(startsAt), shift: shiftAt(startsAt), startsAt, oee: oee(t).value,
+        goodUnits: t.goodUnits, scrapUnits: t.scrapUnits, targetUnits: t.targetUnits, best: false, worst: false };
+    });
+  // Equal displayed values have no best or worst. Otherwise ties choose the earliest Shift.
+  if (shifts.length >= 2) {
+    let best = shifts[shifts.length - 1]!;
+    let worst = best;
+    for (let i = shifts.length - 2; i >= 0; i--) {
+      const shift = shifts[i]!;
+      if (shift.oee > best.oee) best = shift;
+      if (shift.oee < worst.oee) worst = shift;
+    }
+    if (best.oee !== worst.oee) {
+      best.best = true;
+      worst.worst = true;
+    }
   }
-  best.best = true;
-  worst.worst = true;
   const value = oee(current);
-  const before = oee(previous);
+  const before = hasProduction(previous) ? oee(previous) : null;
   return {
-    oee: { ...value, previous: before, change: {
+    oee: { ...value, previous: before, change: before ? {
       value: round3(value.value - before.value), availability: round3(value.availability - before.availability),
-      performance: round3(value.performance - before.performance), quality: round3(value.quality - before.quality),
-    } },
+      performance: round3(value.performance - before.performance), quality: value.quality === null || before.quality === null ? null : round3(value.quality - before.quality),
+    } : null },
     pareto: paretoOf(downtime), output, shifts,
-    hasProduction: current.runMin > 0 || current.goodUnits > 0 || current.scrapUnits > 0,
+    hasProduction: true,
   };
 }

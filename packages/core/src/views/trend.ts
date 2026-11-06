@@ -1,5 +1,5 @@
 import type { MockDataset } from '../mock/types';
-import { assertTick } from '../sim/context';
+import { assertSessionTick } from '../sim/context';
 import type { Overlay } from '../sim/overlay';
 import { tagSeries } from '../sim/series';
 import type { TagStatus } from '../sim/tags';
@@ -24,14 +24,14 @@ export interface TrendSeries {
   points: TrendPoint[];
 }
 
-export type TrendView = { series: TrendSeries[] } | { error: 'trend-limit' | 'unknown-tag' } | { empty: true };
+export type TrendView = { series: TrendSeries[] } | { error: 'trend-limit' | 'unknown-tag' | 'duplicate-tag' } | { empty: true };
 
 /**
  * Exact point counts on a fixed grid: the aligned end is included and the window's left boundary is excluded.
  * At tick 0 the 2h grid has 180 points from -7160 through 0, spaced by 40 ticks.
  */
 export function trendTicks(window: TrendWindowId, tick: number): number[] {
-  assertTick(tick);
+  assertSessionTick(tick);
   const { ticks, step } = TREND_WINDOWS[window];
   const end = Math.floor(tick / step) * step;
   return Array.from({ length: ticks / step }, (_, i) => end - ticks + (i + 1) * step);
@@ -39,7 +39,9 @@ export function trendTicks(window: TrendWindowId, tick: number): number[] {
 
 /** Every Library reads the same grid and Simulator series, preserving selection order and pre-load history. */
 export function trendView(d: MockDataset, tagIds: readonly string[], window: TrendWindowId, tick: number, overlay?: Overlay): TrendView {
+  assertSessionTick(tick);
   if (tagIds.length > 4) return { error: 'trend-limit' };
+  if (new Set(tagIds).size !== tagIds.length) return { error: 'duplicate-tag' };
   if (!tagIds.length) return { empty: true };
   if (tagIds.some((id) => !d.tags.some((tag) => tag.id === id))) return { error: 'unknown-tag' };
   const grid = trendTicks(window, tick);

@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import { HOUR, NOW } from '../mock/time';
+import { readHours } from '../sim/kpis';
 import { simulatedTime } from '../sim/clock';
 import { alarmList, createPlantState, reduce } from '../plant';
 import { eventLogView } from './events';
 import { performanceView } from './performance';
-import { rangeWindow, type RangeId } from './ranges';
+import { performanceWindow, rangeWindow, type RangeId } from './ranges';
 
 const d = generateMockDataset();
 const RANGES: RangeId[] = ['last-shift', 'last-24h', 'last-7d', 'last-30d'];
@@ -27,11 +28,11 @@ describe('rangeWindow', () => {
   });
 });
 
-describe('the same label means the same hours on every Screen', () => {
+describe('short ranges share hours across Screens', () => {
   // One event per hour edge around the window, written by real actions so the Event Log is the real one.
   const ticks = [0, 100, 3599, 3600, 28799, 28800, 40000];
 
-  it.each(RANGES)('the Event Log and Screen 4 agree on %s', (range) => {
+  it.each(['last-shift', 'last-24h'] as const)('the Event Log and Screen 4 agree on %s', (range) => {
     for (const tick of ticks) {
       const w = rangeWindow(range, tick);
       const now = simulatedTime(tick);
@@ -41,7 +42,7 @@ describe('the same label means the same hours on every Screen', () => {
       const expected = state.events.filter((e) => e.at >= w.start && e.at < w.end && e.at <= now);
       expect(shown.map((r) => r.id).sort()).toEqual(expected.map((e) => e.id).sort());
       // Screen 4 starts its first output slot on the same instant.
-      const view = performanceView(d, [], tick, { kind: 'site' }, range);
+      const view = performanceView(d, readHours(d, tick), tick, { kind: 'site' }, range);
       expect(view.output[0]?.start).toBe(w.start);
     }
   });
@@ -57,5 +58,22 @@ describe('the same label means the same hours on every Screen', () => {
     const last = eventLogView(s, tick, { range: 'last-24h' }).rows[0];
     expect(last?.action).toBe('pause');
     expect(w.start).toBeLessThan(simulatedTime(tick));
+  });
+});
+
+describe('Screen 4 fixed history windows', () => {
+  it.each([['last-7d', 168], ['last-30d', 720]] as const)('%s ends at load at every tick', (range, hours) => {
+    for (const tick of [0, 100, 3600, 30000]) {
+      expect(performanceWindow(range, tick)).toEqual({ start: NOW - hours * HOUR, end: NOW, hours });
+    }
+  });
+
+  it.each(RANGES)('keeps the Event Log rolling for %s', (range) => {
+    const result = reduce(createPlantState(d), { type: 'shift-handover', note: 'New action' }, { tick: 30000 });
+    if (!result.ok) throw new Error(result.error.code);
+    if (range !== 'last-shift') expect(eventLogView(result.state, 30000, { range }).rows[0]?.note).toBe('New action');
+    if (range === 'last-shift' || range === 'last-24h') {
+      expect(performanceWindow(range, 30000)).toEqual(rangeWindow(range, 30000));
+    }
   });
 });

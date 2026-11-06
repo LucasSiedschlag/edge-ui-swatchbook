@@ -28,6 +28,7 @@ export interface LineLive {
   lineId: LineId;
   batch: BatchProgress | null;
   outputThisShift: number;
+  hasProduction: boolean;
   scrapThisShift: number;
   /** Good units this Shift. */
   shiftGoodUnits: number;
@@ -83,7 +84,6 @@ function modelOf(active: ActiveBatch, rate: number, line: LineId, overlay?: Over
     /** Ticks in a window in which the Line was making product. */
     makingTicks: (from: number, to: number) => Math.min(ran(0, to), completeAfter) - Math.min(ran(0, from), completeAfter),
     scrapOf: (units: number) => Math.floor(units * ratio),
-    ranIn: ran,
   };
 }
 
@@ -109,6 +109,7 @@ function readHour(d: MockDataset, lineId: LineId, m: ReturnType<typeof modelOf> 
 /** A live Shift sums the same hour records that Screen 4 reads. */
 function readShift(d: MockDataset, lineId: LineId, m: ReturnType<typeof modelOf> | null, from: number, to: number, overlay?: Overlay) {
   let runMin = 0;
+  let plannedMin = 0;
   let goodUnits = 0;
   let scrapUnits = 0;
   let targetUnits = 0;
@@ -116,6 +117,7 @@ function readShift(d: MockDataset, lineId: LineId, m: ReturnType<typeof modelOf>
   for (let start = from; start < to; start += 3600) {
     const h = readHour(d, lineId, m, start, Math.min(to, start + 3600), overlay);
     runMin += h.runMin;
+    plannedMin += h.plannedMin;
     goodUnits += h.goodUnits;
     scrapUnits += h.scrapUnits;
     targetUnits += h.targetUnits;
@@ -125,7 +127,7 @@ function readShift(d: MockDataset, lineId: LineId, m: ReturnType<typeof modelOf>
       else downtime.push({ ...x });
     }
   }
-  return { runMin, goodUnits, scrapUnits, targetUnits, downtime };
+  return { runMin, plannedMin, goodUnits, scrapUnits, targetUnits, downtime };
 }
 
 const SPEED_TAG: Partial<Record<LineId, string>> = {
@@ -160,12 +162,11 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
     const shiftStart = Math.floor(tick / SHIFT_TICKS) * SHIFT_TICKS;
     const elapsed = tick - shiftStart;
     const ran = runTicksOf(overlay, line.id, shiftStart, tick);
-    const makingTicks = m ? m.makingTicks(shiftStart, tick) : 0;
     const totals = readShift(d, line.id, m, shiftStart, tick, overlay);
     const shiftDowntime = totals.downtime;
 
     if (!active || !m) {
-      return { ...base, batch: null, outputThisShift: 0, scrapThisShift: 0, shiftGoodUnits: 0, shiftTargetUnits: 0, shiftRunMin: 0, shiftDowntime, availability: 0, performance: 0, quality: 0, oee: 0 };
+      return { ...base, batch: null, hasProduction: false, outputThisShift: 0, scrapThisShift: 0, shiftGoodUnits: 0, shiftTargetUnits: 0, shiftRunMin: 0, shiftDowntime, availability: 0, performance: 0, quality: 0, oee: 0 };
     }
     const produced = m.unitsAt(tick);
     const output = totals.goodUnits + totals.scrapUnits;
@@ -182,7 +183,7 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
     const mix = (baseline: number, live: number, salt: number, size: number) => round3(clamp(baseline * (1 - w) + live * w + wobble(salt, size)));
     // The baseline only counts for the time the Line actually ran, so a Line stopped across a Shift change does not jump up.
     const ranShare = elapsed > 0 ? ran / elapsed : runTicksOf(overlay, line.id, tick, tick + 1) > 0 ? 1 : 0;
-    const availability = mix(b.availability * ranShare, elapsed > 0 ? makingTicks / elapsed : 0, 1, 0.04);
+    const availability = mix(b.availability * ranShare, totals.plannedMin > 0 ? totals.runMin / totals.plannedMin : 0, 1, 0.04);
     // Before the first unit of a Shift lands, a Line with work to do keeps the baseline instead of falling to 0 and jumping back up.
     const performance = mix(b.performance, output > 0 ? output / target : hasWork ? b.performance : 0, 2, 0.04);
     const quality = mix(b.quality, output > 0 ? (output - scrap) / output : hasWork ? b.quality : 0, 3, 0.02);
@@ -198,6 +199,7 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
         elapsedMs: simulatedTime(tick) - active.start,
       },
       outputThisShift: output,
+      hasProduction: output > 0 || totals.runMin > 0,
       scrapThisShift: scrap,
       shiftGoodUnits: output - scrap,
       shiftTargetUnits: target,

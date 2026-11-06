@@ -1,3 +1,4 @@
+import { assertSessionTick } from '../sim/context';
 import type { LineId, LinkStatus, MockDataset, Timestamp } from '../mock/types';
 import type { Snapshot } from '../sim/simulate';
 import type { TagStatus } from '../sim/tags';
@@ -32,6 +33,7 @@ export interface TagRow {
 
 /** The Live Parameter Matrix grid (Screen 5): one row per Tag in dataset order. Filters combine with AND. */
 export function tagGridView(d: MockDataset, snapshot: Snapshot, filters: TagFilters = {}): { rows: TagRow[]; empty: boolean } {
+  assertSessionTick(snapshot.tick);
   const readings = new Map(snapshot.tags.map((r) => [r.tagId, r]));
   const links = new Map(snapshot.machines.map((m) => [m.machineId, m]));
   const needle = filters.search?.trim().toLowerCase() ?? '';
@@ -57,7 +59,7 @@ export interface ConnectivityRow {
   machineId: string;
   lineId: LineId;
   linkStatus: LinkStatus;
-  latencyMs: number;
+  latencyMs: number | null;
   packetLossPct: number;
   lastSeenAt: Timestamp;
   errorCount: number;
@@ -67,6 +69,7 @@ const LINK_RANK: Record<LinkStatus, number> = { offline: 0, degraded: 1, online:
 
 /** Link diagnostics of every Machine (Screen 6), Offline first, then Degraded, then Online, then by Machine id. */
 export function connectivityView(d: MockDataset, snapshot: Snapshot): ConnectivityRow[] {
+  assertSessionTick(snapshot.tick);
   const lineOf = new Map(d.machines.map((m) => [m.id, m.lineId]));
   return snapshot.machines
     .map((m): ConnectivityRow => ({
