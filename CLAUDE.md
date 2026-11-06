@@ -21,12 +21,13 @@ Read these first, in order:
 ## Layout and commands
 
 - `packages/core`: shared Mock Dataset, Simulator, Plant State, translations, Tour and shortcuts (`@swatchbook/core`).
+- `packages/charts`: the shared chart wrapper over ECharts (`@swatchbook/charts`).
 - `apps/<library>`: one Vite app per Library, built on the core. `apps/ant-design` is the first.
 - pnpm is not installed globally on this machine. Run it with `corepack pnpm <command>`, for example `corepack pnpm -r typecheck` and `corepack pnpm -r build`.
 
 ## Open
 
-The Library lists for v1, v2 and the backlog are in `docs/idea.md`. Do not add or swap a Library without asking. The chart library is not decided. Do not pick it without asking.
+The Library lists for v1, v2 and the backlog are in `docs/idea.md`. Do not add or swap a Library without asking.
 
 ## Agent skills
 
