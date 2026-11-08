@@ -42,7 +42,7 @@ describe('alarmListView', () => {
     for (let i = 1; i < sameP.length; i++) expect(sameP[i - 1]!.ageSeconds).toBeGreaterThanOrEqual(sameP[i]!.ageSeconds);
   });
 
-  it('is the sorted alarmList minus cleared, with ids and no translated text', () => {
+  it('is the sorted alarmList minus cleared, with joined names and untranslated TextRefs', () => {
     const { rows } = alarmListView(s, 0);
     const ids = rows.map((r) => r.id).sort();
     expect(ids).toEqual(alarmList(s, 0).filter((a) => a.state !== 'cleared').map((a) => a.id).sort());
@@ -51,8 +51,11 @@ describe('alarmListView', () => {
       expect(r.message).toEqual(src.message);
       expect(typeof r.message.key).toBe('string');
       expect(r.machineId).toBe(src.machineId);
+      expect(r.machineName).toEqual(d.machines.find(machine => machine.id === src.machineId)!.name);
+      expect(typeof r.machineName.key).toBe('string');
       expect(r.tagId).toBe(src.tagId);
       expect(r.acknowledgedBy).toBe(src.acknowledgedBy);
+      expect(r.acknowledgedByName).toBe(d.users.find(user => user.id === src.acknowledgedBy)?.name ?? null);
     }
   });
 
@@ -114,13 +117,21 @@ describe('alarmListView', () => {
     expect(row.state).toBe('active-acknowledged');
     expect(row.canAcknowledge).toBe(false);
     expect(row.acknowledgedBy).toBe(s.currentUserId);
+    expect(row.acknowledgedByName).toBe(d.users.find(user => user.id === s.currentUserId)!.name);
   });
 
   it('does not mutate frozen inputs and is deterministic', () => {
     const frozen = deepFreeze(createPlantState(generateMockDataset()));
-    const filters = deepFreeze({ priorities: ['critical' as const], lineId: 'E1' as const });
+    const filters = deepFreeze({ states: ['active-unacknowledged' as const, 'active-acknowledged' as const, 'returned-unacknowledged' as const, 'cleared' as const] });
     const a = alarmListView(frozen, 5, filters);
+    expect(a.rows.some(row => row.acknowledgedByName === null)).toBe(true);
+    expect(a.rows.some(row => row.acknowledgedByName !== null)).toBe(true);
+    for (const row of a.rows) {
+      expect(row.machineName).toEqual(frozen.dataset.machines.find(machine => machine.id === row.machineId)!.name);
+      expect(row.acknowledgedByName).toBe(frozen.dataset.users.find(user => user.id === row.acknowledgedBy)?.name ?? null);
+    }
     expect(alarmListView(frozen, 5, filters)).toEqual(a);
+    expect(alarmListView(deepFreeze(createPlantState(generateMockDataset())), 5, filters)).toEqual(a);
   });
 
   it('is fast on the default data, from a cold state (median of several runs, so one slow machine moment does not fail it)', () => {

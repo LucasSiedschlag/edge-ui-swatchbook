@@ -7,6 +7,7 @@ export const en = {
   "control.alarms": "Active Alarms",
   "control.alarm-priority": "Priority",
   "control.alarm-state": "Alarm state",
+  "control.alarm-state-open": "Open alarms (default)",
   "control.alarm-raised": "Raised at",
   "control.alarm-acknowledged-by": "Acknowledged by",
   "control.filter-alarms": "Filter Alarms",
@@ -31,6 +32,7 @@ export const en = {
   "control.open-machine-alarm": "Open Machine Alarm",
   "control.already-acknowledged": "Alarm already acknowledged. No changes made.",
   "control.alarm-empty": "No active Alarms match the filters.",
+  "control.alarm-empty-filtered": "No Alarms match the filters.",
   "control.event-empty": "No events match the filters.",
   "control.diagnostics-empty": "No communication diagnostics to show.",
 } as const;
@@ -39,6 +41,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   "control.alarms": "Alarmes ativos",
   "control.alarm-priority": "Prioridade",
   "control.alarm-state": "Estado do Alarme",
+  "control.alarm-state-open": "Alarmes abertos (padrão)",
   "control.alarm-raised": "Gerado em",
   "control.alarm-acknowledged-by": "Reconhecido por",
   "control.filter-alarms": "Filtrar Alarmes",
@@ -63,6 +66,7 @@ export const ptBR: Record<keyof typeof en, string> = {
   "control.open-machine-alarm": "Abrir Alarme da máquina",
   "control.already-acknowledged": "Alarme já reconhecido. Nenhuma alteração realizada.",
   "control.alarm-empty": "Nenhum Alarme ativo corresponde aos filtros.",
+  "control.alarm-empty-filtered": "Nenhum Alarme corresponde aos filtros.",
   "control.event-empty": "Nenhum evento corresponde aos filtros.",
   "control.diagnostics-empty": "Nenhum diagnóstico de comunicação para exibir.",
 };

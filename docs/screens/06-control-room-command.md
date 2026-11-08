@@ -19,9 +19,9 @@ Route `/control`. Alarms, the Event Log and communication diagnostics.
 
 ## States
 
-- No active Alarms: empty state in the list.
+- No active Alarms with no filters: `control.alarm-empty`. With any filter set, including Cleared only: `control.alarm-empty-filtered`.
 - Event Log filter with no match: empty state.
-- Offline Machine: shown first in diagnostics and linked to its Alarm if one exists.
+- Offline Machine: shown first in diagnostics and linked to its Alarm if one exists. Opening the link clears Alarm filters, scrolls to and focuses its Alarm row without changing the selection.
 - Acknowledging an Alarm that is already acknowledged: no change, no log entry.
 
 ## Required test IDs

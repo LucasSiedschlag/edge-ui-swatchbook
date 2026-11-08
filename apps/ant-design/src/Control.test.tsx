@@ -1,12 +1,13 @@
 // @vitest-environment happy-dom
 import {
-  EVENT_LOG_DEFAULT_RANGE, TEST_IDS, alarmListView, alarmPriorityLabels, alarmStateLabels, connectivityView, en, eventActionLabels,
+  DIAGNOSTICS_DEFAULT_SORT, EVENT_LOG_DEFAULT_RANGE, TEST_IDS, alarmListView, alarmPriorityLabels, alarmStateLabels, connectivityView, en, eventActionLabels,
   eventLogView, eventTargetLabels, formatDateTime, formatDuration, formatNumber,
   formatPercentValue, generateMockDataset, linkStatusLabels, ptBR, rangeLabels, roleLabels, simulate, t, tr,
-  type AlarmFilters, type ConnectivitySort, type EventFilters, type RangeId,
+  type AlarmFilters, type ConnectivitySort, type EventFilters, type Locale, type MessageKey, type RangeId,
 } from '@swatchbook/core';
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
+import { controlCoverage } from '../../../packages/core/src/i18n/strings/control-coverage';
 import { byId, click, endMotion, mountApp, one, openSelect, plantState } from './test-utils';
 
 const ids = TEST_IDS.control;
@@ -59,6 +60,7 @@ it('renders the required IDs, repeated Alarm row and selection IDs, and core con
   expect(byId(ids.alarmSelect)).toHaveLength(alarms.length);
   expectAlarms();
   expectEvents();
+  expect(text(ids.alarmFilterState)).toContain(en['control.alarm-state-open']);
   for (const id of [ids.alarmList, ids.eventLog]) {
     expect(one(id).querySelectorAll('table')).toHaveLength(1);
     expect(one(id).querySelector('table')?.style.tableLayout).not.toBe('fixed');
@@ -67,11 +69,11 @@ it('renders the required IDs, repeated Alarm row and selection IDs, and core con
   for (const row of alarms) {
     const element = alarmRow(row.id);
     for (const value of [t('en', alarmPriorityLabels[row.priority]), t('en', alarmStateLabels[row.state]), row.lineId,
-      row.machineId, tr('en', row.message), formatDateTime('en', row.raisedAt), formatDuration(row.ageSeconds)]) {
+      row.machineId, tr('en', row.machineName), tr('en', row.message), formatDateTime('en', row.raisedAt), formatDuration(row.ageSeconds)]) {
       expect(element.textContent).toContain(value);
     }
     expect(element.querySelector('input')?.getAttribute('aria-label')).toBe(t('en', 'control.select-alarm', { alarm: row.id }));
-    if (row.acknowledgedBy) expect(element.textContent).toContain(dataset.users.find(user => user.id === row.acknowledgedBy)!.name);
+    expect(element.textContent).toContain(row.acknowledgedByName ?? en['common.none']);
   }
 });
 
@@ -86,13 +88,14 @@ it('filters Alarms by priority, state, Area and Line, combines filters, and clea
   await clear(ids.alarmFilterPriority);
   expectAlarms({ states: ['active-unacknowledged'] });
   await clear(ids.alarmFilterState);
+  expect(text(ids.alarmFilterState)).toContain(en['control.alarm-state-open']);
   await select(ids.alarmFilterArea, en['area.extrusion']);
   expectAlarms({ areaId: 'extrusion' });
   await select(ids.alarmFilterLine, `E1 · ${tr('en', dataset.lines.find(line => line.id === 'E1')!.name)}`);
   expectAlarms({ areaId: 'extrusion', lineId: 'E1' });
   await select(ids.alarmFilterArea, en['area.assembly']);
   expectAlarms({ areaId: 'assembly', lineId: 'E1' });
-  expect(text(ids.alarmEmpty)).toContain(en['control.alarm-empty']);
+  expect(text(ids.alarmEmpty)).toContain(en['control.alarm-empty-filtered']);
   await clear(ids.alarmFilterArea);
   expectAlarms({ lineId: 'E1' });
   await clear(ids.alarmFilterLine);
@@ -106,7 +109,7 @@ it('shows the Alarm empty state on idle C1 and clears selection when filtering',
   await select(ids.alarmFilterLine, `C1 · ${tr('en', dataset.lines.find(line => line.id === 'C1')!.name)}`);
   expect(byId(ids.alarmRow)).toHaveLength(0);
   expect(byId(ids.alarmEmpty)).toHaveLength(1);
-  expect(text(ids.alarmEmpty)).toContain(en['control.alarm-empty']);
+  expect(text(ids.alarmEmpty)).toContain(en['control.alarm-empty-filtered']);
   expect((one(ids.acknowledge) as HTMLButtonElement).disabled).toBe(true);
 });
 
@@ -286,9 +289,12 @@ it('uses core diagnostics sorts in both directions, including null latency last 
     packetLoss: en['control.diagnostics-packet-loss'], machine: en['term.machine'],
   };
   const snapshot = simulate(dataset, 0, plantState().overlay);
+  expect(one(ids.diagnosticsSort).hasAttribute('title')).toBe(false);
+  expect(one(ids.diagnosticsSort).closest('.ant-space')!.textContent).toContain(en['common.sort']);
   for (const column of Object.keys(labels) as ConnectivitySort['column'][]) {
     for (const direction of ['asc', 'desc'] as const) {
       await select(ids.diagnosticsSort, `${labels[column]} · ${en[direction === 'asc' ? 'common.sort-ascending' : 'common.sort-descending']}`);
+      expectDiagnosticsSort({ column, direction });
       const expected = connectivityView(dataset, snapshot, { column, direction });
       expect(rowKeys(ids.diagnostics)).toEqual(expected.map(row => row.machineId));
       if (column === 'latency') {
@@ -315,7 +321,7 @@ it('opens the Offline Machine Alarm by alarmId even when Alarm filters hide it',
   const target = alarmRow(offline.alarmId!);
   expect(document.activeElement).toBe(target);
   expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
-  expect(target.querySelector<HTMLInputElement>('input')!.checked).toBe(true);
+  expect(target.querySelector<HTMLInputElement>('input')!.checked).toBe(false);
   expect(target.textContent).toContain(offline.machineId);
 });
 
@@ -325,7 +331,7 @@ it('renders Portuguese labels, translated event values and empty states without 
   expect(one(ids.alarmList).querySelector('thead input')?.getAttribute('aria-label')).toBe(ptBR['control.select-all-alarms']);
   for (const label of ['control.alarms', 'control.filter-alarms', 'control.alarm-priority', 'control.alarm-state',
     'control.event-role', 'control.event-old-value', 'control.event-new-value', 'control.event-note',
-    'control.diagnostics', 'control.diagnostics-sort', 'control.diagnostics-heartbeat'] as const) {
+    'control.diagnostics', 'common.sort', 'control.alarm-state-open', 'control.diagnostics-heartbeat'] as const) {
     expect(document.body.textContent).toContain(ptBR[label]);
   }
   const target = alarmListView(plantState(), 0).rows.find(row => row.state === 'active-unacknowledged')!;
@@ -335,10 +341,116 @@ it('renders Portuguese labels, translated event values and empty states without 
   await click(one(ids.acknowledge));
   expect(document.body.textContent).toContain(ptBR['control.already-acknowledged']);
   await select(ids.alarmFilterLine, `C1 · ${tr('pt-BR', dataset.lines.find(line => line.id === 'C1')!.name)}`);
-  expect(text(ids.alarmEmpty)).toContain(ptBR['control.alarm-empty']);
+  expect(text(ids.alarmEmpty)).toContain(ptBR['control.alarm-empty-filtered']);
   const user = dataset.users.find(user => user.role === 'operator')!;
   await select(ids.eventFilterUser, user.name);
   await select(ids.eventFilterType, ptBR['event-action.recipe-approve']);
   expect(text(ids.eventEmpty)).toContain(ptBR['control.event-empty']);
   expect(document.body.textContent).not.toContain('[[');
+});
+
+const diagnosticsLabels: Record<ConnectivitySort['column'], MessageKey> = {
+  status: 'parameters.link-status', latency: 'control.diagnostics-latency',
+  packetLoss: 'control.diagnostics-packet-loss', machine: 'term.machine',
+};
+const diagnosticsHeader = (column: ConnectivitySort['column']) =>
+  [...one(ids.diagnostics).querySelectorAll<HTMLElement>('th')].find(header => header.textContent?.includes(en[diagnosticsLabels[column]]))!;
+function expectDiagnosticsSort(sort: ConnectivitySort) {
+  const active = one(ids.diagnostics).querySelectorAll('th[aria-sort]');
+  expect(active).toHaveLength(1);
+  expect(active[0]).toBe(diagnosticsHeader(sort.column));
+  expect(active[0]!.getAttribute('aria-sort')).toBe(sort.direction === 'asc' ? 'ascending' : 'descending');
+  expect(text(ids.diagnosticsSort)).toContain(`${en[diagnosticsLabels[sort.column]]} · ${en[sort.direction === 'asc' ? 'common.sort-ascending' : 'common.sort-descending']}`);
+  const snapshot = simulate(dataset, 0, plantState().overlay);
+  expect(rowKeys(ids.diagnostics)).toEqual(connectivityView(dataset, snapshot, sort).map(row => row.machineId));
+}
+
+it('keeps diagnostics headers and the Select in sync and resets the third header click to the default sort', async () => {
+  await start();
+  expectDiagnosticsSort(DIAGNOSTICS_DEFAULT_SORT);
+  const headers = [...one(ids.diagnostics).querySelectorAll('th')];
+  expect(headers.filter(header => header.classList.contains('ant-table-column-has-sorters'))).toHaveLength(4);
+  for (const column of ['latency', 'packetLoss', 'machine', 'status'] as const) {
+    // Start on another column so each header cycle begins ascending.
+    await select(ids.diagnosticsSort, `${en[diagnosticsLabels[column === 'machine' ? 'latency' : 'machine']]} · ${en['common.sort-descending']}`);
+    for (const direction of ['asc', 'desc'] as const) {
+      await click(diagnosticsHeader(column));
+      expectDiagnosticsSort({ column, direction });
+      if (column === 'latency') expect(tableRows(ids.diagnostics).at(-1)!.querySelectorAll('td')[2]!.textContent).toBe(en['common.none']);
+    }
+    await click(diagnosticsHeader(column));
+    expectDiagnosticsSort(DIAGNOSTICS_DEFAULT_SORT);
+  }
+  await select(ids.diagnosticsSort, `${en['control.diagnostics-latency']} · ${en['common.sort-ascending']}`);
+  await click(diagnosticsHeader('latency'));
+  expectDiagnosticsSort({ column: 'latency', direction: 'desc' });
+});
+
+it('preserves Alarm selection when following and repeating a diagnostics link, then acknowledges only that selection with a', async () => {
+  await start();
+  const offline = connectivityView(dataset, simulate(dataset, 0, plantState().overlay)).find(row => row.alarmId)!;
+  const selected = alarmListView(plantState(), 0).rows.filter(row => row.canAcknowledge && row.id !== offline.alarmId).slice(0, 2);
+  expect(selected).toHaveLength(2);
+  for (const row of selected) await selectAlarm(row.id);
+  const diagnostic = tableRows(ids.diagnostics).find(row => row.dataset.rowKey === offline.machineId)!;
+  const link = diagnostic.querySelector('button')!;
+  const checked = () => tableRows(ids.alarmList).filter(row => row.querySelector<HTMLInputElement>('input')!.checked).map(row => row.dataset.rowKey);
+  const beforeSelection = checked();
+  const scroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
+  for (let attempt = 0; attempt < 2; attempt++) {
+    await act(() => { link.focus(); });
+    await click(link);
+    expect(checked()).toEqual(beforeSelection);
+    expect(document.activeElement).toBe(alarmRow(offline.alarmId!));
+    expect(scroll).toHaveBeenLastCalledWith({ block: 'nearest' });
+  }
+  const before = plantState().events.length;
+  await key(document.activeElement!, 'a');
+  expect(plantState().events.slice(before).map(event => event.target).sort()).toEqual(selected.map(row => row.id).sort());
+  expect(alarmRow(offline.alarmId!).querySelector<HTMLInputElement>('input')!.checked).toBe(false);
+});
+
+it.each(['en', 'pt-BR'] as const)('uses filtered empty wording for Cleared only and restores the default state placeholder in %s', async locale => {
+  view = await mountApp('#/control', { dataset: { ...dataset, alarms: dataset.alarms.filter(alarm => alarm.state !== 'cleared') }, languages: [locale] });
+  expect(text(ids.alarmFilterState)).toContain(t(locale, 'control.alarm-state-open'));
+  await select(ids.alarmFilterState, t(locale, 'alarm-state.cleared'));
+  expectAlarms({ states: ['cleared'] });
+  expect(text(ids.alarmEmpty)).toContain(t(locale, 'control.alarm-empty-filtered'));
+  expect(text(ids.alarmEmpty)).not.toContain(t(locale, 'control.alarm-empty'));
+  await clear(ids.alarmFilterState);
+  expect(text(ids.alarmFilterState)).toContain(t(locale, 'control.alarm-state-open'));
+});
+
+it.each(['en', 'pt-BR'] as const)('renders every Control manifest key across its states in %s', async (locale: Locale) => {
+  const keys = new Set<MessageKey>([...Object.values(controlCoverage.shows), ...Object.values(controlCoverage.actions), ...Object.values(controlCoverage.states)].flat());
+  const seen = new Set<MessageKey>();
+  const capture = () => {
+    // Include accessible names for row selection and the diagnostics Select.
+    const rendered = [document.body.textContent ?? '', ...[...document.querySelectorAll('[aria-label]')].map(el => el.getAttribute('aria-label') ?? '')].join('\n');
+    for (const message of keys) {
+      const values = message === 'control.select-alarm'
+        ? alarmListView(plantState(), 0).rows.map(row => t(locale, message, { alarm: row.id }))
+        : [t(locale, message)];
+      if (values.some(value => rendered.includes(value))) seen.add(message);
+    }
+  };
+  view = await mountApp('#/control', { dataset, languages: [locale] });
+  capture();
+  // common.sort must appear as a visible label, independently of accessible names.
+  expect(one(ids.diagnosticsSort).closest('.ant-space')!.querySelector('.ant-typography')!.textContent).toBe(t(locale, 'common.sort'));
+  const acknowledged = alarmListView(plantState(), 0).rows.find(row => row.state === 'active-acknowledged')!;
+  await selectAlarm(acknowledged.id);
+  await click(one(ids.acknowledge));
+  capture();
+  await select(ids.alarmFilterLine, `C1 · ${tr(locale, dataset.lines.find(line => line.id === 'C1')!.name)}`);
+  capture();
+  await select(ids.eventFilterUser, dataset.users.find(user => user.role === 'operator')!.name);
+  await select(ids.eventFilterType, t(locale, 'event-action.recipe-approve'));
+  capture();
+  await view.unmount();
+  // A Mock Dataset without Machines, Tags, Alarms or events exercises the empty states.
+  view = await mountApp('#/control', { dataset: { ...dataset, machines: [], tags: [], alarms: [], events: [] }, languages: [locale] });
+  expect(text(ids.alarmEmpty)).toContain(t(locale, 'control.alarm-empty'));
+  capture();
+  expect([...keys].filter(message => !seen.has(message))).toEqual([]);
 });

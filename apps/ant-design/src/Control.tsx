@@ -1,12 +1,12 @@
 import {
   DIAGNOSTICS_DEFAULT_SORT, EVENT_LOG_DEFAULT_RANGE, TEST_IDS, alarmListView, alarmPriorityLabels, alarmStateLabels, connectivityView, eventActionLabels,
   eventLogView, eventTargetLabels, eventValueLabelKey, linkStatusLabels, rangeLabels, roleLabels,
-  type AlarmFilters, type AlarmRow, type ConnectivitySort, type EventFilters, type EventRow, type MessageKey,
+  type AlarmFilters, type AlarmRow, type ConnectivityRow, type ConnectivitySort, type EventFilters, type EventRow, type MessageKey,
 } from '@swatchbook/core';
 import { actionErrorLabel, useActions, useI18n, useShortcutHandlers, useSimulation } from '@swatchbook/runtime';
 import { Alert, Button, Card, Empty, Select, Space, Table, Typography } from 'antd';
 import { useEffect, useRef, useState, type Key, type ReactNode } from 'react';
-import type { RefSelectProps } from 'antd';
+import type { RefSelectProps, TableColumnType } from 'antd';
 
 const ids = TEST_IDS.control;
 const SORT_COLUMNS: Record<ConnectivitySort['column'], MessageKey> = {
@@ -96,29 +96,39 @@ function Diagnostics({ openAlarm }: { openAlarm(id: string): void }) {
       value: `${column}-${direction}`, column, direction,
       label: `${t(key)} · ${t(direction === 'asc' ? 'common.sort-ascending' : 'common.sort-descending')}`,
     })));
+  const sortable = (column: ConnectivitySort['column']): TableColumnType<ConnectivityRow> => ({
+    sorter: true,
+    sortOrder: sort.column === column ? sort.direction === 'asc' ? 'ascend' : 'descend' : null,
+  });
   return (
     <Card title={t('control.diagnostics')}>
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
-        <Filter label={t('control.diagnostics-sort')}>
+        <Filter label={t('common.sort')}>
           <Select
-            data-testid={ids.diagnosticsSort} aria-label={t('control.diagnostics-sort')} title={t('common.sort')}
+            data-testid={ids.diagnosticsSort} aria-label={t('control.diagnostics-sort')}
             style={{ minWidth: 440 }} virtual={false} value={`${sort.column}-${sort.direction}`} options={sorts}
             onChange={value => { const next = sorts.find(option => option.value === value)!; setSort({ column: next.column, direction: next.direction }); }}
           />
         </Filter>
-        <Table
+        <Table<ConnectivityRow>
           data-testid={ids.diagnostics} rowKey="machineId" size="small" pagination={false}
           dataSource={connectivityView(dataset, snapshot, sort)} scroll={{ x: 'max-content' }}
+          onChange={(_, __, sorter) => {
+            const next = Array.isArray(sorter) ? sorter[0] : sorter;
+            setSort(next?.order
+              ? { column: next.columnKey as ConnectivitySort['column'], direction: next.order === 'ascend' ? 'asc' : 'desc' }
+              : DIAGNOSTICS_DEFAULT_SORT);
+          }}
           locale={{ emptyText: <Empty description={t('control.diagnostics-empty')} /> }}
           columns={[
-            { key: 'machine', title: t('term.machine'), render: (_, row) => {
+            { key: 'machine', ...sortable('machine'), title: t('term.machine'), render: (_, row) => {
               const alarmId = row.alarmId;
               if (alarmId === null) return row.machineId;
               return <Button type="link" title={t('control.open-machine-alarm')} aria-label={`${t('control.open-machine-alarm')} ${row.machineId}`} onClick={() => openAlarm(alarmId)}>{row.machineId}</Button>;
             } },
-            { key: 'status', title: t('parameters.link-status'), render: (_, row) => t(linkStatusLabels[row.linkStatus]) },
-            { key: 'latency', title: `${t('control.diagnostics-latency')} (ms)`, render: (_, row) => row.latencyMs === null ? t('common.none') : formatNumber(row.latencyMs, { decimals: 1 }) },
-            { key: 'loss', title: t('control.diagnostics-packet-loss'), render: (_, row) => formatPercentValue(row.packetLossPct) },
+            { key: 'status', ...sortable('status'), title: t('parameters.link-status'), render: (_, row) => t(linkStatusLabels[row.linkStatus]) },
+            { key: 'latency', ...sortable('latency'), title: `${t('control.diagnostics-latency')} (ms)`, render: (_, row) => row.latencyMs === null ? t('common.none') : formatNumber(row.latencyMs, { decimals: 1 }) },
+            { key: 'packetLoss', ...sortable('packetLoss'), title: t('control.diagnostics-packet-loss'), render: (_, row) => formatPercentValue(row.packetLossPct) },
             { key: 'heartbeat', title: t('control.diagnostics-heartbeat'), render: (_, row) => formatDateTime(row.lastSeenAt) },
             { key: 'errors', title: t('control.diagnostics-error-count'), render: (_, row) => formatNumber(row.errorCount) },
           ]}
@@ -141,6 +151,8 @@ export function Control() {
   const priorityFilter = useRef<RefSelectProps>(null);
   const alarms = alarmListView(state, tick, filters);
   const selectedIds = alarms.rows.filter(row => selection.includes(row.id)).map(row => row.id);
+
+  const hasAlarmFilters = Boolean(filters.priorities?.length || filters.states?.length || filters.areaId || filters.lineId);
 
   function acknowledge() {
     setAcknowledgeAttempts(attempts => attempts + 1);
@@ -165,11 +177,12 @@ export function Control() {
   }
   const openAlarm = (id: string) => {
     setFilters({});
-    setSelection([id]);
     setNotice(null);
     setFocusedAlarm(id);
     // Repeated activation must focus the same Alarm again.
-    document.getElementById(alarmElementId(id))?.focus();
+    const row = document.getElementById(alarmElementId(id));
+    row?.focus();
+    row?.scrollIntoView({ block: 'nearest' });
   };
 
   return (
@@ -189,7 +202,7 @@ export function Control() {
             <Filter label={t('control.alarm-state')}>
               <Select
                 data-testid={ids.alarmFilterState} aria-label={t('control.alarm-state')}
-                mode="multiple" allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} style={{ minWidth: 300 }}
+                mode="multiple" allowClear={{ label: t('action.clear-filters') }} placeholder={t('control.alarm-state-open')} style={{ minWidth: 300 }}
                 value={filters.states} options={Object.entries(alarmStateLabels).map(([value, key]) => ({ value, label: t(key) }))}
                 onChange={states => filter({ ...filters, states })}
               />
@@ -225,16 +238,16 @@ export function Control() {
               getTitleCheckboxProps: () => ({ 'aria-label': t('control.select-all-alarms') }),
               getCheckboxProps: row => ({ 'data-testid': ids.alarmSelect, 'aria-label': t('control.select-alarm', { alarm: row.id }) }),
             }}
-            locale={{ emptyText: <Empty data-testid={ids.alarmEmpty} description={t('control.alarm-empty')} /> }}
+            locale={{ emptyText: <Empty data-testid={ids.alarmEmpty} description={t(hasAlarmFilters ? 'control.alarm-empty-filtered' : 'control.alarm-empty')} /> }}
             columns={[
               { key: 'priority', title: t('control.alarm-priority'), render: (_, row) => t(alarmPriorityLabels[row.priority]) },
               { key: 'state', title: t('control.alarm-state'), render: (_, row) => t(alarmStateLabels[row.state]) },
               { key: 'line', title: t('scope.line'), dataIndex: 'lineId' },
-              { key: 'machine', title: t('term.machine'), render: (_, row) => <Space><span>{row.machineId}</span>{tr(dataset.machines.find(machine => machine.id === row.machineId)!.name)}</Space> },
+              { key: 'machine', title: t('term.machine'), render: (_, row) => <Space><span>{row.machineId}</span>{tr(row.machineName)}</Space> },
               { key: 'message', title: t('common.message'), render: (_, row) => tr(row.message) },
               { key: 'raised', title: t('control.alarm-raised'), render: (_, row) => formatDateTime(row.raisedAt) },
               { key: 'age', title: t('common.age'), render: (_, row) => formatDuration(row.ageSeconds) },
-              { key: 'acknowledged', title: t('control.alarm-acknowledged-by'), render: (_, row) => dataset.users.find(user => user.id === row.acknowledgedBy)?.name ?? t('common.none') },
+              { key: 'acknowledged', title: t('control.alarm-acknowledged-by'), render: (_, row) => row.acknowledgedByName ?? t('common.none') },
             ]}
           />
         </Space>
