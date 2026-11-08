@@ -16,12 +16,20 @@ export function topShortcutHandler(stack: readonly ShortcutHandlers[], action: S
   }
   return undefined;
 }
-function targetLike(target: EventTarget | null): KeyTargetLike | null {
+function targetLike(target: EventTarget | null, descendants = true): KeyTargetLike | null {
   if (!(target instanceof Element)) return null;
   const element = target as HTMLElement & { type?: string };
   return {
     tagName: element.tagName, type: element.type, role: element.getAttribute('role') ?? undefined,
     ariaModal: element.getAttribute('aria-modal'),
+    open: element.tagName === 'DIALOG' && element.hasAttribute('open'),
+    hidden: element.hasAttribute('hidden'), ariaHidden: element.getAttribute('aria-hidden'),
+    inert: element.hasAttribute('inert'), style: { display: element.style?.display },
+    parentElement: targetLike(element.parentElement ?? (element.getRootNode() as ShadowRoot).host ?? null, false),
+    ...(descendants ? {
+      querySelector: (selector: string) => targetLike(element.querySelector(selector), false),
+      querySelectorAll: (selector: string) => Array.from(element.querySelectorAll(selector), node => targetLike(node, false)!),
+    } : {}),
     isContentEditable: element.isContentEditable, contentEditable: element.getAttribute('contenteditable') ?? undefined,
   };
 }
@@ -30,7 +38,7 @@ export function keyboardEventLike(event: KeyboardEvent): KeyEventLike {
   return {
     key: event.key, ctrlKey: event.ctrlKey, metaKey: event.metaKey, altKey: event.altKey, shiftKey: event.shiftKey,
     repeat: event.repeat, isComposing: event.isComposing, keyCode: event.keyCode, defaultPrevented: event.defaultPrevented,
-    target: targetLike(event.target), composedPath: () => event.composedPath().map(targetLike).filter(target => target !== null),
+    target: targetLike(event.target), composedPath: () => event.composedPath().map(node => targetLike(node, false)).filter(target => target !== null),
     getModifierState: key => event.getModifierState(key),
   };
 }
@@ -38,13 +46,13 @@ export function keyboardEventLike(event: KeyboardEvent): KeyEventLike {
 type Registration = { current: ShortcutHandlers; order: number };
 let sequence = 0;
 const ShortcutContext = createContext<Registration[] | null>(null);
-export function ShortcutsProvider({ children, rowFocused }: { children: ReactNode; rowFocused?: RowFocusPredicate }) {
+export function ShortcutsProvider({ children, rowFocused, modalOpen }: { children: ReactNode; rowFocused?: RowFocusPredicate; modalOpen?: () => boolean }) {
   const stack = useRef<Registration[]>([]).current;
   const { go } = useRoute();
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
       if (event.key === 'Escape') return;
-      const action = resolveShortcut(keyboardEventLike(event), { rowFocused: rowFocused?.(event) });
+      const action = resolveShortcut(keyboardEventLike(event), { rowFocused: rowFocused?.(event), modalOpen: modalOpen?.() });
       if (!action || action.type === 'close') return;
       if (action.type === 'go-screen') { go(action.screen); event.preventDefault(); return; }
       for (let i = stack.length - 1; i >= 0; i--) {
@@ -54,7 +62,7 @@ export function ShortcutsProvider({ children, rowFocused }: { children: ReactNod
     }
     document.addEventListener('keydown', keydown);
     return () => document.removeEventListener('keydown', keydown);
-  }, [go, rowFocused, stack]);
+  }, [go, rowFocused, modalOpen, stack]);
   return <ShortcutContext value={stack}>{children}</ShortcutContext>;
 }
 

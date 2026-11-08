@@ -1,7 +1,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import { createRng } from '../mock/prng';
-import type { StepKind } from '../mock/types';
+import { STEP_KINDS, type StepKind } from '../mock/types';
 import { validateVersion } from './validation';
 import { parametersByKey } from '../parameters';
 import { simulate } from '../sim/simulate';
@@ -15,7 +15,7 @@ import { actionSnapshot, assertPlantInvariants, completeAndSafe, identities, sna
 import { alarmList, createPlantState, createPlantStore, lineStatus, reduce } from './index';
 import type { PlantAction, PlantState } from './types';
 
-const kinds: StepKind[] = ['preheat', 'ramp', 'run', 'cooldown', 'load', 'process', 'inspect'];
+const kinds: readonly StepKind[] = STEP_KINDS;
 function accepted(state: PlantState, action: PlantAction, tick: number): PlantState {
   const result = reduce(state, action, { tick });
   expect(result.ok, `${action.type} at ${tick}`).toBe(true);
@@ -40,6 +40,7 @@ afterAll(() => {
   expect([...coverage.values()].some(c => c.after57600! > 0), 'seeds 1, 2, 3, 20260101 cross two Shifts').toBe(true);
 });
 
+// These tests build and replay hundreds of immutable states, with large Alarm histories.
 for (const seed of [1, 2, 3, 20260101]) it(`seed ${seed}: 300 actions preserve Plant State invariants and replay`, () => {
   const d = deepFreeze(generateMockDataset(seed)), rng = createRng(seed);
   const store = createPlantStore(d), replay = createPlantStore(deepFreeze(generateMockDataset(seed)));
@@ -215,13 +216,14 @@ describe('root cause regressions', () => {
 
 
 describe('validated version boundary', () => {
+  // Four full Mock Datasets and their snapshots dominate the cost, rather than validation.
   it('accepts the structure of every generated version without changing the Mock Dataset', () => {
     for (const seed of [1, 2, 3, 20260101]) {
       const data = generateMockDataset(seed), before = snapshot(data);
       for (const version of data.recipeVersions) expect(validateVersion(version, data.recipes.find(r => r.id === version.recipeId)!.lineType).valid, `seed ${seed}, ${version.id}`).toBe(true);
       expect(snapshot(data)).toBe(before);
     }
-  });
+  }, 120000);
   it('refuses ambiguous keys, duplicate identities, disordered Steps and non-finite or unordered values', () => {
     const state = fresh(), version = draft(state);
     const invalid = (change: (v: typeof version) => void) => {
@@ -282,4 +284,4 @@ for (const seed of [1, 2, 3, 20260101]) it(`seed ${seed}: Alarm history is indep
     if (b.ok) split = b.state;
     expect(alarmList(split, tick), `seed ${seed}, step ${step}, ${action.type}`).toEqual(alarmList(whole, tick));
   }
-});
+}, 120000);

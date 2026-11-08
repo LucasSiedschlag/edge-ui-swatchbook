@@ -19,6 +19,7 @@ export interface RuntimeProviderProps {
   search?: string;
   now?: () => number;
   rowFocused?: RowFocusPredicate;
+  modalOpen?: () => boolean;
 }
 export interface Simulation { dataset: MockDataset; tick: number; state: PlantState; snapshot: Snapshot }
 export type Dispatch = (action: PlantAction) => ActionResult;
@@ -27,7 +28,7 @@ const SimulationContext = createContext<Simulation | null>(null);
 const ActionsContext = createContext<Dispatch | null>(null);
 const PlantStateContext = createContext<RuntimePlantState | null>(null);
 
-export function RuntimeProvider({ children, libraryId, dataset, search, now, supportsDensityOverride, storage, languages, rowFocused }: RuntimeProviderProps) {
+export function RuntimeProvider({ children, libraryId, dataset, search, now, supportsDensityOverride, storage, languages, rowFocused, modalOpen }: RuntimeProviderProps) {
   const library = LIBRARIES.find(entry => entry.id === libraryId);
   if (!library) throw new RangeError(`Unknown Library: ${libraryId}`);
   const session = useRef<ReturnType<typeof createPlantStore> | null>(null);
@@ -51,7 +52,7 @@ export function RuntimeProvider({ children, libraryId, dataset, search, now, sup
       <ActionsContext value={dispatch}>
         <PlantStateContext value={plant}>
           <SimulationContext value={simulation}>
-            <ShortcutsProvider rowFocused={rowFocused}><TourProvider>{children}</TourProvider></ShortcutsProvider>
+            <ShortcutsProvider rowFocused={rowFocused} modalOpen={modalOpen}><TourProvider>{children}</TourProvider></ShortcutsProvider>
           </SimulationContext>
         </PlantStateContext>
       </ActionsContext>

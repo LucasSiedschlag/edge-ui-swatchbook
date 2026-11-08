@@ -18,7 +18,13 @@ export const SHORTCUTS: readonly ShortcutBinding[] = [
   ...SCREENS.map(({ id: screen }, i): ShortcutBinding => ({ key: String(i + 1), action: { type: 'go-screen', screen } })),
 ];
 
-export type KeyTargetLike = { tagName?: string; isContentEditable?: boolean; type?: string; role?: string; ariaModal?: string | null; contentEditable?: string };
+export type KeyTargetLike = { tagName?: string; isContentEditable?: boolean; type?: string; role?: string; ariaModal?: string | null; contentEditable?: string;
+  hasAttribute?: (name: string) => boolean;
+  open?: boolean; hidden?: boolean; ariaHidden?: string | null; inert?: boolean;
+  style?: { display?: string }; parentElement?: KeyTargetLike | null;
+  querySelector?: (selector: string) => KeyTargetLike | null;
+  querySelectorAll?: (selector: string) => readonly KeyTargetLike[];
+};
 
 export type KeyEventLike = {
   key: string;
@@ -47,12 +53,30 @@ export function isTextEntryTarget(target: KeyTargetLike | null | undefined): boo
   return false;
 }
 
-export function resolveShortcut(event: KeyEventLike, context?: { textFieldFocused?: boolean; rowFocused?: boolean }): ShortcutAction | null {
+const MODAL_SELECTOR = '[aria-modal="true"], [role="dialog"], [role="alertdialog"], dialog[open]';
+function visible(target: KeyTargetLike): boolean {
+  for (let node: KeyTargetLike | null | undefined = target; node; node = node.parentElement) {
+    if (node.hidden || node.ariaHidden === 'true' || node.inert || node.style?.display === 'none') return false;
+  }
+  return true;
+}
+function isOpenDialog(target: KeyTargetLike): boolean {
+  return visible(target) && (target.ariaModal === 'true' || ['dialog', 'alertdialog'].includes((target.role ?? '').toLowerCase()) ||
+    (target.tagName?.toUpperCase() === 'DIALOG' && (target.open === true || target.hasAttribute?.('open') === true)));
+}
+function containsOpenDialog(target: KeyTargetLike | null | undefined): boolean {
+  if (!target || !visible(target)) return false;
+  if (isOpenDialog(target)) return true;
+  const descendants = target.querySelectorAll?.(MODAL_SELECTOR) ?? [target.querySelector?.(MODAL_SELECTOR)];
+  return descendants.some(node => node != null && isOpenDialog(node));
+}
+
+export function resolveShortcut(event: KeyEventLike, context?: { textFieldFocused?: boolean; rowFocused?: boolean; modalOpen?: boolean }): ShortcutAction | null {
   if (event.defaultPrevented || event.isComposing || event.keyCode === 229 || ['Process', 'Dead', 'Unidentified'].includes(event.key)) return null;
   const altGraph = event.ctrlKey && event.altKey && event.getModifierState?.('AltGraph') === true;
   if (event.metaKey || ((event.ctrlKey || event.altKey) && !altGraph)) return null;
   const path = [event.target, ...(event.composedPath?.() ?? [])];
-  if (path.some(target => target?.ariaModal === 'true' || ['dialog', 'alertdialog'].includes((target?.role ?? '').toLowerCase()))) return null;
+  if (context?.modalOpen || path.some(containsOpenDialog)) return null;
   if (context?.textFieldFocused || path.some(isTextEntryTarget)) return null;
   const key = event.key === 'A' ? 'a' : event.key;
   const binding = SHORTCUTS.find((s) => s.key === key);

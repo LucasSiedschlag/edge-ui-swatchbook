@@ -3,7 +3,7 @@ import { simulatedTime } from '../sim/clock';
 import type { LineId } from '../mock/types';
 import type { LineStatus, PlantState, StopReason } from './types';
 
-const NEVER = Number.POSITIVE_INFINITY;
+import { NEVER } from '../limits';
 
 /** Screen 1 banner data. Age is seconds at the requested tick. */
 export function criticalAlarms(state: PlantState, lineId: LineId, tick = state.lastTick) {

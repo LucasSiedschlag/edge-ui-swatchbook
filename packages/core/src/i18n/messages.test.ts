@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import { raises } from '../sim/alarms';
-import { en, ptBR } from './messages';
+import { en, ptBR, type MessageKey } from './messages';
+import { t } from './translate';
 import * as labels from './labels';
 
 const placeholders = (text: string) => [...new Set([...text.matchAll(/\{([a-z]+)\}/g)].map((m) => m[1]))].sort();
@@ -53,7 +54,7 @@ describe('dictionaries', () => {
 
 it('covers trend errors, Dependency Rules, statuses and violations', () => {
   for (const key of [
-    'trend-error.trend-limit', 'trend-error.unknown-tag', 'trend-error.duplicate-tag', 'trend-error.trend-units', 'trend-error.nothing-selected',
+    'trend-error.trend-limit', 'trend-error.unknown-tag', 'trend-error.duplicate-tag', 'trend-error.nothing-selected',
     'dependency-rule.barrel-temperature-window', 'dependency-rule.die-pressure-limit', 'dependency-rule.weld-window', 'dependency-rule.takt-limit',
     'rule-status.pass', 'rule-status.fail', 'rule-status.not-applicable',
     'violation.below-min', 'violation.above-max', 'violation.adjacent-too-far', 'violation.missing',
@@ -97,4 +98,19 @@ it('labels running Batches in both languages', () => {
   expect(labels.batchStatusLabels.running).toBe('batch-status.running');
   expect(en['batch-status.running']).toBe('Running');
   expect(ptBR['batch-status.running']).toBe('Em andamento');
+});
+
+it('renders shared Screen messages through the public dictionary', () => {
+  const progress: MessageKey = 'deck.batch-progress';
+  const params = { produced: 10, target: 20, percent: '50%' };
+  expect(t('en', progress, params)).toBe('10 of 20 (50%)');
+  expect(t('pt-BR', progress, params)).toBe('10 de 20 (50%)');
+  expect(t('en', 'common.row-count', { count: 12 })).toBe('12 records');
+  expect(t('pt-BR', 'common.row-count', { count: 12 })).toBe('12 registros');
+  for (const key of Object.keys(en) as MessageKey[]) {
+    const names = [...en[key].matchAll(/\{([a-z]+)\}/g)].map(match => match[1]!);
+    const samples = Object.fromEntries(names.map(name => [name, 'sample']));
+    expect(t('en', key, samples), key).not.toMatch(/\{[^{}]+\}/);
+    expect(t('pt-BR', key, samples), key).not.toMatch(/\{[^{}]+\}/);
+  }
 });

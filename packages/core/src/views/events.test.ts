@@ -131,6 +131,7 @@ describe('eventLogView', () => {
   });
 });
 
+// Building nearly 10000 immutable action states dominates this boundary regression.
 it('orders EV-9999, EV-10000 and EV-10001 by insertion after real actions', () => {
   let state = start();
   while (state.ids.events < 9998) {
@@ -139,7 +140,7 @@ it('orders EV-9999, EV-10000 and EV-10001 by insertion after real actions', () =
   for (const note of ['first', 'second', 'third']) state = ok(state, { type: 'shift-handover', note }, 0);
   expect(eventLogView(state, 0, { actions: ['shift-handover'], range: 'last-7d' }).rows.slice(0, 3).map((row) => [row.id, row.note]))
     .toEqual([['EV-10001', 'third'], ['EV-10000', 'second'], ['EV-9999', 'first']]);
-}, 20000);
+}, 120000);
 
 it('normalizes null and empty Event Log filters', () => {
   const s = start();

@@ -175,3 +175,36 @@ it('blocks runtime shortcuts from descendants of dialogs, including across a sha
     expect(handler).not.toHaveBeenCalled();
   } finally { await view.unmount(); }
 });
+
+
+it('blocks focused Drawer roots and nested shadow dialogs, ignores hidden mounted dialogs, and accepts modalOpen', async () => {
+  const acknowledge = vi.fn();
+  let modalOpen = false;
+  function Probe() { useShortcut('acknowledge', acknowledge); return <div data-drawer><div role="dialog" aria-modal="true" /></div>; }
+  const view = await mount(<RuntimeProvider libraryId="ant-design" search="?tick=0" modalOpen={() => modalOpen}><Probe /></RuntimeProvider>);
+  try {
+    const root = view.container.querySelector('[data-drawer]')!;
+    const dialog = root.firstElementChild as HTMLElement;
+    expect((await key('a', root)).defaultPrevented).toBe(false);
+    for (const hide of [() => { dialog.hidden = true; }, () => { dialog.setAttribute('aria-hidden', 'true'); }, () => { dialog.style.display = 'none'; }, () => { dialog.setAttribute('inert', ''); }]) {
+      hide();
+      expect((await key('a', root)).defaultPrevented).toBe(true);
+      dialog.hidden = false; dialog.removeAttribute('aria-hidden'); dialog.style.display = ''; dialog.removeAttribute('inert');
+    }
+    dialog.hidden = true;
+    modalOpen = true;
+    expect((await key('a', document)).defaultPrevented).toBe(false);
+    modalOpen = false;
+    const native = document.createElement('dialog'); native.setAttribute('open', ''); root.append(native);
+    expect((await key('a', native)).defaultPrevented).toBe(false);
+    native.removeAttribute('open');
+    expect((await key('a', native)).defaultPrevented).toBe(true);
+    const host = document.createElement('div'); root.append(host);
+    const inner = document.createElement('div'); inner.setAttribute('role', 'dialog'); host.attachShadow({ mode: 'open' }).append(inner);
+    const nested = document.createElement('div'); inner.attachShadow({ mode: 'open' }).append(nested);
+    expect((await key('a', nested, { composed: true })).defaultPrevented).toBe(false);
+    expect(acknowledge).toHaveBeenCalledTimes(5);
+    host.hidden = true;
+    expect((await key('a', nested, { composed: true })).defaultPrevented).toBe(true);
+  } finally { await view.unmount(); }
+});

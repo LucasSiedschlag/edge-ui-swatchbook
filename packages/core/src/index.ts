@@ -2,11 +2,11 @@ export { LOCALES, SCREENS, type Locale, type ScreenId } from './screens';
 
 export { DEFAULT_SEED, generateMockDataset } from './mock/generate';
 export type * from './mock/types';
-export { spDayStart, spDayEnd } from './mock/time';
+export { spDayStart, spDayEnd, DATA_START, DATA_END } from './mock/time';
 export { findBatch } from './mock/lookup';
 export { simulate, type Snapshot } from './sim/simulate';
 export { alarmTransitions, raises, returns, type AlarmTransition, type Raise, type Return } from './sim/alarms';
-export { MAX_TICK } from './sim/context';
+export { MAX_TICK, alarmDirection } from './sim/context';
 export { tagSeries, firstTick, type SeriesPoint } from './sim/series';
 export { snapshotDigest } from './sim/digest';
 export { setpointAt, type Overlay, type SetpointStep } from './sim/overlay';
@@ -22,3 +22,9 @@ export * from './views';
 export * from './i18n';
 export * from './shortcuts';
 export * from './tour';
+
+export { activeRecipeParameter } from './parameters';
+export { STEP_KINDS, SHIFT_IDS, BATCH_STATUSES } from './mock/types';
+export { batchModel } from './sim/kpis';
+export { MAX_TREND_TAGS, TAKT_SECONDS, NEVER } from './limits';
+export { TEST_IDS, ledgerFilterId } from './testids';

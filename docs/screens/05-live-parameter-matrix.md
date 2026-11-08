@@ -5,7 +5,7 @@ Route `/parameters`. For Technicians. Raw Tags, live trends, setpoint changes an
 ## Shows
 
 - **Tag grid.** About 300 Tags with Line, Machine, Tag name, current value, unit, setpoint, minimum, maximum and status (Normal, High, Low or Stale). Values update each tick.
-- **Trend.** Up to 4 selected Tags drawn together over one of three live windows: Last 5 minutes, Last 30 minutes, Last 2 hours. For example barrel zone temperature against die pressure.
+- **Trend.** Up to 4 selected Tags drawn together over one of three live windows: Last 5 minutes, Last 30 minutes, Last 2 hours. Up to 4 different units use separate offset Y axes; each Tag's limits and setpoint use its own unit axis. For example barrel zone temperature against die pressure. Screens must pass their Plant State Overlay to `trendView`.
 - **Connectivity.** Every Machine with its link status (Online, Degraded or Offline) and last-seen time. Tags of an Offline Machine show Stale and stop updating.
 
 ## Actions
@@ -22,12 +22,13 @@ Route `/parameters`. For Technicians. Raw Tags, live trends, setpoint changes an
 
 - Tag out of limits: High or Low, and shown as such.
 - Stale Tag on an Offline Machine: no Setpoint Override allowed.
-- No Tag matches the filter: empty state.
-- No Tag selected for the trend: empty state asking to select Tags.
+- No Tag matches the filter: `parameters.grid-empty`.
+- No Tag selected for the trend: `parameters.trend-empty` asks to select Tags.
+- If the whole Screen has no content, show one `parameters.empty` instead of the block empty states.
 
 ## Required test IDs
 
-`parameters.grid`, `parameters.filter-line`, `parameters.filter-machine`, `parameters.filter-status`, `parameters.search`, `parameters.tag-select`, `parameters.trend`, `parameters.trend-window`, `parameters.trend-limit`, `parameters.override`, `parameters.override-value`, `parameters.override-reason`, `parameters.override-error`, `parameters.override-apply`, `parameters.reset-recipe`, `parameters.connectivity`, `parameters.empty`.
+`parameters.grid`, `parameters.filter-line`, `parameters.filter-machine`, `parameters.filter-status`, `parameters.search`, `parameters.tag-select`, `parameters.trend`, `parameters.trend-window`, `parameters.trend-limit`, `parameters.override`, `parameters.override-value`, `parameters.override-reason`, `parameters.override-error`, `parameters.override-apply`, `parameters.reset-recipe`, `parameters.connectivity`, `parameters.empty`, `parameters.grid-empty`, `parameters.trend-empty`.
 
 ## Out of scope
 

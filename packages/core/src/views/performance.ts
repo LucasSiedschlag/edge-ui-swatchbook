@@ -46,6 +46,7 @@ export interface PerformanceShift {
 export interface PerformanceView {
   oee: (OeeParts & { previous: OeeParts | null; change: OeeParts | null }) | null;
   pareto: ParetoRow[];
+  /** Actual output splits goodUnits and scrapUnits; good plus scrap is total produced. targetUnits is the separate ideal target. */
   output: OutputBucket[];
   shifts: PerformanceShift[];
   hasProduction: boolean;

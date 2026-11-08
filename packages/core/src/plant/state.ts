@@ -5,7 +5,7 @@ import { contextOf } from '../sim/context';
 import type { Overlay } from '../sim/overlay';
 import type { LineControl, PlantState, StopSpan } from './types';
 
-const NEVER = Number.POSITIVE_INFINITY;
+import { NEVER } from '../limits';
 
 /** Ticks of [from, to) that fall inside none of the spans. Overlapping spans count once. */
 export function runTicksOf(spans: readonly StopSpan[], from: number, to: number): number {

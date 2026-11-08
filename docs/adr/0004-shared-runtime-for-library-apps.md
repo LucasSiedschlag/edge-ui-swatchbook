@@ -12,4 +12,4 @@ The three presets are `office` (light, comfortable), `control-room` (dark, compa
 
 Runtime never handles the `close` action or prevents Escape. Each Library's native Drawer, Modal and dialog owns Escape, checked by the Parity suite. The core binding stays in the shortcut help; runtime handler types exclude `close`.
 
-Core suppresses every shortcut when the event path contains `aria-modal="true"` or the role `dialog` or `alertdialog`, including through a composed path. Apps should configure Vite with `resolve.dedupe: ['react', 'react-dom']` so runtime and the app share React.
+Core suppresses every shortcut for visible open dialogs in the target, its dialog descendants or the composed path, including native `<dialog open>` and nested shadow DOM. Hidden, aria-hidden, display-none and inert dialogs do not block shortcuts. The optional `modalOpen` RuntimeProvider predicate supplies an app fallback without scanning the document. Apps should configure Vite with `resolve.dedupe: ['react', 'react-dom']` so runtime and the app share React.

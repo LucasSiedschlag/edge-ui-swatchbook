@@ -1,7 +1,10 @@
+import { SHIFT_IDS, BATCH_STATUSES } from '../mock/types';
 import { normalizeFilters, type FilterInput } from './filters';
 import { spDayStart, spDayEnd } from '../mock/time';
 import { findBatch } from '../mock/lookup';
 import { alarmList, type PlantState } from '../plant';
+import { batchModel } from '../sim/kpis';
+import { simulatedTime } from '../sim/clock';
 import { assertSessionTick } from '../sim/context';
 import { alarmListView, type AlarmRow } from './alarms';
 import type { AreaId, Batch, BatchStatus, Genealogy, LineId, MockDataset, Parameter, RecipeVersion, ShiftId, TextRef } from '../mock/types';
@@ -27,7 +30,7 @@ export interface LedgerRow {
 export type LedgerColumn = keyof LedgerRow;
 export interface LedgerRange { min?: number; max?: number }
 /** Lists combine with AND. Local start dates and numeric ranges are inclusive. */
-interface LedgerFilterValues {
+export interface LedgerFilterValues {
   batchId?: string;
   lotId?: string;
   upstreamLotId?: string;
@@ -36,10 +39,12 @@ interface LedgerFilterValues {
   products?: readonly string[];
   shifts?: readonly ShiftId[];
   statuses?: readonly BatchStatus[];
+  recipeVersion?: LedgerRange;
   yield?: LedgerRange;
   scrap?: LedgerRange;
   duration?: LedgerRange;
   start?: { fromDate?: string; toDate?: string };
+  end?: { fromDate?: string; toDate?: string };
 }
 export type LedgerFilters = FilterInput<LedgerFilterValues>;
 export type ActiveFilter = { [K in keyof LedgerFilterValues]-?: { column: K; value: Exclude<LedgerFilterValues[K], undefined> } }[keyof LedgerFilterValues];
@@ -94,7 +99,8 @@ function baseOf(d: MockDataset): BaseRows {
 }
 
 const COLUMNS: readonly LedgerColumn[] = ['batchId', 'lotId', 'upstreamLotId', 'areaId', 'lineId', 'productId', 'productCode', 'recipeVersionId', 'recipeVersion', 'shift', 'start', 'end', 'durationMinutes', 'status', 'yieldPct', 'scrap'];
-const FILTER_ORDER = ['batchId', 'lotId', 'upstreamLotId', 'areas', 'lines', 'products', 'shifts', 'start', 'duration', 'statuses', 'yield', 'scrap'] as const;
+export const LEDGER_FILTER_COLUMNS = ['batchId', 'lotId', 'upstreamLotId', 'areas', 'lines', 'products', 'recipeVersion', 'shifts', 'start', 'end', 'duration', 'statuses', 'yield', 'scrap'] as const satisfies readonly (keyof LedgerFilterValues)[];
+export type LedgerFilterColumn = typeof LEDGER_FILTER_COLUMNS[number];
 const inRange = (n: number, r?: LedgerRange) => !r || ((r.min === undefined || n >= r.min) && (r.max === undefined || n <= r.max));
 
 /** Finished Batches only. Code point ordering, null first ascending. Batch id ties always ascend. */
@@ -105,22 +111,27 @@ export function ledgerView(d: MockDataset, query: LedgerQuery): LedgerView {
   const f = normalizeFilters<LedgerFilterValues>(query.filters);
   const choices: [readonly string[] | undefined, readonly string[]][] = [
     [f.areas, d.areas.map(a => a.id)], [f.lines, d.lines.map(l => l.id)],
-    [f.products, d.products.map(p => p.id)], [f.shifts, ['S1', 'S2', 'S3']],
-    [f.statuses, ['completed', 'aborted', 'rework']],
+    [f.products, d.products.map(p => p.id)], [f.shifts, SHIFT_IDS],
+    [f.statuses, BATCH_STATUSES],
   ];
   for (const [values, known] of choices) if (values?.some(v => !known.includes(v))) throw new Error('unknown ledger filter id');
-  for (const column of ['yield', 'scrap', 'duration'] as const) {
+  for (const column of ['recipeVersion', 'yield', 'scrap', 'duration'] as const) {
     const range = f[column];
     if (range && Object.values(range).some(n => n !== undefined && !Number.isFinite(n))) throw new Error('range bounds must be finite');
     if (range?.min !== undefined && range.max !== undefined && range.min > range.max) throw new Error(`${column} min must not exceed max`);
   }
-  const from = f.start?.fromDate === undefined ? undefined : spDayStart(f.start.fromDate);
-  const to = f.start?.toDate === undefined ? undefined : spDayEnd(f.start.toDate);
-  if (from !== undefined && to !== undefined && from > to) throw new Error('start fromDate must not be after toDate');
+  const dates = (column: 'start' | 'end') => {
+    const range = f[column];
+    const from = range?.fromDate === undefined ? undefined : spDayStart(range.fromDate);
+    const to = range?.toDate === undefined ? undefined : spDayEnd(range.toDate);
+    if (from !== undefined && to !== undefined && from > to) throw new Error(`${column} fromDate must not be after toDate`);
+    return { from, to };
+  };
+  const start = dates('start'), end = dates('end');
   const base = baseOf(d);
   const needles = [f.batchId, f.lotId, f.upstreamLotId].map(s => s?.toLowerCase() ?? '');
   const activeFilters: ActiveFilter[] = [];
-  for (const column of FILTER_ORDER) {
+  for (const column of LEDGER_FILTER_COLUMNS) {
     const value = f[column];
     if (value !== undefined) activeFilters.push({ column, value } as ActiveFilter);
   }
@@ -128,9 +139,10 @@ export function ledgerView(d: MockDataset, query: LedgerQuery): LedgerView {
     needles.every((needle, j) => !needle || base.search[i]![j]!.includes(needle)) &&
     (!f.areas || f.areas.includes(r.areaId)) && (!f.lines || f.lines.includes(r.lineId)) &&
     (!f.products || f.products.includes(r.productId)) && (!f.shifts || f.shifts.includes(r.shift)) &&
-    (!f.statuses || f.statuses.includes(r.status)) && inRange(r.yieldPct, f.yield) &&
+    (!f.statuses || f.statuses.includes(r.status)) && inRange(r.recipeVersion, f.recipeVersion) && inRange(r.yieldPct, f.yield) &&
     inRange(r.scrap, f.scrap) && inRange(r.durationMinutes, f.duration) &&
-    (from === undefined || r.start >= from) && (to === undefined || r.start <= to));
+    (start.from === undefined || r.start >= start.from) && (start.to === undefined || r.start <= start.to) &&
+    (end.from === undefined || r.end >= end.from) && (end.to === undefined || r.end <= end.to));
   rows.sort((a, b) => order(a[column], b[column]) * (direction === 'asc' ? 1 : -1) || order(a.batchId, b.batchId));
   const selected = new Set(query.selected ?? []);
   const visible = new Set(rows.map(r => r.batchId));
@@ -215,7 +227,7 @@ export interface BatchHeader {
 }
 export type BatchDetail = { header: BatchHeader; genealogy: DetailGenealogyNode[]; parameters: DetailParameter[]; alarms: AlarmRow[] } | { error: 'unknown-batch' };
 
-/** Genealogy is the stored chain, including pre-window Lots. Running Batches have no recorded actuals or end. */
+/** Genealogy is the stored chain, including pre-window Lots. Running Batches have no recorded actuals. Their end becomes known at completion. */
 export function batchDetail(state: PlantState, tick: number, batchId: string): BatchDetail {
   assertSessionTick(tick);
   const d = state.dataset;
@@ -233,13 +245,14 @@ export function batchDetail(state: PlantState, tick: number, batchId: string): B
     return { parameterId: p.id, key: p.key, name: p.name, unit: p.unit, min: p.min, max: p.max,
       ...actualOf(p, actual), insideLimits: actual === undefined ? null : actual >= p.min && actual <= p.max };
   });
-  // The Batch owns Alarms raised in [start, end), using plannedEnd while running.
-  const end = 'end' in b ? b.end : b.plannedEnd;
+  // The Batch owns Alarms raised in [start, actual completion), including time delayed by stops.
+  const end = 'end' in b ? b.end : simulatedTime(batchModel(d, b, state.overlay).completionTick);
+  const completed = end <= simulatedTime(tick);
   const alarmIds = new Set(alarmList(state, tick).filter(a => a.batchId === batchId && a.raisedAt >= b.start && a.raisedAt < end).map(a => a.id));
   const alarms = alarmListView(state, tick, { states: ['active-unacknowledged', 'active-acknowledged', 'returned-unacknowledged', 'cleared'] }).rows.filter(a => alarmIds.has(a.id));
   return {
-    header: { batchId: b.id, lotId: b.lotId, status: 'status' in b ? b.status : 'running', lineId: b.lineId,
-      productCode: d.products.find(p => p.id === b.productId)!.code, start: b.start, end: 'end' in b ? b.end : null },
+    header: { batchId: b.id, lotId: b.lotId, status: 'status' in b ? b.status : completed ? 'completed' : 'running', lineId: b.lineId,
+      productCode: d.products.find(p => p.id === b.productId)!.code, start: b.start, end: completed ? end : null },
     genealogy, parameters, alarms,
   };
 }

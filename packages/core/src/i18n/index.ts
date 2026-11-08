@@ -7,3 +7,6 @@ export {
 } from './format';
 export { PREFERENCES_KEY, loadPreferences, savePreferences, type Preferences, type StorageLike } from './preferences';
 export * from './labels';
+
+export { DECIMALS_BY_UNIT } from './precision';
+export { formatTagValue, formatChange } from './format';

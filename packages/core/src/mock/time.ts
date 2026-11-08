@@ -38,3 +38,8 @@ export function spDayStart(date: string): number {
 export function spDayEnd(date: string): number {
   return spDayStart(date) + DAY - 1;
 }
+
+
+/** Inclusive history bounds. Local dates let native date pickers open on the history month. */
+export const DATA_START = Object.freeze({ timestamp: NOW - HISTORY_DAYS * DAY, date: spDate(NOW - HISTORY_DAYS * DAY) });
+export const DATA_END = Object.freeze({ timestamp: NOW - 1, date: spDate(NOW - 1) });

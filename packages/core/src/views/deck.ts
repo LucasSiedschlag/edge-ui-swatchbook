@@ -10,7 +10,7 @@ export interface DeckSelected { id: LineId; status: LineStatus['status']; stopRe
 export interface DeckBatch extends BatchProgress { productCode: string; recipeVersion: number; start: number }
 export type DeckKpis = Pick<LineLive, 'oee' | 'availability' | 'performance' | 'quality' | 'outputThisShift' | 'scrapThisShift' | 'cycle' | 'lineSpeed'> & {
   /** Applicability comes from Line type, even when no product is being made. */
-  kind: 'cycle' | 'lineSpeed' | 'none';
+  kind: 'cycle' | 'lineSpeed';
 };
 export interface DeckShift { id: Snapshot['shift']['shift']; startsAt: number; endsAt: number; remainingMs: number }
 export interface DeckActions { pause: boolean; resume: boolean; emergencyStop: boolean; reset: boolean; shiftHandover: boolean }

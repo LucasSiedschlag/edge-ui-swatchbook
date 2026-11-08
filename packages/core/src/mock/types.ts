@@ -38,7 +38,8 @@ export interface User { id: string; name: string; role: Role }
 
 export interface Product { id: string; code: string; name: TextRef }
 
-export type StepKind = 'preheat' | 'ramp' | 'run' | 'cooldown' | 'load' | 'process' | 'inspect';
+export const STEP_KINDS = ['preheat', 'ramp', 'run', 'cooldown', 'load', 'process', 'inspect'] as const;
+export type StepKind = typeof STEP_KINDS[number];
 export interface Parameter {
   id: string;
   /** Stable parameter key, for example `barrel-zone-1`. Dependency Rules match on it. */
@@ -63,8 +64,10 @@ export interface RecipeVersion {
 }
 export interface Recipe { id: string; productId: string; lineType: LineType; name: TextRef }
 
-export type ShiftId = 'S1' | 'S2' | 'S3';
-export type BatchStatus = 'completed' | 'aborted' | 'rework';
+export const SHIFT_IDS = ['S1', 'S2', 'S3'] as const;
+export type ShiftId = typeof SHIFT_IDS[number];
+export const BATCH_STATUSES = ['completed', 'aborted', 'rework'] as const;
+export type BatchStatus = typeof BATCH_STATUSES[number];
 export interface Lot { id: string; batchId: string; upstreamLotId: string | null }
 export interface GenealogyNode { lotId: string; batchId: string | null }
 export interface Genealogy {

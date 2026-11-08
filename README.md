@@ -17,7 +17,10 @@ Every library shows the same screens, data and actions, and each one looks and b
 
 ## Status
 
-Design is settled, no code yet. v1 libraries are Ant Design, UI5 Web Components and Siemens iX. The chart library is still open.
+The shared core provides the Mock Dataset, Simulator, Plant State, selectors and bilingual strings.
+The shared React runtime provides the clock, actions, preferences, routing, shortcuts and Tour.
+The ECharts wrapper provides themed trends, Pareto and output charts with accessible data tables.
+Ant Design has an app scaffold; the six Screens and the UI5 and Siemens iX apps are still to be built.
 
 - [docs/idea.md](docs/idea.md): goals, decisions and library criteria
 - [docs/adr/](docs/adr/): architecture decisions

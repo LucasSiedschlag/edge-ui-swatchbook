@@ -1,13 +1,12 @@
 import type { Alarm } from '../mock/types';
 import { simulatedTime } from '../sim/clock';
 import { alarmTransitions, raiseAt } from '../sim/alarms';
-import { assertTick, contextOf, returnTickOf, type Direction } from '../sim/context';
+import { assertTick, contextOf, returnTickOf, alarmDirection } from '../sim/context';
 import { alarmedAt } from '../sim/tags';
 import type { Overlay } from '../sim/overlay';
 import type { PlantState } from './types';
 
 export const isActive = (a: Alarm): boolean => a.state === 'active-unacknowledged' || a.state === 'active-acknowledged';
-const directionOf = (a: Alarm): Direction => a.message.key === 'alarm.low-value' ? 'low' : 'high';
 
 function applyReturn(a: Alarm, tick: number): Alarm {
   const time = simulatedTime(tick);
@@ -70,11 +69,11 @@ function extend(state: PlantState, tick: number): Timeline {
     const open = timeline.open.get(tag.id) ?? [];
     const kept: History[] = [];
     for (const h of open) {
-      if (directionOf(h.initial) !== change.level) h.returnedTick = change.tick;
+      if (alarmDirection(h.initial) !== change.level) h.returnedTick = change.tick;
       else kept.push(h);
     }
     if (change.level !== null && kept.length === 0 && state.overlay.runTicks!(tag.lineId, change.tick, change.tick + 1) > 0) {
-      const r = raiseAt(state.dataset, tag, change.tick, change.level);
+      const r = raiseAt(state.dataset, tag, change.tick, change.level, state.overlay);
       const h: History = { initial: {
         id: r.id, priority: r.priority, state: 'active-unacknowledged', lineId: r.lineId, machineId: r.machineId,
         tagId: r.tagId, batchId: r.batchId, message: r.message, raisedAt: r.time,

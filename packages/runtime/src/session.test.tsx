@@ -8,7 +8,7 @@ import { mount } from './testing';
 const dataset = generateMockDataset();
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); localStorage.clear(); history.replaceState(null, '', '/'); });
 
-function trackListeners(target: Window | Document) {
+function trackListeners(target: Window | Document, ownedTypes: readonly string[]) {
   const listeners = new Map<string, Set<EventListenerOrEventListenerObject>>();
   const add = target.addEventListener.bind(target), remove = target.removeEventListener.bind(target);
   function bucket(type: string, options?: boolean | EventListenerOptions) {
@@ -18,24 +18,41 @@ function trackListeners(target: Window | Document) {
     return set;
   }
   vi.spyOn(target, 'addEventListener').mockImplementation((type, listener, options) => {
-    if (listener) bucket(type, options).add(listener);
+    if (listener && ownedTypes.includes(type)) bucket(type, options).add(listener);
     add(type, listener, options);
   });
   vi.spyOn(target, 'removeEventListener').mockImplementation((type, listener, options) => {
-    if (listener) bucket(type, options).delete(listener);
+    if (listener && ownedTypes.includes(type)) bucket(type, options).delete(listener);
     remove(type, listener, options);
   });
   return { count: () => [...listeners.values()].reduce((count, set) => count + set.size, 0), countType: (type: string) => bucket(type).size };
+}
+
+function trackClockTimers() {
+  const owned = new Set<ReturnType<typeof setTimeout>>();
+  const schedule = globalThis.setTimeout, cancel = globalThis.clearTimeout;
+  // The Runtime clock owns its named update callback. DOM and React tasks have separate lifetimes.
+  vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, delay, ...args) => {
+    let id: ReturnType<typeof setTimeout>;
+    if (typeof callback === 'function' && callback.name === 'update') {
+      id = schedule(() => { owned.delete(id); callback(...args); }, delay);
+      owned.add(id);
+    } else id = schedule(callback, delay, ...args);
+    return id;
+  });
+  vi.spyOn(globalThis, 'clearTimeout').mockImplementation(id => { if (id !== undefined) owned.delete(id); cancel(id); });
+  return { count: () => owned.size };
 }
 
 it.each([false, true])('runs a full session with no timers or listeners left after unmount (StrictMode=%s)', async strict => {
   // React installs one shared document listener once, outside the runtime lifecycle.
   const warmup = await mount(<div />);
   await warmup.unmount();
-  vi.useFakeTimers();
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
+  const timers = trackClockTimers();
   let now = 0;
-  const windowListeners = trackListeners(window), documentListeners = trackListeners(document);
-  const before = { timers: vi.getTimerCount(), window: windowListeners.count(), document: documentListeners.count() };
+  const windowListeners = trackListeners(window, ['storage', 'hashchange', 'popstate']), documentListeners = trackListeners(document, ['keydown']);
+  const before = { timers: timers.count(), window: windowListeners.count(), document: documentListeners.count() };
   let session!: ReturnType<typeof useSimulation>, prefs!: ReturnType<typeof usePreferences>, tour!: ReturnType<typeof useTour>;
   let dispatch!: ReturnType<typeof useActions>, route!: ReturnType<typeof useRoute>, i18n!: ReturnType<typeof useI18n>;
   function Probe() {
@@ -47,10 +64,14 @@ it.each([false, true])('runs a full session with no timers or listeners left aft
     return null;
   }
   const view = await mount(<RuntimeProvider libraryId="ant-design" dataset={dataset} languages={['en']} search="" now={() => now}><Probe /></RuntimeProvider>, strict);
+  // Simulate unrelated happy-dom work that can remain pending after a Runtime unmount.
+  const domTask = setTimeout(() => {}, 60000);
+  const domListener = () => {};
+  window.addEventListener('resize', domListener);
   try {
     expect(documentListeners.countType('keydown')).toBe(1);
     expect(windowListeners.countType('storage')).toBe(1);
-    expect(vi.getTimerCount()).toBe(before.timers + 1);
+    expect(timers.count()).toBe(before.timers + 1);
     await act(() => prefs.setLanguage('pt-BR'));
     expect(i18n.locale).toBe('pt-BR');
     now = 2300;
@@ -70,7 +91,9 @@ it.each([false, true])('runs a full session with no timers or listeners left aft
     expect(stored).toEqual({ language: 'pt-BR', theme: 'light', density: 'comfortable' });
     expect(session.state.controls.E2.paused).toBe(true);
   } finally { await view.unmount(); }
-  expect({ timers: vi.getTimerCount(), window: windowListeners.count(), document: documentListeners.count() }).toEqual(before);
+  expect({ timers: timers.count(), window: windowListeners.count(), document: documentListeners.count() }).toEqual(before);
+  clearTimeout(domTask);
+  window.removeEventListener('resize', domListener);
 });
 
 it('has Parity across Library providers at the same tick and after the same action', async () => {
@@ -95,6 +118,7 @@ it('has Parity across Library providers at the same tick and after the same acti
 
 it('uses browser defaults for live time, frozen ticks, languages and preference persistence across mounts', async () => {
   vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
+  const timers = trackClockTimers();
   vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['fr', 'pt-PT']);
   history.replaceState(null, '', '/ant-design/#/deck');
   let simulation!: ReturnType<typeof useSimulation>, prefs!: ReturnType<typeof usePreferences>;
@@ -113,13 +137,13 @@ it('uses browser defaults for live time, frozen ticks, languages and preference 
     await act(() => { prefs.setLanguage('en'); prefs.applyPreset('control-room'); });
     expect(JSON.parse(localStorage.getItem(PREFERENCES_KEY)!)).toEqual({ language: 'en', theme: 'dark', density: 'compact' });
   } finally { await first.unmount(); }
-  expect(vi.getTimerCount()).toBe(0);
+  expect(timers.count()).toBe(0);
   history.replaceState(null, '', '/ant-design/?tick=7#/deck?tick=4');
   const second = await mount(tree, true);
   try {
     expect(prefs).toMatchObject({ language: 'en', theme: 'dark', density: 'compact', preset: 'control-room' });
     expect(simulation.tick).toBe(7);
-    expect(vi.getTimerCount()).toBe(0);
+    expect(timers.count()).toBe(0);
     await act(() => vi.advanceTimersByTime(5000));
     expect(simulation.tick).toBe(7);
   } finally { await second.unmount(); }

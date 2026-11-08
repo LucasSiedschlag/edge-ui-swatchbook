@@ -195,3 +195,25 @@ it('does not mistake a lone command modifier for the ctrl+alt AltGr pair', () =>
     expect(resolveShortcut({ key: '/', ...modifiers, getModifierState: () => true })).toBeNull();
   }
 });
+
+
+it.each(SHORTCUTS)('suppresses $key for Drawer descendants and native open dialogs, including shadow paths', ({ key }) => {
+  const drawer = { querySelector: () => ({ role: 'dialog' }) };
+  const native = { tagName: 'DIALOG', open: true };
+  for (const target of [drawer, native]) {
+    expect(resolveShortcut({ key, target }, { rowFocused: true })).toBeNull();
+    expect(resolveShortcut({ key, target: { tagName: 'SPAN' }, composedPath: () => [{ tagName: 'X-HOST' }, target, { tagName: 'X-OUTER' }] }, { rowFocused: true })).toBeNull();
+  }
+});
+it('ignores mounted hidden dialogs and supports the app modal predicate context', () => {
+  for (const hidden of [{ hidden: true }, { ariaHidden: 'true' }, { style: { display: 'none' } }, { inert: true }]) {
+    expect(resolveShortcut({ key: 'a', target: { querySelector: () => ({ role: 'dialog', ...hidden }) } })).toEqual({ type: 'acknowledge' });
+  }
+  expect(resolveShortcut({ key: 'a', target: { tagName: 'DIALOG', open: false } })).toEqual({ type: 'acknowledge' });
+  expect(resolveShortcut({ key: 'a' }, { modalOpen: true })).toBeNull();
+});
+
+it('recognizes native open attributes and ignores hidden ancestors of mounted dialogs', () => {
+  expect(resolveShortcut({ key: 'a', target: { tagName: 'DIALOG', hasAttribute: name => name === 'open' } })).toBeNull();
+  expect(resolveShortcut({ key: 'a', target: { role: 'dialog', parentElement: { hidden: true } } })).toEqual({ type: 'acknowledge' });
+});

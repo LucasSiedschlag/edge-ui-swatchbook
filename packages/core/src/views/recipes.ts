@@ -1,6 +1,7 @@
 import { normalizeFilters, type FilterInput } from './filters';
 import type { LineType, TextRef } from '../mock/types';
-import { recipeList } from '../plant';
+import { STEP_KINDS, type StepKind } from '../mock/types';
+import { reduce, recipeList } from '../plant';
 import type { PlantState, RecipeRow } from '../plant';
 
 interface RecipeFilterValues {
@@ -38,4 +39,23 @@ export function recipeLibraryView(
     rows.push({ ...base, productCode, nameRef });
   }
   return { rows, empty: rows.length === 0 };
+}
+
+
+export interface RecipeVersionActions { newDraft: boolean; addStep: boolean; save: boolean; approve: boolean; discard: boolean }
+export type RecipeVersionView = { actions: RecipeVersionActions; addableStepKinds: StepKind[] } | { error: 'unknown-version' };
+
+/** Probes use the same reducer and effective tick as dispatch; no action availability rule is duplicated here. */
+export function recipeVersionView(state: PlantState, versionId: string): RecipeVersionView {
+  if (!state.recipeVersions.some(v => v.id === versionId)) return { error: 'unknown-version' };
+  const ctx = { tick: state.lastTick };
+  const available = (type: 'new-draft' | 'save-draft' | 'approve' | 'discard-draft') => {
+    const r = reduce(state, { type, versionId }, ctx);
+    return r.ok && r.events.length > 0;
+  };
+  const addableStepKinds = STEP_KINDS.filter(kind => reduce(state, { type: 'add-step', versionId, kind }, ctx).ok);
+  return { actions: {
+    newDraft: available('new-draft'), addStep: addableStepKinds.length > 0,
+    save: available('save-draft'), approve: available('approve'), discard: available('discard-draft'),
+  }, addableStepKinds };
 }

@@ -1,8 +1,6 @@
 export { LineTrendChart, ParetoChart, OutputChart } from './components';
 export type { LineTrendChartProps, ParetoChartProps, OutputChartProps } from './components';
-export { ChartThemeProvider, useChartTheme } from './context';
-export { lightChartTheme, darkChartTheme } from './theme';
-export type { ChartTheme } from './theme';
+export { ChartThemeProvider, useChartTheme, lightChartTheme, darkChartTheme, type ChartTheme } from './theme-entry';
 export { buildLineTrendOption, buildParetoOption, buildOutputOption } from './options';
 export { renderChartSvg } from './svg';
 export type {

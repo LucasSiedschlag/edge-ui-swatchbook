@@ -3,7 +3,7 @@ import { buildLineTrendOption } from './options';
 import { darkChartTheme } from './theme';
 
 const formatters = { formatTime: (time: number) => `time:${time}`, formatValue: (value: number, unit: string) => `${value} ${unit}`, formatStatus: (status: string) => `status:${status}` };
-const labels = { caption: 'Trend', unsupported: 'Select at most four Tags with at most two units', empty: 'Select tags', time: 'Time', value: 'Value', series: 'Tag', status: 'Status', minimum: 'Minimum', maximum: 'Maximum', setpoint: 'Setpoint' };
+const labels = { caption: 'Trend', unsupported: 'Select at most four Tags', empty: 'Select tags', time: 'Time', value: 'Value', series: 'Tag', status: 'Status', minimum: 'Minimum', maximum: 'Maximum', setpoint: 'Setpoint' };
 const data = [
   { id: 'temperature', name: 'Temperature', unit: '°C', min: 10, max: 30, setpoint: 20, points: [{ time: 1000, value: 18, status: 'normal' }, { time: 2000, value: 19, status: 'stale' }] },
   { id: 'pressure', name: 'Pressure', unit: 'bar', points: [{ tick: 1000, value: 7, status: 'high' }] },
@@ -32,7 +32,7 @@ it('adds only supplied limits and setpoint with translated names', () => {
 
 it('returns no plotted series for unsupported selections', () => {
   expect(buildLineTrendOption({ data: Array(5).fill(data[0]), labels, formatters, theme: darkChartTheme }).series).toEqual([]);
-  expect(buildLineTrendOption({ data: [...data.slice(0, 2), { ...data[2]!, unit: 'kPa' }], labels, formatters, theme: darkChartTheme }).series).toEqual([]);
+
 });
 
 
@@ -61,4 +61,24 @@ it('bounds point setpoints without including an unused series fallback', () => {
     points: [{ tick: 0, value: 200, status: 'normal', setpoint: 190 }, { tick: 1, value: 200, status: 'normal', setpoint: 210 }],
   }], labels, formatters, theme: darkChartTheme });
   expect(option.yAxis).toMatchObject([{ min: 189, max: 211 }]);
+});
+
+
+it('uses four offset axes and keeps every measured, limit and setpoint line on its unit axis', () => {
+  const units = ['°C', 'bar', 'rpm', 'm/min'];
+  const selected = units.map((unit, i) => ({ ...data[0]!, id: `tag-${i}`, unit, min: i + 1, max: i + 10,
+    points: [{ tick: 0, value: i + 4, setpoint: i + 5, status: 'normal' }] }));
+  const option = buildLineTrendOption({ data: selected, labels, formatters, theme: darkChartTheme });
+  expect(option.yAxis).toMatchObject([
+    { name: '°C', position: 'left', offset: 0 }, { name: 'bar', position: 'right', offset: 0 },
+    { name: 'rpm', position: 'left', offset: 96 }, { name: 'm/min', position: 'right', offset: 96 },
+  ]);
+  expect(option.grid).toMatchObject({ left: 160, right: 160 });
+  const plotted = option.series as { yAxisIndex: number; markLine?: { data: { yAxis: number }[] } }[];
+  expect(plotted).toHaveLength(8);
+  for (let i = 0; i < 4; i++) {
+    expect(plotted[i * 2]!.yAxisIndex).toBe(i);
+    expect(plotted[i * 2]!.markLine!.data.map(l => l.yAxis)).toEqual([i + 1, i + 10]);
+    expect(plotted[i * 2 + 1]!.yAxisIndex).toBe(i);
+  }
 });

@@ -3,7 +3,7 @@ import type { LineTrendInput, OutputInput, ParetoInput } from './types';
 
 export const trendInput: LineTrendInput = {
   data: [{ id: 'temp', name: 'Temperature', unit: '°C', min: 10, max: 30, setpoint: 20, points: [{ time: 1000, value: 18, status: 'normal' }, { time: 2000, value: 19, status: 'stale' }] }],
-  labels: { caption: 'Trend', unsupported: 'Select at most four Tags with at most two units', empty: 'Select tags', time: 'Time', value: 'Value', series: 'Tag', status: 'Status', minimum: 'Minimum', maximum: 'Maximum', setpoint: 'Setpoint' },
+  labels: { caption: 'Trend', unsupported: 'Select at most four Tags', empty: 'Select tags', time: 'Time', value: 'Value', series: 'Tag', status: 'Status', minimum: 'Minimum', maximum: 'Maximum', setpoint: 'Setpoint' },
   formatters: { formatTime: (time) => `time:${time}`, formatValue: (value, unit) => `${value} ${unit}`, formatStatus: (status) => `status:${status}` },
   theme: lightChartTheme,
 };

@@ -69,9 +69,9 @@ it('renders explicit caller-labelled empty states and empty accessible tables', 
 
 
 it('renders an explicit unsupported trend state without throwing', () => {
-  const data = ['°C', 'bar', 'rpm'].map((unit, index) => ({ ...trendInput.data[0]!, id: String(index), unit }));
-  const markup = renderToStaticMarkup(<LineTrendChart {...trendInput} data={data} labels={{ ...trendInput.labels, unsupported: 'Unsupported units' }} testId="trend" height={200} />);
-  expect(markup).toContain('Unsupported units');
+  const data = ['°C', 'bar', 'rpm', 'm/min', 'ms'].map((unit, index) => ({ ...trendInput.data[0]!, id: String(index), unit }));
+  const markup = renderToStaticMarkup(<LineTrendChart {...trendInput} data={data} labels={{ ...trendInput.labels, unsupported: 'Select at most four Tags' }} testId="trend" height={200} />);
+  expect(markup).toContain('Select at most four Tags');
   expect(markup).toContain('data-empty="true"');
 });
 

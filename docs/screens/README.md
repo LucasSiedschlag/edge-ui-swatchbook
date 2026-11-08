@@ -31,8 +31,8 @@ The takt time of the Assembly Lines is 120 s. Weld window is 240 to 270 °C for 
 - **Time.** All times show in `America/Sao_Paulo`. Every Screen reads "now" from the Simulator clock.
 - **Ranges.** Time range choices are always Last shift, Last 24 hours, Last 7 days and Last 30 days, except live trends (see Screen 5).
 - **Text.** Every string comes from the core dictionaries in `en` and `pt-BR`.
-- **Test IDs.** Every required element carries `data-testid="<route>.<name>"`, for example `deck.line-status`. Specs list the required IDs. Libraries may add others.
-- **Shortcuts.** Bindings are defined once in the core and are inactive while a text field has focus.
+- **Test IDs.** Every required element carries `data-testid="<route>.<name>"`, for example `deck.line-status`. Core's `TEST_IDS` registry lists the required IDs, checked against these specs. `ledgerFilterId(column)` uses the exact `ledgerView` filter names. `<screen>.empty` identifies one whole Screen empty state; `<screen>.<block>-empty` identifies a block that can be empty alone. `performance.empty` appears once when `hasProduction` is false, because all blocks are empty together. Libraries may add other IDs.
+- **Shortcuts.** Bindings are defined once in the core and are inactive while a text field has focus or an open dialog contains focus. Libraries own Escape for their native Drawer, Modal and dialog.
 
 | Key | Action |
 |-----|--------|
@@ -44,5 +44,7 @@ The takt time of the Assembly Lines is 120 s. Weld window is 240 to 270 °C for 
 
 Emergency stop has no shortcut.
 
-- **Event Log.** Every action that changes Plant State writes one Event Log entry with the fictional current User, the time, the action and the target.
+- **Event Log.** Edits to a Draft's working copy (Steps and Parameters) are recorded when the Draft is saved, approved or discarded, not one by one. All other state-changing actions write one entry each with the fictional current User, the time, the action and the target. No-op actions write no entry.
 - **Out of scope for every Screen.** Login, permissions, persistence, real devices, printing and export.
+
+Date pickers use core `DATA_START` and `DATA_END`, the inclusive first and last instants of history, each with `timestamp` and plant-local `date` fields. This lets each Library open its picker on the Mock Dataset's month.

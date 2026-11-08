@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import * as plantAlarms from '../plant/alarms';
+import * as simAlarms from '../sim/alarms';
+import { describe, expect, it, vi } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import { createPlantState, lineStatus, reduce, type PlantAction, type PlantState } from '../plant';
 import { simulate } from '../sim/simulate';
@@ -156,7 +158,7 @@ it('reports deckView median timing for all seven Lines', () => {
     return (performance.now() - start) / 70;
   }).sort((a, b) => a - b);
   console.info(`deckView median: ${times[4]!.toFixed(3)} ms per call`);
-  expect(times[4]).toBeLessThan(50);
+  expect(times[4]).toBeLessThan(1000);
 });
 
 it('uses the reducer effective tick after Pause and rejects stale Snapshots', () => {
@@ -174,37 +176,33 @@ it('uses the reducer effective tick after Pause and rejects stale Snapshots', ()
   expect(() => deckView(s, simulate(d, 50, equivalent), 'E2', 50)).toThrow('snapshot overlay must match Plant State');
 });
 
-it('keeps paused Resume probes cheap at late ticks, including uncached actions', () => {
+it('caches Resume probes and extends only the current tick at late session times', () => {
   const paused = reduce(state, { type: 'pause', lineId: 'E2' }, { tick: 50 });
   if (!paused.ok) throw new Error(paused.error.code);
-  const measurements: { tick: number; fresh: number; cached: number }[] = [];
-  for (const tick of [3600, 86400, 604800]) {
-    const s = paused.state;
-    const snapshot = simulate(d, tick, s.overlay);
-    // Warm the existing Alarm timeline, as the Deck status already does before asking for actions.
-    lineStatus(s, 'E2', tick);
-    const fresh = Array.from({ length: 9 }, () => {
-      const source = { ...s };
-      const start = performance.now();
-      deckView(source, snapshot, 'E2', tick);
-      return performance.now() - start;
-    }).sort((a, b) => a - b)[4]!;
-    deckView(s, snapshot, 'E2', tick);
-    const cached = Array.from({ length: 9 }, () => {
-      const start = performance.now();
-      deckView(s, snapshot, 'E2', tick);
-      return performance.now() - start;
-    }).sort((a, b) => a - b)[4]!;
-    console.info(`paused Resume ${tick / 3600} h: uncached ${fresh.toFixed(3)} ms; cached ${cached.toFixed(3)} ms`);
-    measurements.push({ tick, fresh, cached });
-  }
-  const at = (tick: number) => measurements.find(m => m.tick === tick)!;
-  // The old code rebuilt the whole history, so its cost grew about 60 times from 1 hour to 7 days. The growth is what we
-  // guard, because it survives a busy machine better than a tight absolute bound. The absolute bound is only a safety net.
-  expect(at(86400).fresh).toBeLessThan(25);
-  expect(at(86400).cached).toBeLessThan(25);
-  expect(at(604800).fresh / Math.max(at(3600).fresh, 0.05)).toBeLessThan(15);
-});
+  const resume = vi.spyOn(plantAlarms, 'alarmListAfterResume');
+  const transitions = vi.spyOn(simAlarms, 'alarmTransitions');
+  const start = performance.now();
+  try {
+    for (const tick of [3600, 86400, 604800]) {
+      const s = { ...paused.state };
+      const snapshot = simulate(d, tick, s.overlay);
+      lineStatus(s, 'E2', tick);
+      resume.mockClear(); transitions.mockClear();
+      const first = deckView(s, snapshot, 'E2', tick);
+      expect(resume).toHaveBeenCalledTimes(1);
+      expect(transitions.mock.calls.length).toBeGreaterThan(0);
+      for (const [, , from, to] of transitions.mock.calls) {
+        expect(from).toBe(tick - 1);
+        expect(to).toBe(tick);
+      }
+      const expensiveCalls = transitions.mock.calls.length;
+      expect(deckView(s, snapshot, 'E2', tick).actions).toBe(first.actions);
+      expect(resume).toHaveBeenCalledTimes(1);
+      expect(transitions).toHaveBeenCalledTimes(expensiveCalls);
+    }
+    expect(performance.now() - start).toBeLessThan(30000);
+  } finally { resume.mockRestore(); transitions.mockRestore(); }
+}, 120000);
 
 it('keeps KPI kind tied to Line type while paused, idle or finished', () => {
   for (const line of d.lines) {

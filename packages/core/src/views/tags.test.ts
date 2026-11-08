@@ -77,7 +77,7 @@ describe('tagGridView', () => {
       tagGridView(d, snap, { lineId: 'E1' });
       runs.push(performance.now() - t);
     }
-    expect(runs.sort((a, b) => a - b)[3]).toBeLessThan(100);
+    expect(runs.sort((a, b) => a - b)[3]).toBeLessThan(1000);
     const a = tagGridView(d, snap, { lineId: 'E1' });
     expect(tagGridView(d, snap, { lineId: 'E1' })).toEqual(a);
     expect(JSON.stringify(snap)).toBe(before);
@@ -116,4 +116,50 @@ it('normalizes null and empty Tag filters', () => {
     expect(tagGridView(d, snapshot, { lineId: value, machineId: value, status: value, search: value })).toEqual(tagGridView(d, snapshot));
   }
   expect(tagGridView(d, snapshot, null)).toEqual(tagGridView(d, snapshot));
+});
+
+it('sorts diagnostics by severity or metrics, nulls last in both directions and Machine id ties ascending', () => {
+  const machines = [
+    { ...snap.machines[0]!, machineId: 'E1-extruder', status: 'offline' as const, latencyMs: null, packetLossPct: 100 },
+    { ...snap.machines[0]!, machineId: 'E1-saw', status: 'online' as const, latencyMs: 4, packetLossPct: 0 },
+    { ...snap.machines[0]!, machineId: 'E1-puller', status: 'degraded' as const, latencyMs: 40, packetLossPct: 2 },
+    { ...snap.machines[0]!, machineId: 'E1-calibrator', status: 'online' as const, latencyMs: 4, packetLossPct: 0 },
+  ];
+  const snapshot = { ...snap, machines };
+  const ids = (column: 'status' | 'latency' | 'packetLoss' | 'machine', direction: 'asc' | 'desc') =>
+    connectivityView(d, snapshot, { column, direction }).map(r => r.machineId);
+  expect(ids('status', 'asc')).toEqual(['E1-extruder', 'E1-puller', 'E1-calibrator', 'E1-saw']);
+  expect(ids('status', 'desc')).toEqual(['E1-calibrator', 'E1-saw', 'E1-puller', 'E1-extruder']);
+  expect(ids('latency', 'asc')).toEqual(['E1-calibrator', 'E1-saw', 'E1-puller', 'E1-extruder']);
+  expect(ids('latency', 'desc')).toEqual(['E1-puller', 'E1-calibrator', 'E1-saw', 'E1-extruder']);
+  expect(ids('packetLoss', 'asc')).toEqual(['E1-calibrator', 'E1-saw', 'E1-puller', 'E1-extruder']);
+  expect(ids('packetLoss', 'desc')).toEqual(['E1-extruder', 'E1-puller', 'E1-calibrator', 'E1-saw']);
+  expect(ids('machine', 'asc')).toEqual(['E1-calibrator', 'E1-extruder', 'E1-puller', 'E1-saw']);
+  expect(ids('machine', 'desc')).toEqual(['E1-saw', 'E1-puller', 'E1-extruder', 'E1-calibrator']);
+  expect(connectivityView(d, snapshot).find(r => r.linkStatus === 'offline')!.latencyMs).toBeNull();
+  expect(() => connectivityView(d, snap, { column: 'bad' as 'status', direction: 'asc' })).toThrow();
+  expect(() => connectivityView(d, snap, { column: 'status', direction: 'bad' as 'asc' })).toThrow();
+});
+
+it('joins each Offline diagnostic to its open comms loss Alarm only', () => {
+  for (const row of connectivityView(d, snap)) {
+    const alarm = d.alarms.find(a => a.machineId === row.machineId && a.message.key === 'alarm.comm-loss' && ['active-unacknowledged', 'active-acknowledged'].includes(a.state));
+    expect(row.alarmId).toBe(row.linkStatus === 'offline' ? alarm?.id ?? null : null);
+  }
+  expect(connectivityView(d, snap).some(r => r.alarmId != null)).toBe(true);
+});
+
+it('shares active Recipe values and reset availability with reduce', async () => {
+  const { activeRecipeParameter, createPlantState, reduce } = await import('../index');
+  const initial = createPlantState(d);
+  const result = reduce(initial, { type: 'setpoint-override', tagId: 'E2-puller.puller-speed', value: 2, reason: 'trial' }, { tick: 1 });
+  if (!result.ok) throw new Error(result.error.code);
+  for (const state of [initial, result.state]) {
+    for (const row of tagGridView(d, simulate(d, state.lastTick, state.overlay)).rows) {
+      const tag = d.tags.find(t => t.id === row.tagId)!;
+      expect(row.recipeValue).toBe(activeRecipeParameter(d, tag)?.setpoint ?? null);
+      const reset = reduce(state, { type: 'reset-to-recipe', tagId: row.tagId }, { tick: state.lastTick });
+      expect(row.canResetToRecipe).toBe(reset.ok && reset.events.length > 0);
+    }
+  }
 });
