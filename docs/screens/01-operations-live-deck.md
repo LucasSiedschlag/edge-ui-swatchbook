@@ -27,10 +27,12 @@ Route `/deck`. For Operators on shift. Shows the state of one Line and lets the 
 - Running, Stopped (three reasons), Alarm.
 - No active Batch on the Line: the Batch block shows an empty state.
 - No Critical Alarms: the banner shows zero and cannot expand.
+- No Batch and nothing made this Shift on the Line: the KPI block shows the empty note under the KPIs.
+- No current Shift in the Snapshot: the Shift block shows an empty state.
 
 ## Required test IDs
 
-`deck.line-select`, `deck.line-status`, `deck.stop-reason`, `deck.batch`, `deck.batch-progress`, `deck.batch-empty`, `deck.kpi-oee`, `deck.kpi-output`, `deck.kpi-cycle`, `deck.kpi-scrap`, `deck.alarm-banner`, `deck.pause`, `deck.resume`, `deck.estop`, `deck.estop-confirm`, `deck.reset`, `deck.handover`, `deck.handover-note`, `deck.shift`.
+`deck.line-select`, `deck.line-status`, `deck.stop-reason`, `deck.batch`, `deck.batch-progress`, `deck.batch-empty`, `deck.kpi-oee`, `deck.kpi-output`, `deck.kpi-cycle`, `deck.kpi-scrap`, `deck.alarm-banner`, `deck.pause`, `deck.resume`, `deck.estop`, `deck.estop-confirm`, `deck.reset`, `deck.handover`, `deck.handover-note`, `deck.action-error`, `deck.kpi-empty`, `deck.shift`, `deck.shift-empty`.
 
 ## Out of scope
 

@@ -5,7 +5,7 @@ import { generateMockDataset } from '../mock/generate';
 import { createPlantState, lineStatus, reduce, type PlantAction, type PlantState } from '../plant';
 import { simulate } from '../sim/simulate';
 import { criticalBannerView } from './banner';
-import { deckView } from './deck';
+import { DEFAULT_DECK_LINE, deckView } from './deck';
 
 const d = generateMockDataset();
 const state = createPlantState(d);
@@ -43,6 +43,17 @@ describe('Operations Live Deck', () => {
     expect(deckView(state, snap, 'E1', 0).banner.count).toBeGreaterThan(0);
     expect(deckView(state, snap, 'A2', 0).selected).toMatchObject({ status: 'stopped', stopReason: 'fault' });
     expect(deckView(state, snap, 'C1', 0)).toMatchObject({ emptyBatch: true, batch: null });
+  });
+  it('reports whether the Line has production and a usable Shift, from the supplied Snapshot', () => {
+    const snap = simulate(d, 0, state.overlay);
+    expect(deckView(state, snap, 'E1', 0)).toMatchObject({ hasProduction: true, hasShift: true });
+    const quiet = simulate(d, 0, state.overlay);
+    const live = quiet.lines.find(l => l.lineId === 'C1')!;
+    live.outputThisShift = 0;
+    live.scrapThisShift = 0;
+    expect(deckView(state, quiet, 'C1', 0).hasProduction).toBe(false);
+    quiet.shift = { ...quiet.shift, endsAt: quiet.shift.startsAt };
+    expect(deckView(state, quiet, 'C1', 0).hasShift).toBe(false);
   });
   it('takes KPI numbers and progress verbatim from the supplied Snapshot', () => {
     const snap = simulate(d, 0, state.overlay);
@@ -116,6 +127,10 @@ describe('Deck action availability', () => {
       expect(deckView(s, simulate(d, 10, s.overlay), 'E2', 10).selected.stopReason).toBe(reason);
     }
   });
+});
+
+it('names the default Line, which exists in the Mock Dataset', () => {
+  expect(d.lines.map(l => l.id)).toContain(DEFAULT_DECK_LINE);
 });
 
 it('exports deckView from core', async () => {
