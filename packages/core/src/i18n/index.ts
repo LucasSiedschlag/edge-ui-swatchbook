@@ -2,7 +2,7 @@ export { en, ptBR, type MessageKey } from './messages';
 export type { Locale, MessageParams } from './types';
 export { t, tr, tCount, resolveLocale, type CountKey } from './translate';
 export {
-  formatNumber, formatPercent, formatPercentValue, formatDate, formatTime, formatDateTime, formatDuration,
+  decimalSeparator, formatNumber, formatPercent, formatPercentValue, formatDate, formatTime, formatDateTime, formatDuration,
   type NumberOptions, type TimeOptions,
 } from './format';
 export { PREFERENCES_KEY, loadPreferences, savePreferences, type Preferences, type StorageLike } from './preferences';

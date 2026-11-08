@@ -8,6 +8,10 @@ Route `/parameters`. For Technicians. Raw Tags, live trends, setpoint changes an
 - **Trend.** Up to 4 selected Tags drawn together over one of three live windows: Last 5 minutes, Last 30 minutes, Last 2 hours. Up to 4 different units use separate offset Y axes; each Tag's limits and setpoint use its own unit axis. For example barrel zone temperature against die pressure. Screens must pass their Plant State Overlay to `trendView`.
 - **Connectivity.** Every Machine with its link status (Online, Degraded or Offline) and last-seen time. Tags of an Offline Machine show Stale and stop updating.
 
+The shared defaults are `TAG_GRID_DEFAULT_FILTERS` (no filters) and `DEFAULT_TREND_WINDOW` (`5m`). The grid preserves dataset order and does not sort. `trendView` includes each selected Tag's name, Machine id, unit, minimum and maximum; `tagDetailView` supplies current dialog details independently of filters and virtualization.
+
+Selection checkboxes use `parameters.select-tag` and `parameters.select-all-tags`, including the native select-all checkbox. Reset to recipe displays `parameters.recipe-value` with the view's recipe value. Disabled actions expose the core refusal reason.
+
 ## Actions
 
 | Action | Effect |

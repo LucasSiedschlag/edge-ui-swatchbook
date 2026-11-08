@@ -2,9 +2,10 @@ import { isActive } from '../plant/alarms';
 import { activeRecipeParameter } from '../parameters';
 import { normalizeFilters, type FilterInput } from './filters';
 import { assertSessionTick } from '../sim/context';
-import type { LineId, LinkStatus, MockDataset, Timestamp } from '../mock/types';
+import type { LineId, LinkStatus, MockDataset, Tag, Timestamp } from '../mock/types';
 import type { Snapshot } from '../sim/simulate';
-import type { TagStatus } from '../sim/tags';
+import type { MachineLink } from '../sim/links';
+import type { TagReading, TagStatus } from '../sim/tags';
 
 interface TagFilterValues {
   lineId?: LineId;
@@ -14,6 +15,8 @@ interface TagFilterValues {
   search?: string;
 }
 export type TagFilters = FilterInput<TagFilterValues>;
+
+export const TAG_GRID_DEFAULT_FILTERS: TagFilters = Object.freeze({});
 
 export interface TagRow {
   tagId: string;
@@ -31,6 +34,10 @@ export interface TagRow {
   writable: boolean;
   /** Writable and not Stale. A Tag of an Offline Machine cannot be overridden. */
   canOverride: boolean;
+  /** Core refusal reason for an unavailable Override. */
+  overrideUnavailable: 'tag-stale' | 'tag-not-writable' | null;
+  /** Core reason why Reset is unavailable, including an unchanged Recipe value. */
+  resetUnavailable: 'tag-stale' | 'no-recipe-value' | 'recipe-value-unchanged' | null;
   recipeValue: number | null;
   /** A different Recipe value exists and the Tag is not Stale, matching reset-to-recipe. */
   canResetToRecipe: boolean;
@@ -39,7 +46,7 @@ export interface TagRow {
 }
 
 /** The Live Parameter Matrix grid (Screen 5): one row per Tag in dataset order. Filters combine with AND. */
-export function tagGridView(d: MockDataset, snapshot: Snapshot, input: TagFilters | null = {}): { rows: TagRow[]; empty: boolean } {
+export function tagGridView(d: MockDataset, snapshot: Snapshot, input: TagFilters | null = TAG_GRID_DEFAULT_FILTERS): { rows: TagRow[]; empty: boolean } {
   const filters = normalizeFilters<TagFilterValues>(input);
   assertSessionTick(snapshot.tick);
   const readings = new Map(snapshot.tags.map((r) => [r.tagId, r]));
@@ -53,16 +60,31 @@ export function tagGridView(d: MockDataset, snapshot: Snapshot, input: TagFilter
     const reading = readings.get(tag.id)!;
     if (filters.status && reading.status !== filters.status) continue;
     const link = links.get(tag.machineId)!;
-    const recipeValue = activeRecipeParameter(d, tag)?.setpoint ?? null;
-    rows.push({
-      tagId: tag.id, lineId: tag.lineId, machineId: tag.machineId, name: tag.name, value: reading.value, unit: tag.unit,
-      setpoint: reading.setpoint, min: tag.min, max: tag.max, status: reading.status, alarm: reading.alarm,
-      writable: tag.writable, canOverride: tag.writable && reading.status !== 'stale',
-      recipeValue, canResetToRecipe: reading.status !== 'stale' && recipeValue !== null && recipeValue !== reading.setpoint,
-      linkStatus: link.status, lastSeenAt: link.lastSeenAt,
-    });
+    rows.push(tagRow(d, tag, reading, link));
   }
   return { rows, empty: rows.length === 0 };
+}
+
+function tagRow(d: MockDataset, tag: Tag, reading: TagReading, link: MachineLink): TagRow {
+  const recipeValue = activeRecipeParameter(d, tag)?.setpoint ?? null;
+  return {
+    tagId: tag.id, lineId: tag.lineId, machineId: tag.machineId, name: tag.name, value: reading.value, unit: tag.unit,
+    setpoint: reading.setpoint, min: tag.min, max: tag.max, status: reading.status, alarm: reading.alarm,
+    writable: tag.writable, canOverride: tag.writable && reading.status !== 'stale',
+    overrideUnavailable: reading.status === 'stale' ? 'tag-stale' : !tag.writable ? 'tag-not-writable' : null,
+    resetUnavailable: reading.status === 'stale' ? 'tag-stale' : recipeValue === null ? 'no-recipe-value' : recipeValue === reading.setpoint ? 'recipe-value-unchanged' : null,
+    recipeValue, canResetToRecipe: reading.status !== 'stale' && recipeValue !== null && recipeValue !== reading.setpoint,
+    linkStatus: link.status, lastSeenAt: link.lastSeenAt,
+  };
+}
+
+/** Current details for an open Tag dialog, independent of grid filters and virtualization. */
+export function tagDetailView(d: MockDataset, snapshot: Snapshot, tagId: string): TagRow | null {
+  assertSessionTick(snapshot.tick);
+  const tag = d.tags.find(tag => tag.id === tagId);
+  if (!tag) return null;
+  return tagRow(d, tag, snapshot.tags.find(reading => reading.tagId === tagId)!,
+    snapshot.machines.find(link => link.machineId === tag.machineId)!);
 }
 
 export interface ConnectivityRow {

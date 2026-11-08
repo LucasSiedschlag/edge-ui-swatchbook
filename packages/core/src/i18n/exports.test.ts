@@ -4,7 +4,7 @@ import type { Locale, MessageKey, MessageParams, Preferences, StorageLike, Numbe
 
 it('exports the complete public i18n API and its types', () => {
   for (const name of [
-    'en', 'ptBR', 't', 'tr', 'resolveLocale', 'formatNumber', 'formatPercent',
+    'en', 'ptBR', 't', 'tr', 'resolveLocale', 'decimalSeparator', 'formatNumber', 'formatPercent',
     'formatPercentValue', 'eventValueLabelKey', 'formatDate', 'formatTime', 'formatDateTime', 'formatDuration',
     'PREFERENCES_KEY', 'loadPreferences', 'savePreferences', 'plantErrorLabels', 'scopeLabels',
   ]) expect(api).toHaveProperty(name);

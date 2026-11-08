@@ -43,6 +43,12 @@ function numeric(locale: Locale, value: number, decimals: number, style: 'decima
   return normalize(parts.filter((p) => !zero || p.type !== 'minusSign').map((p) => p.value).join(''));
 }
 
+/** Decimal mark for locale-aware numeric inputs, without grouping separators. */
+export function decimalSeparator(locale: Locale): string {
+  return numberFormat(INTL_LOCALES[locale], { useGrouping: false }).formatToParts(1.1)
+    .find(part => part.type === 'decimal')!.value;
+}
+
 /** Numbers default to whole units; explicit decimals keep trailing zeroes. */
 export function formatNumber(locale: Locale, n: number, { decimals = 0 }: NumberOptions = {}): string {
   return numeric(locale, n, decimals, 'decimal');
