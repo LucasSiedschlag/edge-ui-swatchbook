@@ -5,7 +5,8 @@ import { tagSeries } from '../sim/series';
 import { TREND_WINDOWS, trendTicks, trendView, type TrendWindowId } from './trend';
 
 const d = generateMockDataset();
-const ids = d.tags.slice(0, 4).map((t) => t.id);
+const units = d.tags.slice(0, 2).map(tag => tag.unit);
+const ids = d.tags.filter(tag => units.includes(tag.unit)).slice(0, 4).map(tag => tag.id);
 const windows: TrendWindowId[] = ['5m', '30m', '2h'];
 
 function series(result: ReturnType<typeof trendView>) {
@@ -127,4 +128,10 @@ describe('trend series', () => {
 it('rejects duplicate Tag ids without returning duplicate series', () => {
   expect(trendView(d, [ids[0]!, ids[0]!], '5m', 0)).toEqual({ error: 'duplicate-tag' });
   expect(trendView(d, [ids[0]!, ids[1]!, ids[0]!], '2h', 100)).toEqual({ error: 'duplicate-tag' });
+});
+
+it('rejects more than two distinct units before generating points', () => {
+  const distinct = [...new Map(d.tags.map(tag => [tag.unit, tag.id])).values()].slice(0, 3);
+  expect(distinct).toHaveLength(3);
+  expect(trendView(d, distinct, '5m', 0)).toEqual({ error: 'trend-units' });
 });
