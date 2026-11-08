@@ -30,7 +30,7 @@ Route `/deck`. For Operators on shift. Shows the state of one Line and lets the 
 
 ## Required test IDs
 
-`deck.line-select`, `deck.line-status`, `deck.stop-reason`, `deck.batch`, `deck.batch-progress`, `deck.kpi-oee`, `deck.kpi-output`, `deck.kpi-cycle`, `deck.kpi-scrap`, `deck.alarm-banner`, `deck.pause`, `deck.resume`, `deck.estop`, `deck.estop-confirm`, `deck.reset`, `deck.handover`, `deck.handover-note`, `deck.shift`.
+`deck.line-select`, `deck.line-status`, `deck.stop-reason`, `deck.batch`, `deck.batch-progress`, `deck.batch-empty`, `deck.kpi-oee`, `deck.kpi-output`, `deck.kpi-cycle`, `deck.kpi-scrap`, `deck.alarm-banner`, `deck.pause`, `deck.resume`, `deck.estop`, `deck.estop-confirm`, `deck.reset`, `deck.handover`, `deck.handover-note`, `deck.shift`.
 
 ## Out of scope
 

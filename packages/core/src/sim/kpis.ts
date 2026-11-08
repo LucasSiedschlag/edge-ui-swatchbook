@@ -1,11 +1,13 @@
 import { IDEAL_UNITS_PER_MIN } from '../mock/batches';
 import type { ActiveBatch, DowntimeReason, HourlyRecord, Line, LineId, MockDataset } from '../mock/types';
+import { MAX_TICK } from './context';
 import { simulatedTime } from './clock';
 import { hash, smooth } from './noise';
 import { type Overlay, runTicksOf } from './overlay';
 import type { TagReading } from './tags';
 
-export const TAKT_SECONDS = 120;
+import { TAKT_SECONDS } from '../limits';
+export { TAKT_SECONDS } from '../limits';
 const SHIFT_TICKS = 8 * 3600;
 /** A running Batch makes 95 percent of the ideal rate, the same factor the Mock Dataset used for its progress so far. */
 const EFFICIENCY = 0.95;
@@ -78,13 +80,45 @@ function modelOf(active: ActiveBatch, rate: number, line: LineId, overlay?: Over
   const completeAfter = Math.ceil((active.targetUnits - active.producedUnits) / perTick);
   const ran = (from: number, to: number) => runTicksOf(overlay, line, from, to);
   const ratio = active.producedUnits > 0 ? active.scrapUnits / active.producedUnits : 0;
-  return {
+  let completionTick: number | undefined;
+  const completedAt = () => {
+    if (completionTick !== undefined) return completionTick;
+    // A permanent stop has no completion in the supported session horizon.
+    if (ran(0, MAX_TICK) < completeAfter) return (completionTick = Infinity);
+    let lo = 0, hi = MAX_TICK;
+    while (lo < hi) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (ran(0, mid) >= completeAfter) hi = mid;
+      else lo = mid + 1;
+    }
+    return (completionTick = lo);
+  };
+  return Object.freeze({
+    /** First tick with target units produced, or Infinity if it cannot complete in this session. */
+    get completionTick() { return completedAt(); },
     /** Units made by a tick, good and scrap together. */
     unitsAt: (tick: number) => Math.min(active.targetUnits, active.producedUnits + Math.floor(perTick * ran(0, tick))),
     /** Ticks in a window in which the Line was making product. */
     makingTicks: (from: number, to: number) => Math.min(ran(0, to), completeAfter) - Math.min(ran(0, from), completeAfter),
     scrapOf: (units: number) => Math.floor(units * ratio),
-  };
+  });
+}
+
+type BatchModel = ReturnType<typeof modelOf>;
+const models = new WeakMap<MockDataset, { plain: Map<string, BatchModel>; overlays: WeakMap<Overlay, Map<string, BatchModel>> }>();
+/** One production model supplies progress, actual lifetime and Alarm ownership under the same immutable Overlay. */
+export function batchModel(d: MockDataset, active: ActiveBatch, overlay?: Overlay): BatchModel {
+  let cache = models.get(d);
+  if (!cache) { cache = { plain: new Map(), overlays: new WeakMap() }; models.set(d, cache); }
+  let byBatch = overlay ? cache.overlays.get(overlay) : cache.plain;
+  if (!byBatch) { byBatch = new Map(); cache.overlays.set(overlay!, byBatch); }
+  let model = byBatch.get(active.id);
+  if (!model) {
+    const line = d.lines.find(l => l.id === active.lineId)!;
+    model = modelOf(active, IDEAL_UNITS_PER_MIN[line.type]!, line.id, overlay);
+    byBatch.set(active.id, model);
+  }
+  return model;
 }
 
 /** The shared live hour calculation. A partial hour plans only its elapsed minutes, rounded to whole minutes. */
@@ -143,7 +177,7 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
   const unit = (id: string) => d.tags.find((t) => t.id === id)?.unit ?? '';
   return d.lines.map((line: Line) => {
     const active = d.activeBatches.find((b) => b.lineId === line.id);
-    const m = active ? modelOf(active, IDEAL_UNITS_PER_MIN[line.type] as number, line.id, overlay) : null;
+    const m = active ? batchModel(d, active, overlay) : null;
     // A Line that is paused, stopped, idle or finished with its Batch is not making product, so it has no speed or cycle time.
     const making = m ? m.makingTicks(tick, tick + 1) > 0 : false;
     const cycleTag = line.type === 'assembly' ? `${line.id}-corner-weld.cycle-time` : undefined;
@@ -196,7 +230,7 @@ export function readLines(d: MockDataset, tick: number, readings: TagReading[], 
         targetUnits: active.targetUnits,
         percent: Math.round((produced / active.targetUnits) * 1000) / 10,
         complete: produced >= active.targetUnits,
-        elapsedMs: simulatedTime(tick) - active.start,
+        elapsedMs: simulatedTime(Math.min(tick, m.completionTick)) - active.start,
       },
       outputThisShift: output,
       hasProduction: output > 0 || totals.runMin > 0,
@@ -218,7 +252,7 @@ export function readHours(d: MockDataset, tick: number, overlay?: Overlay): Hour
   const out: HourlyRecord[] = [];
   const models = new Map(d.lines.map((line) => {
     const active = d.activeBatches.find((b) => b.lineId === line.id);
-    return [line.id, active ? modelOf(active, IDEAL_UNITS_PER_MIN[line.type] as number, line.id, overlay) : null];
+    return [line.id, active ? batchModel(d, active, overlay) : null];
   }));
   const hours = Math.ceil(tick / 3600);
   for (let h = 0; h < hours; h++) {

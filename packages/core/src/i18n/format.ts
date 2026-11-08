@@ -1,3 +1,4 @@
+import { DECIMALS_BY_UNIT } from './precision';
 import type { Timestamp } from '../mock/types';
 import type { Locale } from './types';
 
@@ -93,4 +94,21 @@ export function formatDuration(totalSeconds: number): string {
   if (seconds >= 3600) return `${integer(Math.floor(seconds / 3600))} h ${pair(Math.floor(seconds / 60) % 60)} min`;
   if (seconds >= 60) return `${integer(Math.floor(seconds / 60))} min ${pair(seconds % 60)} s`;
   return `${integer(seconds)} s`;
+}
+
+
+/** Formats the numeric part only. The caller renders the unchanged unit alongside it. */
+export function formatTagValue(locale: Locale, value: number | null, unit: string): string {
+  return value === null ? '-' : formatNumber(locale, value, { decimals: DECIMALS_BY_UNIT[unit as keyof typeof DECIMALS_BY_UNIT] ?? 1 });
+}
+
+/**
+ * Signed changes, one decimal. OEE changes are percentage POINTS on the 0 to 100 scale:
+ * convert a fraction difference such as 0.012 to 1.2 before passing kind 'points'.
+ * 'percent' receives relative percent on the 0 to 100 scale and appends the percent sign.
+ */
+export function formatChange(locale: Locale, delta: number, kind: 'points' | 'percent'): string {
+  const number = formatNumber(locale, delta, { decimals: 1 });
+  if (number === '-') return number;
+  return `${number.startsWith('-') ? '' : '+'}${number}${kind === 'percent' ? '%' : ''}`;
 }

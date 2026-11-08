@@ -33,13 +33,13 @@ The dependency check runs on every edit, and again before Save and Approve.
 
 ## States
 
-- Library filter with no match: empty state.
+- Library filter with no match: `recipes.library-empty`. If no Recipe Version is open either, show one whole Screen `recipes.empty` instead.
 - Draft with failing rules, Draft with all rules passing, Approved read-only.
 - Field error (min, setpoint, max out of order).
 
 ## Required test IDs
 
-`recipes.library`, `recipes.filter-line-type`, `recipes.filter-status`, `recipes.search`, `recipes.version`, `recipes.step`, `recipes.parameter`, `recipes.parameter-error`, `recipes.rule-1` to `recipes.rule-4`, `recipes.new-draft`, `recipes.add-step`, `recipes.save`, `recipes.approve`, `recipes.discard`, `recipes.empty`.
+`recipes.library`, `recipes.filter-line-type`, `recipes.filter-status`, `recipes.search`, `recipes.version`, `recipes.step`, `recipes.parameter`, `recipes.parameter-error`, `recipes.rule-1`, `recipes.rule-2`, `recipes.rule-3`, `recipes.rule-4`, `recipes.new-draft`, `recipes.add-step`, `recipes.save`, `recipes.approve`, `recipes.discard`, `recipes.empty`, `recipes.library-empty`.
 
 ## Out of scope
 

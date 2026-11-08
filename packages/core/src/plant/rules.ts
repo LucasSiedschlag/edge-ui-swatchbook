@@ -1,3 +1,5 @@
+import { TAKT_SECONDS } from '../limits';
+export { TAKT_SECONDS } from '../limits';
 import { parametersByKey } from '../parameters';
 import type { LineType, RecipeVersion } from '../mock/types';
 
@@ -5,7 +7,7 @@ export type RuleId = 1 | 2 | 3 | 4;
 export type ViolationKind = 'below-min' | 'above-max' | 'adjacent-too-far' | 'missing';
 export interface RuleViolation { parameterKeys: string[]; kind: ViolationKind; limit: number; actual: number | null }
 export interface RuleResult { rule: RuleId; status: 'pass' | 'fail' | 'not-applicable'; violations: RuleViolation[] }
-export const BARREL_MIN = 165, BARREL_MAX = 195, BARREL_STEP_MAX = 15, WELD_TEMP_MIN = 240, WELD_TEMP_MAX = 270, WELD_TIME_MIN = 20, WELD_TIME_MAX = 40, TAKT_SECONDS = 120;
+export const BARREL_MIN = 165, BARREL_MAX = 195, BARREL_STEP_MAX = 15, WELD_TEMP_MIN = 240, WELD_TEMP_MAX = 270, WELD_TIME_MIN = 20, WELD_TIME_MAX = 40;
 
 // This is a design suggestion, not a verified production value.
 export function diePressureLimit(screwSpeedRpm: number): number { return 150 + 4 * screwSpeedRpm; }

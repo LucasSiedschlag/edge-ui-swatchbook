@@ -210,7 +210,7 @@ export const eventTargetLabels: Record<EventTargetKind, MessageKey> = {
 
 export const trendErrorLabels: Record<Extract<TrendView, { error: string }>['error'], MessageKey> = {
   'trend-limit': 'trend-error.trend-limit', 'unknown-tag': 'trend-error.unknown-tag',
-  'duplicate-tag': 'trend-error.duplicate-tag', 'trend-units': 'trend-error.trend-units',
+  'duplicate-tag': 'trend-error.duplicate-tag',
 };
 
 export const dependencyRuleLabels: Record<RuleId, MessageKey> = {

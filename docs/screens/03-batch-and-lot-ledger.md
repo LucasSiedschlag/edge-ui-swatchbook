@@ -11,7 +11,7 @@ About 5,000 Batches, one per row, with these columns: Batch ID, Lot, Upstream Lo
 | Action | Effect |
 |--------|--------|
 | Sort | By any column. |
-| Filter by column | Text for IDs, choice lists for Area, Line, Product, Shift and status, ranges for yield, scrap and duration, a date range for start. Filters combine. |
+| Filter by column | Text for IDs, choice lists for Area, Line, Product, Shift and status, ranges for Recipe Version number, yield, scrap and duration, and local date ranges for start and end. Filters combine. |
 | Clear filters | Resets every filter and shows the row count. |
 | Select rows | Multi-select with checkboxes, up to 4 Batches. Selecting a fifth shows a message and does nothing. |
 | Compare | With 2 to 4 Batches selected, shows their duration, yield, scrap and key Parameter actuals side by side. |
@@ -29,7 +29,9 @@ For the opened Batch: its header (ID, Lot, status), the Genealogy chain (materia
 
 ## Required test IDs
 
-`ledger.grid`, `ledger.row-count`, `ledger.filter-<column>`, `ledger.clear-filters`, `ledger.row-select`, `ledger.compare`, `ledger.compare-panel`, `ledger.selection-limit`, `ledger.drawer`, `ledger.drawer-genealogy`, `ledger.drawer-parameters`, `ledger.drawer-alarms`, `ledger.empty`.
+`ledger.grid`, `ledger.row-count`, `ledger.filter-batchId`, `ledger.filter-lotId`, `ledger.filter-upstreamLotId`, `ledger.filter-areas`, `ledger.filter-lines`, `ledger.filter-products`, `ledger.filter-recipeVersion`, `ledger.filter-shifts`, `ledger.filter-start`, `ledger.filter-end`, `ledger.filter-duration`, `ledger.filter-statuses`, `ledger.filter-yield`, `ledger.filter-scrap`, `ledger.clear-filters`, `ledger.row-select`, `ledger.compare`, `ledger.compare-panel`, `ledger.selection-limit`, `ledger.drawer`, `ledger.drawer-genealogy`, `ledger.drawer-parameters`, `ledger.drawer-alarms`, `ledger.empty`.
+
+The 14 filter IDs use the exact `ledgerView` filter names; `ledgerFilterId(column)` supplies them from core.
 
 ## Out of scope
 

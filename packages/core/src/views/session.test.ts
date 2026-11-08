@@ -15,8 +15,8 @@ const state = createPlantState(d);
 const negative = { ...simulate(d, 0), tick: -1 };
 const calls: [string, () => unknown][] = [
   ['performanceView', () => performanceView(d, [], -1, { kind: 'site' }, 'last-shift')],
-  ['trendView empty', () => trendView(d, [], '5m', -1)],
-  ['trendView selected', () => trendView(d, [d.tags[0]!.id], '5m', -1)],
+  ['trendView empty', () => trendView(d, [], '5m', -1, {})],
+  ['trendView selected', () => trendView(d, [d.tags[0]!.id], '5m', -1, {})],
   ['trendTicks', () => trendTicks('5m', -1)],
   ['rangeWindow', () => rangeWindow('last-shift', -1)],
   ['performanceWindow short', () => performanceWindow('last-24h', -1)],

@@ -1,3 +1,4 @@
+import { MAX_TREND_TAGS } from '@swatchbook/core';
 import type { ComposeOption } from 'echarts/core';
 import type { BarSeriesOption, LineSeriesOption } from 'echarts/charts';
 import type { GridComponentOption, LegendComponentOption, MarkLineComponentOption, TooltipComponentOption } from 'echarts/components';
@@ -59,5 +60,5 @@ export function formatChartValue(value: unknown, format: (value: number) => stri
 }
 
 export function unsupportedTrend(data: LineTrendInput['data']): boolean {
-  return data.length > 4 || new Set(data.map(series => series.unit)).size > 2;
+  return data.length > MAX_TREND_TAGS;
 }

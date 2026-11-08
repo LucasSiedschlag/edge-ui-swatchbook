@@ -2,7 +2,7 @@ import { activeRecipeParameter } from '../parameters';
 import type { EventLogEntry, LineId } from '../mock/types';
 import { simulatedTime } from '../sim/clock';
 import { acknowledge, alarmList, alarmListAfterResume, isActive } from './alarms';
-import { NEVER } from './lines';
+import { NEVER } from '../limits';
 import { contextOf, MAX_TICK } from '../sim/context';
 import { type SetpointStep, setpointAt } from '../sim/overlay';
 import { shiftInfo } from '../sim/clock';

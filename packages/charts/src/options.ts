@@ -77,8 +77,9 @@ export function buildLineTrendOption({ data, labels, formatters, theme }: LineTr
 
   return {
     ...base(theme),
+    grid: { left: units.length > 2 ? 160 : 64, right: units.length > 3 ? 160 : 64, top: 48, bottom: 48, outerBoundsMode: 'same', outerBoundsContain: 'all' },
     xAxis: { ...axis(theme), type: 'value', name: labels.time, axisLabel: { ...axis(theme).axisLabel, formatter: formatters.formatTime }, axisPointer: { label: { formatter: ({ value }) => formatters.formatTime(Number(value)) } } },
-    yAxis: units.map((unit, index) => ({ ...axis(theme), ...trendBounds(data, unit), scale: true, type: 'value', name: unit, position: index === 0 ? 'left' : 'right', axisLabel: { ...axis(theme).axisLabel, formatter: (value: number) => formatters.formatValue(value, unit) } })),
+    yAxis: units.map((unit, index) => ({ ...axis(theme), ...trendBounds(data, unit), scale: true, type: 'value', name: unit, position: index % 2 === 0 ? 'left' : 'right', offset: Math.floor(index / 2) * 96, axisLabel: { ...axis(theme).axisLabel, formatter: (value: number) => formatters.formatValue(value, unit) } })),
     series: data.flatMap((series, index): LineSeriesOption[] => {
       const pointSetpoints = series.points.some(point => point.setpoint !== undefined);
       const limits = [

@@ -1,8 +1,11 @@
 import { activeRecipeParameter } from '../parameters';
-import type { MockDataset, Tag } from '../mock/types';
+import type { Alarm, MockDataset, Tag } from '../mock/types';
 import { hash, noise } from './noise';
 
 export type Direction = 'high' | 'low';
+
+/** One mapping for seeded Alarm holds and Plant State condition history. */
+export const alarmDirection = (alarm: Pick<Alarm, 'message'>): Direction => alarm.message.key === 'alarm.low-value' ? 'low' : 'high';
 
 /** A stretch of ticks in which an Alarm from the Mock Dataset holds its Tag out of limits. */
 export interface AlarmWindow {
@@ -52,7 +55,7 @@ export function contextOf(d: MockDataset): SimContext {
   const windows = new Map<string, AlarmWindow[]>();
   for (const a of d.alarms) {
     if (a.tagId === null) continue;
-    const direction: Direction = a.message.key === 'alarm.low-value' ? 'low' : 'high';
+    const direction = alarmDirection(a);
     let w: AlarmWindow | null = null;
     if (a.state === 'active-unacknowledged' || a.state === 'active-acknowledged') {
       w = { alarmId: a.id, fromTick: tickOf(d, a.raisedAt), toTick: returnTickOf(a.id), direction };

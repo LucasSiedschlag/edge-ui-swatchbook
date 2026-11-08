@@ -1,13 +1,19 @@
-// Per Screen chrome (KPIs, columns, buttons, captions and axis names) belongs to app work.
+// Screen text is authored once in the core dictionaries and shared by every Library.
 import { SHORTCUT_MESSAGES } from '../shortcuts';
 import { TOUR_MESSAGES } from '../tour';
+import { en as common } from './strings/common';
+import { en as deck } from './strings/deck';
+import { en as recipes } from './strings/recipes';
+import { en as ledger } from './strings/ledger';
+import { en as performance } from './strings/performance';
+import { en as parameters } from './strings/parameters';
+import { en as control } from './strings/control';
 
-/** Messages written in this file. The Tour notes and the shortcut help live next to their data and are merged below. */
+/** Shared domain messages. Screen strings, Tour notes and shortcut help are merged below. */
 const base = {
   "trend-error.trend-limit": "Select at most four Tags.",
   "trend-error.unknown-tag": "Tag not found.",
   "trend-error.duplicate-tag": "Select each Tag only once.",
-  "trend-error.trend-units": "Select Tags with at most two distinct units.",
   "trend-error.nothing-selected": "Select Tags to show a trend.",
   "dependency-rule.barrel-temperature-window": "Barrel temperature window",
   "dependency-rule.die-pressure-limit": "Die pressure limit",
@@ -20,6 +26,18 @@ const base = {
   "violation.above-max": "Above maximum",
   "violation.adjacent-too-far": "Adjacent zones too far apart",
   "violation.missing": "Missing",
+  "action.add-step": "Add step",
+  "action.remove-step": "Remove step",
+  "action.move-up": "Move up",
+  "action.move-down": "Move down",
+  "action.clear-filters": "Clear filters",
+  "action.compare": "Compare",
+  "action.close": "Close",
+  "action.cancel": "Cancel",
+  "action.confirm": "Confirm",
+  "action.expand-banner": "Expand banner",
+  "action.collapse-banner": "Collapse banner",
+  "action.submit-handover": "Submit handover",
   "action.pause": "Pause",
   "action.resume": "Resume",
   "action.emergency-stop": "Emergency stop",
@@ -232,6 +250,12 @@ const base = {
   "density.comfortable": "Comfortable",
   "density.compact": "Compact",
   "density.unsupported": "Not supported by this Library",
+  "shell.library-not-built": "Not built yet",
+  "shell.preset": "Preset",
+  "preset.office": "Office",
+  "preset.control-room": "Control room",
+  "preset.night": "Night",
+  "tour.start": "Start the tour",
   "tour.next": "Next",
   "tour.previous": "Previous",
   "tour.finish": "Finish",
@@ -245,7 +269,10 @@ const base = {
 } as const;
 
 /** The English dictionary is the single source of message keys. */
-export const en = { ...base, ...TOUR_MESSAGES.en, ...SHORTCUT_MESSAGES.en } as const;
+export const en = {
+  ...base, ...TOUR_MESSAGES.en, ...SHORTCUT_MESSAGES.en,
+  ...common, ...deck, ...recipes, ...ledger, ...performance, ...parameters, ...control,
+} as const;
 export type BaseKey = keyof typeof base;
 export type MessageKey = keyof typeof en;
 export { ptBR } from './pt-BR';

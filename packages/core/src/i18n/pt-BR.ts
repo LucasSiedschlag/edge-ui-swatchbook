@@ -12,6 +12,12 @@
  * - Extruder barrel uses cilindro in Parameters and the Dependency Rule name.
  * - New trend errors, Dependency Rule names, rule statuses and violation kinds.
  *
+ * - Screen vocabulary for review is recorded in strings/recipes.ts, ledger.ts,
+ *   performance.ts and control.ts. Confirm Genealogy, produção boa, abrangência,
+ *   sinal de vida and destino with the plant domain expert.
+ * - The obsolete trend-units error was removed: four Tags may have four units.
+ * - Missing rule values use common.unknown; the missing-rule limit is a sentinel.
+ *
  * Main terminology for the product owner's pt-BR review.
  * | English | pt-BR |
  * | Alarm | Alarme |
@@ -38,6 +44,13 @@
  */
 import { SHORTCUT_MESSAGES } from '../shortcuts';
 import { TOUR_MESSAGES } from '../tour';
+import { ptBR as common } from './strings/common';
+import { ptBR as deck } from './strings/deck';
+import { ptBR as recipes } from './strings/recipes';
+import { ptBR as ledger } from './strings/ledger';
+import { ptBR as performance } from './strings/performance';
+import { ptBR as parameters } from './strings/parameters';
+import { ptBR as control } from './strings/control';
 import type { BaseKey, MessageKey } from './messages';
 
 /** The messages written here. A key missing from this object, or an extra one, fails the build. */
@@ -45,7 +58,6 @@ const base: Record<BaseKey, string> = {
   "trend-error.trend-limit": "Selecione no máximo quatro Tags.",
   "trend-error.unknown-tag": "Tag não encontrada.",
   "trend-error.duplicate-tag": "Selecione cada Tag apenas uma vez.",
-  "trend-error.trend-units": "Selecione Tags com no máximo duas unidades distintas.",
   "trend-error.nothing-selected": "Selecione Tags para mostrar uma tendência.",
   "dependency-rule.barrel-temperature-window": "Faixa de temperatura do cilindro",
   "dependency-rule.die-pressure-limit": "Limite de pressão da matriz",
@@ -58,6 +70,18 @@ const base: Record<BaseKey, string> = {
   "violation.above-max": "Acima do máximo",
   "violation.adjacent-too-far": "Zonas adjacentes com diferença excessiva",
   "violation.missing": "Ausente",
+  "action.add-step": "Adicionar etapa",
+  "action.remove-step": "Remover etapa",
+  "action.move-up": "Mover para cima",
+  "action.move-down": "Mover para baixo",
+  "action.clear-filters": "Limpar filtros",
+  "action.compare": "Comparar",
+  "action.close": "Fechar",
+  "action.cancel": "Cancelar",
+  "action.confirm": "Confirmar",
+  "action.expand-banner": "Expandir banner",
+  "action.collapse-banner": "Recolher banner",
+  "action.submit-handover": "Registrar passagem de turno",
   "action.pause": "Pausar",
   "action.resume": "Retomar",
   "action.emergency-stop": "Parada de emergência",
@@ -270,6 +294,12 @@ const base: Record<BaseKey, string> = {
   "density.comfortable": "Confortável",
   "density.compact": "Compacta",
   "density.unsupported": "Não disponível nesta Biblioteca",
+  "shell.library-not-built": "Ainda não construída",
+  "shell.preset": "Predefinição",
+  "preset.office": "Escritório",
+  "preset.control-room": "Sala de controle",
+  "preset.night": "Noturno",
+  "tour.start": "Iniciar o tour",
   "tour.next": "Próximo",
   "tour.previous": "Anterior",
   "tour.finish": "Concluir",
@@ -282,4 +312,7 @@ const base: Record<BaseKey, string> = {
   "term.machine": "Máquina",
 };
 
-export const ptBR: Record<MessageKey, string> = { ...base, ...TOUR_MESSAGES['pt-BR'], ...SHORTCUT_MESSAGES['pt-BR'] };
+export const ptBR: Record<MessageKey, string> = {
+  ...base, ...TOUR_MESSAGES['pt-BR'], ...SHORTCUT_MESSAGES['pt-BR'],
+  ...common, ...deck, ...recipes, ...ledger, ...performance, ...parameters, ...control,
+};

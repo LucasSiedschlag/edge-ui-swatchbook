@@ -1,4 +1,5 @@
 import type { AlarmPriority, LineId, MockDataset, Tag, TextRef, Timestamp } from '../mock/types';
+import { batchModel } from './kpis';
 import { simulatedTime } from './clock';
 import { assertTick, contextOf, type Direction, returnTickOf } from './context';
 import { hash, noise } from './noise';
@@ -33,12 +34,12 @@ function priorityOf(key: number, epoch: number): AlarmPriority {
 }
 
 /** One Alarm description for simulator transitions and admissions at the start of a run. */
-export function raiseAt(d: MockDataset, tag: Tag, tick: number, direction: Direction): Raise {
+export function raiseAt(d: MockDataset, tag: Tag, tick: number, direction: Direction, overlay?: Overlay): Raise {
   const time = simulatedTime(tick);
   return {
     id: `RZ-${tick}-${tag.id}-${direction}`, tick, time, tagId: tag.id,
     machineId: tag.machineId, lineId: tag.lineId,
-    batchId: d.activeBatches.find(b => b.lineId === tag.lineId && b.start <= time && time < b.plannedEnd)?.id ?? null,
+    batchId: d.activeBatches.find(b => b.lineId === tag.lineId && b.start <= time && tick < batchModel(d, b, overlay).completionTick)?.id ?? null,
     direction, priority: priorityOf(hash(tag.id), Math.floor(tick / EPOCH_TICKS)),
     message: {
       key: direction === 'low' ? 'alarm.low-value' : tag.name === 'motor-current' ? 'alarm.motor-overload' : 'alarm.high-value',
@@ -101,7 +102,7 @@ export function raises(d: MockDataset, fromTick: number, toTick: number, overlay
   const ctx = contextOf(d);
   return alarmTransitions(d, overlay, fromTick, toTick)
     .filter(c => c.level !== null)
-    .map(c => raiseAt(d, ctx.tagById.get(c.tagId)!, c.tick, c.level!));
+    .map(c => raiseAt(d, ctx.tagById.get(c.tagId)!, c.tick, c.level!, overlay));
 }
 
 /** Returns of Tag conditions and dataset faults in (fromTick, toTick]. A communication loss never returns. */

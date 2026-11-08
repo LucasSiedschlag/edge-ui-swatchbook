@@ -1,3 +1,5 @@
+import { isActive } from '../plant/alarms';
+import { activeRecipeParameter } from '../parameters';
 import { normalizeFilters, type FilterInput } from './filters';
 import { assertSessionTick } from '../sim/context';
 import type { LineId, LinkStatus, MockDataset, Timestamp } from '../mock/types';
@@ -29,6 +31,9 @@ export interface TagRow {
   writable: boolean;
   /** Writable and not Stale. A Tag of an Offline Machine cannot be overridden. */
   canOverride: boolean;
+  recipeValue: number | null;
+  /** A different Recipe value exists and the Tag is not Stale, matching reset-to-recipe. */
+  canResetToRecipe: boolean;
   linkStatus: LinkStatus;
   lastSeenAt: Timestamp;
 }
@@ -48,10 +53,12 @@ export function tagGridView(d: MockDataset, snapshot: Snapshot, input: TagFilter
     const reading = readings.get(tag.id)!;
     if (filters.status && reading.status !== filters.status) continue;
     const link = links.get(tag.machineId)!;
+    const recipeValue = activeRecipeParameter(d, tag)?.setpoint ?? null;
     rows.push({
       tagId: tag.id, lineId: tag.lineId, machineId: tag.machineId, name: tag.name, value: reading.value, unit: tag.unit,
       setpoint: reading.setpoint, min: tag.min, max: tag.max, status: reading.status, alarm: reading.alarm,
       writable: tag.writable, canOverride: tag.writable && reading.status !== 'stale',
+      recipeValue, canResetToRecipe: reading.status !== 'stale' && recipeValue !== null && recipeValue !== reading.setpoint,
       linkStatus: link.status, lastSeenAt: link.lastSeenAt,
     });
   }
@@ -59,6 +66,7 @@ export function tagGridView(d: MockDataset, snapshot: Snapshot, input: TagFilter
 }
 
 export interface ConnectivityRow {
+  alarmId: string | null;
   machineId: string;
   lineId: LineId;
   linkStatus: LinkStatus;
@@ -70,14 +78,30 @@ export interface ConnectivityRow {
 
 const LINK_RANK: Record<LinkStatus, number> = { offline: 0, degraded: 1, online: 2 };
 
-/** Link diagnostics of every Machine (Screen 6), Offline first, then Degraded, then Online, then by Machine id. */
-export function connectivityView(d: MockDataset, snapshot: Snapshot): ConnectivityRow[] {
+export interface ConnectivitySort { column: 'status' | 'latency' | 'packetLoss' | 'machine'; direction: 'asc' | 'desc' }
+/**
+ * Default: Offline, Degraded, Online, then Machine id. Explicit status uses that severity order.
+ * Explicit sorts put nulls last in both directions; ties always use Machine id ascending.
+ */
+export function connectivityView(d: MockDataset, snapshot: Snapshot, sort?: ConnectivitySort): ConnectivityRow[] {
   assertSessionTick(snapshot.tick);
+  const { column, direction } = sort ?? { column: 'status', direction: 'asc' };
+  if (!['status', 'latency', 'packetLoss', 'machine'].includes(column)) throw new Error('unknown connectivity column');
+  if (direction !== 'asc' && direction !== 'desc') throw new Error('unknown connectivity direction');
+  const alarmByMachine = new Map<string, string>();
+  for (const a of d.alarms) if (a.message.key === 'alarm.comm-loss' &&
+    isActive(a) && !alarmByMachine.has(a.machineId)) alarmByMachine.set(a.machineId, a.id);
+  const value = (row: ConnectivityRow) => column === 'status' ? LINK_RANK[row.linkStatus] : column === 'latency' ? row.latencyMs : column === 'packetLoss' ? row.packetLossPct : row.machineId;
   const lineOf = new Map(d.machines.map((m) => [m.id, m.lineId]));
   return snapshot.machines
     .map((m): ConnectivityRow => ({
+      alarmId: m.status === 'offline' ? alarmByMachine.get(m.machineId) ?? null : null,
       machineId: m.machineId, lineId: lineOf.get(m.machineId)!, linkStatus: m.status, latencyMs: m.latencyMs,
       packetLossPct: m.packetLossPct, lastSeenAt: m.lastSeenAt, errorCount: m.errorCount,
     }))
-    .sort((a, b) => LINK_RANK[a.linkStatus] - LINK_RANK[b.linkStatus] || (a.machineId < b.machineId ? -1 : a.machineId > b.machineId ? 1 : 0));
+    .sort((a, b) => {
+      const x = value(a), y = value(b);
+      const compared = x === y ? 0 : x === null ? 1 : y === null ? -1 : (x < y ? -1 : 1) * (direction === 'asc' ? 1 : -1);
+      return compared || (a.machineId < b.machineId ? -1 : a.machineId > b.machineId ? 1 : 0);
+    });
 }

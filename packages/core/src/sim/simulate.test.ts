@@ -3,6 +3,7 @@ import { generateMockDataset } from '../mock/generate';
 import { raises, returns } from './alarms';
 import { tagSeries } from './series';
 import { snapshotDigest } from './digest';
+import { batchModel } from './kpis';
 import { simulate } from './simulate';
 
 const d = generateMockDataset();
@@ -389,7 +390,7 @@ describe('snapshotDigest', () => {
 
   // Playwright (Issue 8) compares this value across Chromium, Firefox and WebKit. Update it only when the Simulator changes on purpose.
   it('is stable for the default dataset', () => {
-    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('1bdd04f5');
+    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('41d3a250');
   });
 });
 
@@ -433,7 +434,7 @@ it('attributes Raises only while an active Batch is inside its run window', asyn
   for (const batch of d.activeBatches) {
     const tag = d.tags.find(t => t.lineId === batch.lineId)!;
     const startTick = (batch.start - d.now) / 1000;
-    const endTick = (batch.plannedEnd - d.now) / 1000;
+    const endTick = batchModel(d, batch).completionTick;
     expect(raiseAt(d, tag, startTick - 1, 'high').batchId).toBeNull();
     expect(raiseAt(d, tag, startTick, 'high').batchId).toBe(batch.id);
     expect(raiseAt(d, tag, endTick - 1, 'high').batchId).toBe(batch.id);

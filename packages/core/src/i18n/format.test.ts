@@ -97,3 +97,31 @@ it('formats caller percentages on the 0 to 100 scale', async () => {
   expect(formatPercentValue('pt-BR', 62.1)).toBe('62,1%');
   expect(formatPercentValue('en', NaN)).toBe('-');
 });
+
+
+it('formats Tag precision and signed changes with literal bilingual strings', async () => {
+  const { formatTagValue, formatChange } = await import('./format');
+  for (const [locale, decimal, temperature, positive, negative] of [
+    ['en', '1.7', '195.1', '+1.2', '-0.4'], ['pt-BR', '1,7', '195,1', '+1,2', '-0,4'],
+  ] as const) {
+    expect(formatTagValue(locale, 1.7, 'm/min')).toBe(decimal);
+    expect(formatTagValue(locale, 195.136, '°C')).toBe(temperature);
+    expect(formatTagValue(locale, 22, 'rpm')).toBe('22');
+    expect(formatTagValue(locale, null, 'rpm')).toBe('-');
+    expect(formatTagValue(locale, NaN, '°C')).toBe('-');
+    expect(formatTagValue(locale, 1.7, 'unknown')).toBe(decimal);
+    expect(formatChange(locale, 1.2, 'points')).toBe(positive);
+    expect(formatChange(locale, -0.4, 'points')).toBe(negative);
+    expect(formatChange(locale, 1.2, 'percent')).toBe(positive + '%');
+    expect(formatChange(locale, -0.4, 'percent')).toBe(negative + '%');
+    expect(formatChange(locale, 0, 'points')).toBe(locale === 'en' ? '+0.0' : '+0,0');
+    expect(formatChange(locale, NaN, 'points')).toBe('-');
+  }
+});
+it('exports the design suggestion precision table once through core', async () => {
+  const { DECIMALS_BY_UNIT } = await import('../index');
+  expect(DECIMALS_BY_UNIT).toEqual({
+    rpm: 0, spm: 0, mm: 0, 'mm/min': 0, ms: 0, s: 0, pcs: 0, h: 0, V: 0, mbar: 0, 'm³/h': 0,
+    '°C': 1, bar: 1, kN: 1, kW: 1, A: 1, 'L/min': 1, Nm: 1, 'm/min': 1, 'mm/s': 1, '%': 1,
+  });
+});

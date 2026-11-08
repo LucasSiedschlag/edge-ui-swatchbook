@@ -15,7 +15,7 @@ Read these first, in order:
 - Every user-facing string is in both `en` and `pt-BR`, stored in the `core` dictionaries. Docs stay in English.
 - Use a Library's official `pt-BR` pack when it exists. When it does not, translate its built-in strings in the `core` dictionaries and record the Translation Burden.
 - Desktop, keyboard and mouse first. No phone or touch layouts.
-- Charts go through the shared chart wrapper only, so the chart library stays swappable.
+- Charts use Apache ECharts with the SVG renderer through the shared chart wrapper, as decided in [ADR 0003](docs/adr/0003-echarts-behind-a-thin-wrapper.md). The wrapper keeps the chart library swappable.
 - Plant State resets on reload. Only language, theme and density persist, in `localStorage`.
 
 ## Layout and commands

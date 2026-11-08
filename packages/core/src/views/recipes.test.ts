@@ -88,3 +88,37 @@ it('normalizes null and empty Recipe filters', () => {
   }
   expect(view(null)).toEqual(view({}));
 });
+
+it('derives every version action and addable kind from reduce, including read-only, dirty and invalid Drafts', async () => {
+  const { recipeVersionView } = await import('./recipes');
+  const { STEP_KINDS } = await import('../mock/types');
+  let state = start();
+  const approved = state.recipeVersions.find(v => v.status === 'approved' && !state.recipeVersions.some(s => s.recipeId === v.recipeId && s.status === 'draft'))!;
+  const check = (versionId: string) => {
+    const view = recipeVersionView(state, versionId);
+    if ('error' in view) throw new Error(view.error);
+    const acts = { newDraft: 'new-draft', save: 'save-draft', approve: 'approve', discard: 'discard-draft' } as const;
+    for (const [key, type] of Object.entries(acts)) {
+      const r = reduce(state, { type, versionId }, { tick: state.lastTick });
+      expect(view.actions[key as keyof typeof acts]).toBe(r.ok && r.events.length > 0);
+    }
+    const kinds = STEP_KINDS.filter(kind => reduce(state, { type: 'add-step', kind, versionId }, { tick: state.lastTick }).ok);
+    expect(view.addableStepKinds).toEqual(kinds);
+    expect(view.actions.addStep).toBe(kinds.length > 0);
+  };
+  check(approved.id);
+  const draft = reduce(state, { type: 'new-draft', versionId: approved.id }, { tick: 1 });
+  if (!draft.ok) throw new Error(draft.error.code);
+  state = draft.state;
+  const v = state.recipeVersions.at(-1)!;
+  check(v.id); check(approved.id);
+  const removable = v.steps[0]!;
+  const removed = reduce(state, { type: 'remove-step', versionId: v.id, stepId: removable.id }, { tick: 2 });
+  if (!removed.ok) throw new Error(removed.error.code);
+  state = removed.state; check(v.id);
+  expect(recipeVersionView(state, v.id)).toMatchObject({ actions: { addStep: true }, addableStepKinds: [removable.kind] });
+  const bad = state.recipeVersions.find(x => x.id === v.id)!;
+  state = { ...state, recipeVersions: state.recipeVersions.map(x => x.id === v.id ? { ...bad, steps: [] } : x) };
+  check(v.id);
+  expect(recipeVersionView(state, 'missing')).toEqual({ error: 'unknown-version' });
+});
