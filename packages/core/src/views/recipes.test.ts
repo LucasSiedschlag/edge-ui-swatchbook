@@ -81,3 +81,10 @@ describe('recipeLibraryView', () => {
     expect(view({ search: 'a' }, s)).toEqual(view({ search: 'a' }, s));
   });
 });
+
+it('normalizes null and empty Recipe filters', () => {
+  for (const value of [undefined, null, [], ''] as const) {
+    expect(view({ lineType: value, status: value, search: value })).toEqual(view({}));
+  }
+  expect(view(null)).toEqual(view({}));
+});

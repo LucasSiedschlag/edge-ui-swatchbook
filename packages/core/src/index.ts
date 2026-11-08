@@ -2,6 +2,7 @@ export { LOCALES, SCREENS, type Locale, type ScreenId } from './screens';
 
 export { DEFAULT_SEED, generateMockDataset } from './mock/generate';
 export type * from './mock/types';
+export { spDayStart, spDayEnd } from './mock/time';
 export { findBatch } from './mock/lookup';
 export { simulate, type Snapshot } from './sim/simulate';
 export { alarmTransitions, raises, returns, type AlarmTransition, type Raise, type Return } from './sim/alarms';

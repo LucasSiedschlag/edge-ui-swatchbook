@@ -1,3 +1,8 @@
+/**
+ * All views normalize filters at entry: undefined, null, empty lists, blank strings and ranges
+ * without bounds mean not set, filter nothing and are absent from activeFilters where exposed.
+ * Alarm state filters then use the default states. Inverted ranges are rejected at entry.
+ */
 export { alarmListView, type AlarmFilters, type AlarmRow } from './alarms';
 export { criticalBannerView, type BannerRow } from './banner';
 export { eventLogView, type EventFilters, type EventRow } from './events';

@@ -1,15 +1,17 @@
+import { normalizeFilters, type FilterInput } from './filters';
 import { assertSessionTick } from '../sim/context';
 import type { LineId, LinkStatus, MockDataset, Timestamp } from '../mock/types';
 import type { Snapshot } from '../sim/simulate';
 import type { TagStatus } from '../sim/tags';
 
-export interface TagFilters {
+interface TagFilterValues {
   lineId?: LineId;
   machineId?: string;
   status?: TagStatus;
   /** Case-insensitive substring of the Tag name. */
   search?: string;
 }
+export type TagFilters = FilterInput<TagFilterValues>;
 
 export interface TagRow {
   tagId: string;
@@ -32,11 +34,12 @@ export interface TagRow {
 }
 
 /** The Live Parameter Matrix grid (Screen 5): one row per Tag in dataset order. Filters combine with AND. */
-export function tagGridView(d: MockDataset, snapshot: Snapshot, filters: TagFilters = {}): { rows: TagRow[]; empty: boolean } {
+export function tagGridView(d: MockDataset, snapshot: Snapshot, input: TagFilters | null = {}): { rows: TagRow[]; empty: boolean } {
+  const filters = normalizeFilters<TagFilterValues>(input);
   assertSessionTick(snapshot.tick);
   const readings = new Map(snapshot.tags.map((r) => [r.tagId, r]));
   const links = new Map(snapshot.machines.map((m) => [m.machineId, m]));
-  const needle = filters.search?.trim().toLowerCase() ?? '';
+  const needle = filters.search?.toLowerCase() ?? '';
   const rows: TagRow[] = [];
   for (const tag of d.tags) {
     if (filters.lineId && tag.lineId !== filters.lineId) continue;

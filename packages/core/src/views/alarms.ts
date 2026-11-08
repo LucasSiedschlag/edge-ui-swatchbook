@@ -1,16 +1,18 @@
+import { normalizeFilters, type FilterInput } from './filters';
 import { assertSessionTick } from '../sim/context';
 import type { AlarmPriority, AlarmState, AreaId, LineId, TextRef, Timestamp } from '../mock/types';
 import { alarmList } from '../plant';
 import type { PlantState } from '../plant';
 import { simulatedTime } from '../sim/clock';
 
-export interface AlarmFilters {
+interface AlarmFilterValues {
   priorities?: AlarmPriority[];
   /** Default: every state except cleared. */
   states?: AlarmState[];
   areaId?: AreaId;
   lineId?: LineId;
 }
+export type AlarmFilters = FilterInput<AlarmFilterValues>;
 
 export interface AlarmRow {
   id: string;
@@ -34,7 +36,8 @@ const DEFAULT_STATES: AlarmState[] = ['active-unacknowledged', 'active-acknowled
  * The Control Room Alarm list (Screen 6). Sorted by priority (critical first), then oldest raised first,
  * then id. Cleared Alarms are hidden unless `states` asks for them. Filters combine with AND.
  */
-export function alarmListView(state: PlantState, tick: number, filters: AlarmFilters = {}): { rows: AlarmRow[]; empty: boolean } {
+export function alarmListView(state: PlantState, tick: number, input: AlarmFilters | null = {}): { rows: AlarmRow[]; empty: boolean } {
+  const filters = normalizeFilters<AlarmFilterValues>(input);
   assertSessionTick(tick);
   const now = simulatedTime(tick);
   const states = filters.states ?? DEFAULT_STATES;

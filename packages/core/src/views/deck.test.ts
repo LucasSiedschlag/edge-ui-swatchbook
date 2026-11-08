@@ -22,7 +22,7 @@ describe('Operations Live Deck', () => {
       const status = lineStatus(state, lineId, tick);
       expect(v.lines).toEqual(d.lines.map(l => ({ id: l.id, ...lineStatus(state, l.id, tick) })));
       expect(v.selected).toEqual({ id: lineId, status: status.status, stopReason: status.reason, criticalAlarms: status.criticalAlarms });
-      expect(v.kpis).toEqual({ oee: live.oee, availability: live.availability, performance: live.performance, quality: live.quality,
+      expect(v.kpis).toEqual({ kind: d.lines.find(l => l.id === lineId)!.type === 'assembly' ? 'cycle' : 'lineSpeed', oee: live.oee, availability: live.availability, performance: live.performance, quality: live.quality,
         outputThisShift: live.outputThisShift, scrapThisShift: live.scrapThisShift, cycle: live.cycle, lineSpeed: live.lineSpeed });
       expect(v.banner).toEqual(criticalBannerView(state, tick, lineId));
       expect(v.shift).toEqual({ id: snapshot.shift.shift, startsAt: snapshot.shift.startsAt, endsAt: snapshot.shift.endsAt, remainingMs: snapshot.shift.remainingMs });
@@ -78,7 +78,7 @@ function checkActions(s: PlantState, tick: number): void {
 
 describe('Deck action availability', () => {
   it('equals reducer changes on every Line at several ticks', () => {
-    for (const tick of [0, 1, 100, 400, 3600]) checkActions(state, tick);
+    for (const tick of [0, 1, 50, 100, 400, 900, 3600, 86400]) checkActions(state, tick);
   });
   it('equals reducer changes after actual Pause, Emergency stop, Reset and Resume on every Line', () => {
     let resumes = 0;
@@ -96,6 +96,8 @@ describe('Deck action availability', () => {
         } else expect(result.error.code).toBe('critical-alarm-active');
         checkActions(s, tick);
         checkActions(s, tick + 2);
+        checkActions(s, 3600);
+        checkActions(s, 86400);
         tick += 10;
       }
     }
@@ -155,4 +157,67 @@ it('reports deckView median timing for all seven Lines', () => {
   }).sort((a, b) => a - b);
   console.info(`deckView median: ${times[4]!.toFixed(3)} ms per call`);
   expect(times[4]).toBeLessThan(50);
+});
+
+it('uses the reducer effective tick after Pause and rejects stale Snapshots', () => {
+  const paused = reduce(state, { type: 'pause', lineId: 'E2' }, { tick: 50 });
+  if (!paused.ok) throw new Error(paused.error.code);
+  const s = paused.state;
+  const snap = simulate(d, 50, s.overlay);
+  expect(deckView(s, snap, 'E2', 49)).toEqual(deckView(s, snap, 'E2', 50));
+  expect(deckView(s, snap, 'E2', 49).selected.stopReason).toBe('paused');
+  expect(() => deckView(s, simulate(d, 49, s.overlay), 'E2', 49)).toThrow('snapshot tick must match effective tick 50');
+  expect(() => deckView(s, simulate(d, 51, s.overlay), 'E2', 50)).toThrow('snapshot tick must match effective tick 50');
+  expect(() => deckView(s, simulate(d, 50, state.overlay), 'E2', 50)).toThrow('snapshot overlay must match Plant State');
+  expect(() => deckView(s, simulate(d, 50), 'E2', 50)).toThrow('snapshot overlay must match Plant State');
+  const equivalent = { ...s.overlay };
+  expect(() => deckView(s, simulate(d, 50, equivalent), 'E2', 50)).toThrow('snapshot overlay must match Plant State');
+});
+
+it('keeps paused Resume probes cheap at late ticks, including uncached actions', () => {
+  const paused = reduce(state, { type: 'pause', lineId: 'E2' }, { tick: 50 });
+  if (!paused.ok) throw new Error(paused.error.code);
+  const measurements: { tick: number; fresh: number; cached: number }[] = [];
+  for (const tick of [3600, 86400, 604800]) {
+    const s = paused.state;
+    const snapshot = simulate(d, tick, s.overlay);
+    // Warm the existing Alarm timeline, as the Deck status already does before asking for actions.
+    lineStatus(s, 'E2', tick);
+    const fresh = Array.from({ length: 9 }, () => {
+      const source = { ...s };
+      const start = performance.now();
+      deckView(source, snapshot, 'E2', tick);
+      return performance.now() - start;
+    }).sort((a, b) => a - b)[4]!;
+    deckView(s, snapshot, 'E2', tick);
+    const cached = Array.from({ length: 9 }, () => {
+      const start = performance.now();
+      deckView(s, snapshot, 'E2', tick);
+      return performance.now() - start;
+    }).sort((a, b) => a - b)[4]!;
+    console.info(`paused Resume ${tick / 3600} h: uncached ${fresh.toFixed(3)} ms; cached ${cached.toFixed(3)} ms`);
+    measurements.push({ tick, fresh, cached });
+  }
+  const day = measurements.find(m => m.tick === 86400)!;
+  expect(day.fresh).toBeLessThan(5);
+  expect(day.cached).toBeLessThan(5);
+});
+
+it('keeps KPI kind tied to Line type while paused, idle or finished', () => {
+  for (const line of d.lines) {
+    const result = reduce(state, { type: 'pause', lineId: line.id }, { tick: 50 });
+    if (!result.ok) throw new Error(result.error.code);
+    for (const s of [state, result.state]) for (const tick of [50, 86400]) {
+      const view = deckView(s, simulate(d, tick, s.overlay), line.id, tick);
+      expect(view.kpis.kind).toBe(line.type === 'assembly' ? 'cycle' : 'lineSpeed');
+      if (line.type === 'assembly' && s === result.state) expect(view.kpis.cycle).toBeNull();
+    }
+  }
+});
+
+it('reads the active Batch Recipe Version from Plant State', () => {
+  const session = { ...state, recipeVersions: state.recipeVersions.map(v => ({ ...v, number: v.number + 100 })) };
+  const view = deckView(session, simulate(d, 0, session.overlay), 'E2', 0);
+  const batch = d.activeBatches.find(b => b.lineId === 'E2')!;
+  expect(view.batch!.recipeVersion).toBe(session.recipeVersions.find(v => v.id === batch.recipeVersionId)!.number);
 });

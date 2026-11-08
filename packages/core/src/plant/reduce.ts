@@ -1,7 +1,7 @@
 import { activeRecipeParameter } from '../parameters';
 import type { EventLogEntry, LineId } from '../mock/types';
 import { simulatedTime } from '../sim/clock';
-import { acknowledge, alarmList, isActive } from './alarms';
+import { acknowledge, alarmList, alarmListAfterResume, isActive } from './alarms';
 import { NEVER } from './lines';
 import { contextOf, MAX_TICK } from '../sim/context';
 import { type SetpointStep, setpointAt } from '../sim/overlay';
@@ -94,7 +94,7 @@ function apply(state: PlantState, action: Exclude<PlantAction, { type: 'set-user
       const changes = setLine(state, action.lineId, { ...control, paused: false }, closeStop(spans, tick));
       const tentative = { ...state, ...changes };
       tentative.overlay = buildOverlay(tentative.manualStops, tentative.faultStops, tentative.setpoints);
-      if (alarmList(tentative, tick).some(a => a.lineId === action.lineId && a.priority === 'critical' && isActive(a))) return refuse('critical-alarm-active');
+      if (alarmListAfterResume(state, tentative, tick).some(a => a.lineId === action.lineId && a.priority === 'critical' && isActive(a))) return refuse('critical-alarm-active');
       return commit(state, changes, [entry(state, tick, 'resume', action.lineId, 'line')]);
     }
   }

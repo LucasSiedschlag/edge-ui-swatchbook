@@ -8,6 +8,8 @@ import { readTag, type TagReading } from './tags';
 
 export interface Snapshot {
   tick: number;
+  /** Identity of the immutable Overlay used to compute these values. */
+  overlay: Overlay | undefined;
   time: Timestamp;
   shift: ShiftInfo;
   tags: TagReading[];
@@ -25,5 +27,5 @@ export function simulate(d: MockDataset, tick: number, overlay?: Overlay): Snaps
   const ctx = contextOf(d);
   const machines = readLinks(d.machines, tick);
   const tags = [...ctx.tagById.values()].map((t) => readTag(ctx, t, tick, overlay));
-  return { tick, time: simulatedTime(tick), shift: shiftInfo(tick), tags, machines, lines: readLines(d, tick, tags, overlay), hours: readHours(d, tick, overlay) };
+  return { tick, overlay, time: simulatedTime(tick), shift: shiftInfo(tick), tags, machines, lines: readLines(d, tick, tags, overlay), hours: readHours(d, tick, overlay) };
 }

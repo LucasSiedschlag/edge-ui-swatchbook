@@ -109,3 +109,11 @@ describe('connectivityView', () => {
     expect(connectivityView(d, simulate(d, 50))).toEqual(connectivityView(d, simulate(d, 50)));
   });
 });
+
+it('normalizes null and empty Tag filters', () => {
+  const snapshot = simulate(d, 0);
+  for (const value of [undefined, null, [], ''] as const) {
+    expect(tagGridView(d, snapshot, { lineId: value, machineId: value, status: value, search: value })).toEqual(tagGridView(d, snapshot));
+  }
+  expect(tagGridView(d, snapshot, null)).toEqual(tagGridView(d, snapshot));
+});

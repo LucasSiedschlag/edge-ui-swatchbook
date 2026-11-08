@@ -129,7 +129,8 @@ export const stepKindLabels: Record<StepKind, MessageKey> = {
   "inspect": "step.inspect",
 };
 
-export const batchStatusLabels: Record<BatchStatus, MessageKey> = {
+export const batchStatusLabels: Record<BatchStatus | 'running', MessageKey> = {
+  "running": "batch-status.running",
   "completed": "batch-status.completed",
   "aborted": "batch-status.aborted",
   "rework": "batch-status.rework",

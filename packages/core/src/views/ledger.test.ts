@@ -54,40 +54,39 @@ describe('ledger filters and ordering', () => {
     expect(ids({ yield: { min: 95 }, scrap: { max: 5 }, lines: ['A1'], shifts: ['S2'] })).toEqual(['A']);
     expect(ids({ areas: ['extrusion'], lines: ['A1'] })).toEqual([]);
   });
-  it.each(['areas', 'lines', 'products', 'shifts', 'statuses'] as const)('%s empty list matches nothing', key => {
+  it.each(['areas', 'lines', 'products', 'shifts', 'statuses'] as const)('%s empty list leaves rows and active filters unchanged', key => {
     const v = ledgerView(sample, { filters: { [key]: [] } });
-    expect(v).toMatchObject({ rows: [], rowCount: 0, totalCount: 3, empty: true });
-    expect(v.activeFilters).toEqual([{ column: key, value: [] }]);
+    expect(v).toMatchObject({ rowCount: 3, totalCount: 3, empty: false });
+    expect(v.activeFilters).toEqual([]);
   });
-  it('uses inclusive numeric ranges and half-open start ranges', () => {
+  it('uses inclusive numeric ranges', () => {
     expect(ids({ yield: { min: 95, max: 95 } })).toEqual(['a', 'A']);
     expect(ids({ scrap: { min: 5, max: 10 } })).toEqual(['A', 'b']);
     expect(ids({ duration: { min: 2, max: 3 } })).toEqual(['A', 'b']);
     expect(ids({ duration: { max: 2 } })).toEqual(['b']);
     expect(ids({ yield: { min: 96 } })).toEqual([]);
-    expect(ids({ start: { from: 2000, to: 3000 } })).toEqual(['A']);
-    expect(ids({ start: { to: 2000 } })).toEqual(['b']);
-    expect(ids({ start: { from: 3000 } })).toEqual(['a']);
-    expect(ids({ scrap: { min: 10, max: 5 } })).toEqual([]);
+    expect(() => ids({ scrap: { min: 10, max: 5 } })).toThrow('scrap min must not exceed max');
   });
-  it('searches all three id columns with case folding and trimming', () => {
-    for (const b of d.batches.slice(0, 3)) {
-      for (const needle of [b.id, b.lotId, d.lots.find(l => l.id === b.lotId)!.upstreamLotId!]) {
-        const v = ledgerView(d, { filters: { text: `  ${needle.toLowerCase()}  ` } });
-        expect(v.rows.some(r => r.batchId === b.id)).toBe(true);
-        expect(v.rows.every(r => [r.batchId, r.lotId, r.upstreamLotId].some(s => s?.toLowerCase().includes(needle.toLowerCase())))).toBe(true);
-      }
+  it('filters each ID column independently with case folding and trimming', () => {
+    for (const column of ['batchId', 'lotId', 'upstreamLotId'] as const) {
+      const v = ledgerView(d, { filters: { [column]: '  e1  ' } });
+      expect(v.rows.length).toBeGreaterThan(0);
+      expect(v.rows.every(r => r[column]?.toLowerCase().includes('e1'))).toBe(true);
+      expect(v.activeFilters).toEqual([{ column, value: 'e1' }]);
+      expect(ledgerView(d, { filters: { [column]: '  ' } }).activeFilters).toEqual([]);
     }
-    expect(ids({ text: '  ' })).toEqual(['a', 'A', 'b']);
-    expect(ledgerView(sample, { filters: { text: '  ' } }).activeFilters).toEqual([]);
+    expect(ledgerView(d, { filters: { batchId: 'E1' } }).rowCount).toBe(700);
+    const upstream = ledgerView(d, { filters: { upstreamLotId: 'E1' } }).rows;
+    expect(upstream.every(r => r.areaId === 'assembly')).toBe(true);
+    expect(upstream.map(r => r.batchId).sort()).toEqual(d.batches.filter(b =>
+      d.lots.find(l => l.id === b.lotId)!.upstreamLotId?.includes('E1')).map(b => b.id).sort());
+    expect(ledgerView(d, { filters: { batchId: 'E1', upstreamLotId: 'E1' } }).empty).toBe(true);
   });
   it('reports set filters in fixed column order and copies their values', () => {
-    const filters = { duration: {}, start: {}, scrap: { max: 0 }, yield: {}, statuses: [], shifts: [], products: [], lines: [], areas: [], text: ' b ' };
+    const filters = { duration: {}, start: {}, scrap: { max: 0 }, yield: {}, statuses: [], shifts: [], products: [], lines: [], areas: [], batchId: ' b ' };
     const active = ledgerView(sample, { filters }).activeFilters;
     expect(active).toEqual([
-      { column: 'text', value: 'b' }, { column: 'areas', value: [] }, { column: 'lines', value: [] },
-      { column: 'products', value: [] }, { column: 'shifts', value: [] }, { column: 'start', value: {} },
-      { column: 'duration', value: {} }, { column: 'statuses', value: [] }, { column: 'yield', value: {} }, { column: 'scrap', value: { max: 0 } },
+      { column: 'batchId', value: 'b' }, { column: 'scrap', value: { max: 0 } },
     ]);
     expect(active.find(f => f.column === 'scrap')!.value).not.toBe(filters.scrap);
   });
@@ -226,15 +225,16 @@ it('uses literal Parameter deviations, inclusive limits and unknown values', () 
     { ...template, key: 'missing', setpoint: 10, min: 0, max: 20 },
   ] }] };
   const b = { ...d.batches[0]!, recipeVersionId: version.id, actuals: { positive: 110, negative: -110, zero: 2 } };
-  const dataset = { ...d, batches: [b], recipeVersions: [version] };
+  const second = { ...b, id: 'second-batch' };
+  const dataset = { ...d, batches: [b, second], recipeVersions: [version] };
   const detail = batchDetail({ ...state, dataset, recipeVersions: [version] }, 0, b.id);
   if ('error' in detail) throw new Error(detail.error);
   expect(detail.parameters.map(p => [p.actual, p.setpoint, p.deviationPct, p.insideLimits])).toEqual([
     [110, 100, 10, true], [-110, -100, -10, true], [2, 0, null, false], [null, 10, null, null],
   ]);
-  const compared = compareBatches(dataset, [b.id, b.id]);
+  const compared = compareBatches(dataset, [b.id, second.id]);
   if ('error' in compared) throw new Error(compared.error);
-  expect(compared.columns.map(c => c.batchId)).toEqual([b.id, b.id]);
+  expect(compared.columns.map(c => c.batchId)).toEqual([b.id, second.id]);
   expect(compared.parameters.find(p => p.key === 'zero')!.values).toEqual([
     { actual: 2, setpoint: 0, deviationPct: null }, { actual: 2, setpoint: 0, deviationPct: null },
   ]);
@@ -289,4 +289,95 @@ it('exports the ledger API from core', async () => {
   const core = await import('../index') as Record<string, unknown>;
   for (const name of ['ledgerView', 'toggleSelection', 'canCompare', 'compareBatches', 'batchDetail']) expect(core[name]).toBeTypeOf('function');
   expect(core.MAX_COMPARE).toBe(4);
+});
+
+it('includes both complete local dates supplied by a date picker', () => {
+  const dates = { ...d, batches: [
+    { ...d.batches[0]!, id: 'midnight', start: Date.UTC(2025, 11, 31, 3) },
+    { ...d.batches[0]!, id: 'late', start: Date.UTC(2026, 0, 1, 1, 59) },
+    { ...d.batches[0]!, id: 'last-ms', start: Date.UTC(2026, 0, 1, 2, 59, 59, 999) },
+    { ...d.batches[0]!, id: 'next-day', start: Date.UTC(2026, 0, 1, 3) },
+    { ...d.batches[0]!, id: 'before', start: Date.UTC(2025, 11, 31, 2, 59, 59, 999) },
+  ] };
+  const rows = (start: import('./ledger').LedgerFilters['start']) => ledgerView(dates, { filters: { start } }).rows.map(r => r.batchId);
+  expect(rows({ fromDate: '2025-12-31', toDate: '2025-12-31' })).toEqual(['last-ms', 'late', 'midnight']);
+  expect(rows({ toDate: '2025-12-31' })).toEqual(['last-ms', 'late', 'midnight', 'before']);
+  expect(rows({ toDate: '2025-12-30' })).toEqual(['before']);
+  expect(rows({ fromDate: '2025-12-31' })).toEqual(['next-day', 'last-ms', 'late', 'midnight']);
+  expect(() => rows({ toDate: 'garbage' })).toThrow('YYYY-MM-DD');
+});
+
+it('normalizes empty Ledger filters at entry and rejects inverted ranges', () => {
+  for (const value of [undefined, null, [], ''] as const) {
+    expect(ledgerView(d, { filters: { batchId: value, lotId: value, upstreamLotId: value,
+      areas: value, lines: value, products: value, shifts: value, statuses: value,
+      start: value, yield: value, duration: value, scrap: value } })).toEqual(ledgerView(d, {}));
+  }
+  expect(ledgerView(d, { filters: null })).toEqual(ledgerView(d, {}));
+  expect(ledgerView(d, { filters: { start: {}, yield: {}, duration: {}, scrap: {} } })).toEqual(ledgerView(d, {}));
+  for (const column of ['yield', 'duration', 'scrap'] as const) {
+    expect(() => ledgerView(d, { filters: { [column]: { min: 2, max: 1 } } })).toThrow(`${column} min must not exceed max`);
+  }
+  expect(() => ledgerView(d, { filters: { start: { fromDate: '2026-01-01', toDate: '2025-12-31' } } })).toThrow('start fromDate must not be after toDate');
+});
+
+it('keeps running Batch B-A1-01151 Alarms inside its planned run at tick 86400', () => {
+  const b = d.activeBatches.find(b => b.id === 'B-A1-01151')!;
+  const detail = batchDetail(state, 86400, b.id);
+  if ('error' in detail) throw new Error(detail.error);
+  expect(detail.alarms.length).toBeGreaterThan(0);
+  expect(detail.alarms.every(a => a.raisedAt >= b.start && a.raisedAt < b.plannedEnd)).toBe(true);
+});
+
+it('checks Alarm raise times as well as the Batch id for both finished and running Batches', () => {
+  for (const b of [d.batches[0]!, d.activeBatches[0]!]) {
+    const end = 'end' in b ? b.end : b.plannedEnd;
+    const alarms = [b.start - 1, b.start, end - 1, end, end + 1].map((raisedAt, i) => ({
+      ...d.alarms[0]!, id: `bounded-${i}`, batchId: b.id, raisedAt,
+    }));
+    const dataset = { ...d, alarms };
+    const detail = batchDetail(createPlantState(dataset), 86400, b.id);
+    if ('error' in detail) throw new Error(detail.error);
+    expect(detail.alarms.filter(a => a.id.startsWith('bounded-')).map(a => a.id).sort()).toEqual(['bounded-1', 'bounded-2']);
+  }
+});
+
+it('requires two distinct comparison ids and compares each selection once', () => {
+  const [a, b] = d.batches;
+  expect(compareBatches(d, [a!.id, a!.id])).toEqual({ error: 'compare-count' });
+  expect(canCompare([a!.id, a!.id])).toBe(false);
+  const compared = compareBatches(d, [a!.id, a!.id, b!.id]);
+  if ('error' in compared) throw new Error(compared.error);
+  expect(compared.columns.map(c => c.batchId)).toEqual([a!.id, b!.id]);
+});
+
+it('counts hidden selections toward the limit and restores them when filters clear', () => {
+  const selected = d.batches.filter(b => b.lineId === 'E1').slice(0, 4).map(b => b.id);
+  const hidden = ledgerView(d, { selected, filters: { lines: ['A1'] } });
+  expect(hidden.selectedCount).toBe(4);
+  expect(hidden.selectedHidden).toBe(4);
+  expect(toggleSelection(selected, d.batches.find(b => b.lineId === 'A1')!.id).result).toBe('selection-limit');
+  const restored = ledgerView(d, { selected });
+  expect(restored.selectedCount).toBe(4);
+  expect(restored.selectedHidden).toBe(0);
+  expect(ledgerView(d, { selected: [...selected, selected[0]!] }).selectedCount).toBe(4);
+  expect(ledgerView(d, {}).selectedHidden).toBe(0);
+});
+
+it('reads finished Recipe Versions from the Mock Dataset and running versions from Plant State', () => {
+  const versions = state.recipeVersions.map(v => ({ ...v, number: v.number + 100,
+    steps: v.steps.map(s => ({ ...s, parameters: s.parameters.map(p => ({ ...p, setpoint: p.setpoint + 1 })) })) }));
+  const session = { ...state, recipeVersions: versions };
+  const finished = d.batches[0]!;
+  const detail = batchDetail(session, 0, finished.id);
+  expect(detail).toEqual(batchDetail(state, 0, finished.id));
+  const running = d.activeBatches[0]!;
+  const activeDetail = batchDetail(session, 0, running.id);
+  if ('error' in activeDetail) throw new Error(activeDetail.error);
+  const version = versions.find(v => v.id === running.recipeVersionId)!;
+  expect(activeDetail.parameters.map(p => p.setpoint)).toEqual(version.steps.filter(s => s.kind === 'run' || s.kind === 'process').flatMap(s => s.parameters.map(p => p.setpoint)));
+  const row = ledgerView(d, {}).rows.find(r => r.batchId === finished.id)!;
+  const compared = compareBatches(d, [finished.id, d.batches[1]!.id]);
+  if ('error' in compared) throw new Error(compared.error);
+  expect(compared.columns[0]!.durationMinutes).toBe(row.durationMinutes);
 });

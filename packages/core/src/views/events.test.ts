@@ -64,7 +64,7 @@ describe('eventLogView', () => {
 
   it('reports empty when nothing matches', () => {
     expect(eventLogView(start(), 0, { userId: 'nobody' })).toEqual({ rows: [], empty: true });
-    expect(eventLogView(start(), 0, { actions: [] }).empty).toBe(true);
+    expect(eventLogView(start(), 0, { actions: [] })).toEqual(eventLogView(start(), 0));
   });
 
   // Rule: an open side excludes the exact bound and a closed side includes it.
@@ -140,3 +140,11 @@ it('orders EV-9999, EV-10000 and EV-10001 by insertion after real actions', () =
   expect(eventLogView(state, 0, { actions: ['shift-handover'], range: 'last-7d' }).rows.slice(0, 3).map((row) => [row.id, row.note]))
     .toEqual([['EV-10001', 'third'], ['EV-10000', 'second'], ['EV-9999', 'first']]);
 }, 20000);
+
+it('normalizes null and empty Event Log filters', () => {
+  const s = start();
+  for (const value of [undefined, null, [], ''] as const) {
+    expect(eventLogView(s, 0, { actions: value, userId: value, range: value })).toEqual(eventLogView(s, 0));
+  }
+  expect(eventLogView(s, 0, null)).toEqual(eventLogView(s, 0));
+});

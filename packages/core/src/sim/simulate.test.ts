@@ -184,7 +184,7 @@ describe('raises', () => {
   });
 
   it('names the Batch running on the Line when it raises', () => {
-    for (const r of raises(d, 0, 3600)) expect(r.batchId).toBe(d.activeBatches.find((b) => b.lineId === r.lineId)?.id ?? null);
+    for (const r of raises(d, 0, 3600)) expect(r.batchId).toBe(d.activeBatches.find((b) => b.lineId === r.lineId && b.start <= r.time && r.time < b.plannedEnd)?.id ?? null);
   });
 
   it('does not raise for Tags of the Offline Machine, or counters', () => {
@@ -389,7 +389,7 @@ describe('snapshotDigest', () => {
 
   // Playwright (Issue 8) compares this value across Chromium, Firefox and WebKit. Update it only when the Simulator changes on purpose.
   it('is stable for the default dataset', () => {
-    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('47111df7');
+    expect(snapshotDigest(d, [-7200, -1, 0, 1, 59, 600, 3600, 28_800, 86_400])).toBe('1bdd04f5');
   });
 });
 
@@ -420,4 +420,24 @@ describe('simulate: smaller edges', () => {
       expect(typeof (core as Record<string, unknown>)[name]).toBe('function');
     }
   });
+});
+
+it('records the exact Overlay used by the Snapshot, including undefined', () => {
+  const overlay = {};
+  expect(simulate(d, 0, overlay).overlay).toBe(overlay);
+  expect(simulate(d, 0)).toHaveProperty('overlay', undefined);
+});
+
+it('attributes Raises only while an active Batch is inside its run window', async () => {
+  const { raiseAt } = await import('./alarms');
+  for (const batch of d.activeBatches) {
+    const tag = d.tags.find(t => t.lineId === batch.lineId)!;
+    const startTick = (batch.start - d.now) / 1000;
+    const endTick = (batch.plannedEnd - d.now) / 1000;
+    expect(raiseAt(d, tag, startTick - 1, 'high').batchId).toBeNull();
+    expect(raiseAt(d, tag, startTick, 'high').batchId).toBe(batch.id);
+    expect(raiseAt(d, tag, endTick - 1, 'high').batchId).toBe(batch.id);
+    expect(raiseAt(d, tag, endTick, 'high').batchId).toBeNull();
+    expect(raiseAt(d, tag, 86400, 'high').batchId).toBeNull();
+  }
 });

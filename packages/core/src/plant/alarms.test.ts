@@ -155,3 +155,34 @@ describe('Alarms follow the Simulator', () => {
     expect(open(viaPause).filter((a) => a.tagId !== null && d.alarms.some((x) => x.id === a.id))).toHaveLength(0);
   });
 });
+
+it('reuses the pre-Resume timeline without changing fresh Alarm derivation', async () => {
+  const { alarmListAfterResume } = await import('./alarms');
+  const { buildOverlay } = await import('./state');
+  for (const pausedAt of [0, 50, 600]) {
+    const initial = createPlantState(d);
+    const result = reduce(initial, { type: 'pause', lineId: 'E2' }, { tick: pausedAt });
+    if (!result.ok) throw new Error(result.error.code);
+    const source = result.state;
+    // Query the future first, then probe earlier ticks, including the Pause tick itself.
+    alarmList(source, 4000);
+    for (const tick of [pausedAt, pausedAt + 1, 900, 3600]) {
+      const manualStops = { ...source.manualStops, E2: source.manualStops.E2.map(s => ({ ...s, toTick: tick })) };
+      const resumed = { ...source, manualStops, overlay: buildOverlay(manualStops, source.faultStops, source.setpoints) };
+      const fresh = { ...resumed, overlay: { ...resumed.overlay } };
+      expect(alarmListAfterResume(source, resumed, tick)).toEqual(alarmList(fresh, tick));
+      expect(alarmListAfterResume(source, resumed, tick)).toEqual(alarmList(fresh, tick));
+    }
+  }
+});
+
+it('preserves a Mock Dataset Alarm raised at the exact Resume tick', () => {
+  const dataset = { ...d, alarms: [{ ...d.alarms[0]!, id: 'AL-at-load', raisedAt: d.now,
+    state: 'active-unacknowledged' as const, priority: 'critical' as const, lineId: 'E2' as const,
+    machineId: d.machines.find(m => m.lineId === 'E2')!.id, tagId: null,
+    acknowledgedAt: null, acknowledgedBy: null, returnedAt: null, clearedAt: null,
+  }] };
+  const paused = reduce(createPlantState(dataset), { type: 'pause', lineId: 'E2' }, { tick: 0 });
+  if (!paused.ok) throw new Error(paused.error.code);
+  expect(reduce(paused.state, { type: 'resume', lineId: 'E2' }, { tick: 0 })).toEqual({ ok: false, error: { code: 'critical-alarm-active' } });
+});

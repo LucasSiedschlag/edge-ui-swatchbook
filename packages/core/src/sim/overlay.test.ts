@@ -13,9 +13,10 @@ const reading = (tick: number, overlay?: Overlay) => simulate(d, tick, overlay).
 describe('overlay: Setpoint Overrides', () => {
   const toMax: Overlay = { setpoints: new Map([[tagId, [{ fromTick: 100, value: speed?.max ?? 0 }]]]) };
 
-  it('changes nothing without an overlay, or with an empty one', () => {
+  it('keeps computed values identical with an empty Overlay, while recording its identity', () => {
     for (const tick of [0, 50, 500]) {
-      expect(JSON.stringify(simulate(d, tick, {}))).toBe(JSON.stringify(simulate(d, tick)));
+      const overlay = {};
+      expect(simulate(d, tick, overlay)).toEqual({ ...simulate(d, tick), overlay });
     }
   });
 

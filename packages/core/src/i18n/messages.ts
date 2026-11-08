@@ -166,6 +166,7 @@ const base = {
   "line-type.assembly": "Assembly",
   "recipe-status.draft": "Draft",
   "recipe-status.approved": "Approved",
+  "batch-status.running": "Running",
   "batch-status.completed": "Completed",
   "batch-status.aborted": "Aborted",
   "batch-status.rework": "Rework",

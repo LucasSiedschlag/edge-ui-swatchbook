@@ -25,3 +25,16 @@ export function shiftAt(ts: number): ShiftId {
   if (h >= 14 && h < 22) return 'S2';
   return 'S3';
 }
+
+/** Date picker input, interpreted as midnight at the plant's fixed UTC-3 offset. */
+export function spDayStart(date: string): number {
+  if (typeof date !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(date)) throw new Error('date must be a valid YYYY-MM-DD');
+  const utc = Date.parse(`${date}T00:00:00.000Z`);
+  if (!Number.isFinite(utc) || new Date(utc).toISOString().slice(0, 10) !== date) throw new Error('date must be a valid YYYY-MM-DD');
+  return utc - SP_OFFSET_HOURS * HOUR;
+}
+
+/** Inclusive final millisecond of a local date. */
+export function spDayEnd(date: string): number {
+  return spDayStart(date) + DAY - 1;
+}
