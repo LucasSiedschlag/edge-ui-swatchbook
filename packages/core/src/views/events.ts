@@ -1,3 +1,4 @@
+import { normalizeFilters, type FilterInput } from './filters';
 import { assertSessionTick } from '../sim/context';
 import type { EventAction, EventTargetKind, Role, Timestamp } from '../mock/types';
 import type { PlantState } from '../plant';
@@ -7,11 +8,12 @@ import { simulatedTime } from '../sim/clock';
 import { type RangeId, rangeWindow } from './ranges';
 export type { RangeId } from './ranges';
 
-export interface EventFilters {
+interface EventFilterValues {
   userId?: string;
   actions?: EventAction[];
   range?: RangeId;
 }
+export type EventFilters = FilterInput<EventFilterValues>;
 
 export interface EventRow {
   id: string;
@@ -35,7 +37,8 @@ function inRange(range: RangeId, at: Timestamp, tick: number): boolean {
 }
 
 /** The Event Log (Screen 6): newest first, with later insertions first when timestamps tie. Entries after the simulated time are not shown yet. */
-export function eventLogView(state: PlantState, tick: number, filters: EventFilters = {}): { rows: EventRow[]; empty: boolean } {
+export function eventLogView(state: PlantState, tick: number, input: EventFilters | null = {}): { rows: EventRow[]; empty: boolean } {
+  const filters = normalizeFilters<EventFilterValues>(input);
   assertSessionTick(tick);
   const now = simulatedTime(tick);
   const users = new Map(state.dataset.users.map((u) => [u.id, u]));

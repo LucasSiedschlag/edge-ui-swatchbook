@@ -103,7 +103,7 @@ describe('alarmListView', () => {
 
   it('reports empty only when no row is left', () => {
     expect(alarmListView(s, 0).empty).toBe(false);
-    expect(alarmListView(s, 0, { priorities: [] }).empty).toBe(true);
+    expect(alarmListView(s, 0, { priorities: [] })).toEqual(alarmListView(s, 0));
   });
 
   it('flips to acknowledged after the acknowledge action', () => {
@@ -132,4 +132,12 @@ describe('alarmListView', () => {
     }
     expect(runs.sort((a, b) => a - b)[3]).toBeLessThan(100);
   });
+});
+
+it('normalizes null and empty Alarm filters while retaining default states', () => {
+  const s = start();
+  for (const value of [undefined, null, [], ''] as const) {
+    expect(alarmListView(s, 0, { states: value, priorities: value, areaId: value, lineId: value })).toEqual(alarmListView(s, 0));
+  }
+  expect(alarmListView(s, 0, null)).toEqual(alarmListView(s, 0));
 });

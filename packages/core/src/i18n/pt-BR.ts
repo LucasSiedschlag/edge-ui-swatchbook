@@ -204,6 +204,7 @@ const base: Record<BaseKey, string> = {
   "line-type.assembly": "Montagem",
   "recipe-status.draft": "Rascunho",
   "recipe-status.approved": "Aprovada",
+  "batch-status.running": "Em andamento",
   "batch-status.completed": "Concluído",
   "batch-status.aborted": "Interrompido",
   "batch-status.rework": "Retrabalho",

@@ -117,3 +117,27 @@ export function alarmList(state: PlantState, tick: number): readonly Alarm[] {
   views.set(state, { tick, list });
   return list;
 }
+
+/**
+ * Resume changes run spans only from this tick. Reuse the existing timeline through the previous
+ * tick, then let the same derivation admit conditions at the new run boundary. Copy records so a
+ * probe cannot change past or future queries on the source Overlay.
+ */
+export function alarmListAfterResume(source: PlantState, resumed: PlantState, tick: number): readonly Alarm[] {
+  if (!timelines.has(resumed.overlay)) {
+    const time = simulatedTime(tick);
+    const seeded = new Set(source.dataset.alarms);
+    const history = extend(source, tick).history.filter(h => seeded.has(h.initial) || h.initial.raisedAt < time).map((h): History => ({
+      initial: h.initial,
+      ...(h.returnedTick !== undefined && h.returnedTick < tick ? { returnedTick: h.returnedTick } : {}),
+    }));
+    const open = new Map<string, History[]>();
+    for (const h of history) if (isActive(h.initial) && h.initial.tagId !== null && h.returnedTick === undefined) {
+      const list = open.get(h.initial.tagId) ?? [];
+      list.push(h);
+      open.set(h.initial.tagId, list);
+    }
+    timelines.set(resumed.overlay, { through: tick - 1, history, open });
+  }
+  return alarmList(resumed, tick);
+}

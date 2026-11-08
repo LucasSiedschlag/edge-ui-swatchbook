@@ -34,10 +34,11 @@ function priorityOf(key: number, epoch: number): AlarmPriority {
 
 /** One Alarm description for simulator transitions and admissions at the start of a run. */
 export function raiseAt(d: MockDataset, tag: Tag, tick: number, direction: Direction): Raise {
+  const time = simulatedTime(tick);
   return {
-    id: `RZ-${tick}-${tag.id}-${direction}`, tick, time: simulatedTime(tick), tagId: tag.id,
+    id: `RZ-${tick}-${tag.id}-${direction}`, tick, time, tagId: tag.id,
     machineId: tag.machineId, lineId: tag.lineId,
-    batchId: d.activeBatches.find(b => b.lineId === tag.lineId)?.id ?? null,
+    batchId: d.activeBatches.find(b => b.lineId === tag.lineId && b.start <= time && time < b.plannedEnd)?.id ?? null,
     direction, priority: priorityOf(hash(tag.id), Math.floor(tick / EPOCH_TICKS)),
     message: {
       key: direction === 'low' ? 'alarm.low-value' : tag.name === 'motor-current' ? 'alarm.motor-overload' : 'alarm.high-value',

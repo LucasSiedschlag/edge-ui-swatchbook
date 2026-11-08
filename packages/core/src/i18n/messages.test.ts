@@ -92,3 +92,9 @@ it('chooses Event Log value labels by action, never by the value alone', () => {
     ['alarm-acknowledge', null, null], ['alarm-acknowledge', 'toString', null],
   ] as const) expect(labels.eventValueLabelKey(action, value)).toBe(expected);
 });
+
+it('labels running Batches in both languages', () => {
+  expect(labels.batchStatusLabels.running).toBe('batch-status.running');
+  expect(en['batch-status.running']).toBe('Running');
+  expect(ptBR['batch-status.running']).toBe('Em andamento');
+});
