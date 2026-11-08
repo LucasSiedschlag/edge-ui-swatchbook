@@ -170,7 +170,7 @@ it('exports unfiltered defaults and supplies current Tag details and action refu
   for (const row of rows) {
     expect(tagDetailView(d, snap, row.tagId)).toEqual(row);
     expect(row.overrideUnavailable).toBe(row.status === 'stale' ? 'tag-stale' : !row.writable ? 'tag-not-writable' : null);
-    expect(row.resetUnavailable).toBe(row.status === 'stale' ? 'tag-stale' : row.recipeValue === null ? 'no-recipe-value' : null);
+    expect(row.resetUnavailable).toBe(row.status === 'stale' ? 'tag-stale' : row.recipeValue === null ? 'no-recipe-value' : row.recipeValue === row.setpoint ? 'recipe-value-unchanged' : null);
   }
   expect(tagDetailView(d, snap, 'missing')).toBeNull();
 });

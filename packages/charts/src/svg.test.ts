@@ -45,3 +45,24 @@ it('keeps unit names above their own axes when time zero is at the right edge', 
   expect(positions.every(Number.isFinite)).toBe(true);
   for (let i = 1; i < positions.length; i++) expect(positions[i]! - positions[i - 1]!).toBeGreaterThan(95);
 });
+
+it.each([
+  // Observed SVG bounds at 640 x 320: legend text top/bottom and plot top/bottom.
+  [12, 6.5, 18.5, 75, 288],
+  [14, 5.5, 19.5, 79, 286],
+  [24, 5, 29, 99, 276],
+])('keeps the rendered legend above the plot at font size %s', (fontSize, legendTop, legendBottom, plotTop, plotBottom) => {
+  const svg = renderChartSvg(buildLineTrendOption({ ...trendInput, theme: { ...trendInput.theme, fontSize } }), { width: 640, height: 320 });
+  const legendText = svg.match(/<text[^>]*>Temperature<\/text>/)![0];
+  const translateY = Number(legendText.match(/transform="translate\([^ ]+ ([^)]+)\)"/)![1]);
+  const localY = Number(legendText.match(/ y="([^"]+)"/)![1]);
+  expect(translateY + localY - fontSize / 2).toBe(legendTop);
+  expect(translateY + localY + fontSize / 2).toBe(legendBottom);
+  // Read vertical grid lines from the SVG, independently of option-builder formulas.
+  const gridLines = [...svg.matchAll(/<path d="M[\d.]+ ([\d.]+)L[\d.]+ ([\d.]+)"[^>]*stroke="#dedede"[^>]*>/g)]
+    .map(match => [Number(match[1]), Number(match[2])]).filter(([start, end]) => start !== end);
+  const longLines = gridLines.filter(([start, end]) => Math.abs(end! - start!) > 100);
+  expect(longLines.length).toBeGreaterThanOrEqual(4);
+  for (const coordinates of longLines) expect(coordinates.sort((a, b) => a! - b!)).toEqual([plotTop, plotBottom]);
+  expect(legendBottom).toBeLessThan(plotTop);
+});

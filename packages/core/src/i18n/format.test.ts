@@ -125,3 +125,9 @@ it('exports the design suggestion precision table once through core', async () =
     '°C': 1, bar: 1, kN: 1, kW: 1, A: 1, 'L/min': 1, Nm: 1, 'm/min': 1, 'mm/s': 1, '%': 1,
   });
 });
+
+it('exports Intl decimal marks through core for numeric inputs', async () => {
+  const { decimalSeparator } = await import('../index');
+  expect(decimalSeparator('en')).toBe('.');
+  expect(decimalSeparator('pt-BR')).toBe(',');
+});

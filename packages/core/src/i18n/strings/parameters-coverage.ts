@@ -37,7 +37,7 @@ export const parametersCoverage = {
       "plant-error.invalid-value", "plant-error.value-out-of-range",
     ],
     "Reset to recipe value": [
-      "action.reset-to-recipe", "parameters.recipe-value", "plant-error.no-recipe-value",
+      "action.reset-to-recipe", "parameters.recipe-value", "parameters.recipe-value-unchanged", "plant-error.no-recipe-value",
     ],
   },
   states: {

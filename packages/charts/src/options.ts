@@ -74,6 +74,7 @@ function trendBounds(data: LineTrendInput['data'], unit: string): { min?: number
 export function buildLineTrendOption({ data, labels, formatters, theme }: LineTrendInput): ChartOption {
   if (unsupportedTrend(data)) return { ...base(theme), series: [] };
   const units = [...new Set(data.map((series) => series.unit))];
+  const seriesColors = theme.seriesColors.filter(color => color !== theme.limitColor);
   const legendHeight = Math.max(24, theme.fontSize + 12);
   const common = base(theme);
 
@@ -103,11 +104,11 @@ export function buildLineTrendOption({ data, labels, formatters, theme }: LineTr
     series: data.flatMap((series, index): LineSeriesOption[] => {
       const pointSetpoints = series.points.some(point => point.setpoint !== undefined);
       const limits = [
-        { name: labels.minimum, value: series.min, color: theme.limitColor },
-        { name: labels.maximum, value: series.max, color: theme.limitColor },
-        { name: labels.setpoint, value: pointSetpoints ? undefined : series.setpoint, color: theme.targetColor },
+        { name: labels.minimum, value: series.min, type: 'dotted' as const },
+        { name: labels.maximum, value: series.max, type: 'dotted' as const },
+        { name: labels.setpoint, value: pointSetpoints ? undefined : series.setpoint, type: 'dashed' as const },
       ].filter((limit) => limit.value !== undefined);
-      const color = theme.seriesColors[index]!;
+      const color = seriesColors[index % seriesColors.length]!;
       const measured: LineSeriesOption = {
         id: series.id, name: series.name, type: 'line', yAxisIndex: units.indexOf(series.unit),
         showSymbol: false, symbol: 'circle', connectNulls: false,
@@ -116,17 +117,21 @@ export function buildLineTrendOption({ data, labels, formatters, theme }: LineTr
         tooltip: { valueFormatter: (value) => formatChartValue(value, number => formatters.formatValue(number, series.unit)) },
         data: series.points.map((point) => [pointTime(point), point.status === 'stale' || point.value === null || !Number.isFinite(point.value) ? null : point.value]),
         ...(limits.length ? { markLine: {
-          symbol: ['none', 'none'], silent: true,
+          symbol: ['none', 'none'], silent: false,
+          tooltip: { trigger: 'item', formatter: params => {
+            const point = Array.isArray(params) ? params[0]! : params;
+            return `${series.name} - ${point.name}: ${formatters.formatValue(Number(point.value), series.unit)}`;
+          } },
           label: { show: data.length === 1, position: 'insideEndTop', color: theme.textColor, fontFamily: theme.fontFamily, fontSize: theme.fontSize, formatter: (params: { name?: string; value?: unknown }) => `${params.name}: ${formatters.formatValue(Number(params.value), series.unit)}` },
-          data: limits.map((limit) => ({ name: limit.name, yAxis: limit.value!, lineStyle: { color: limit.color, type: 'dashed' as const } })),
+          data: limits.map((limit) => ({ name: limit.name, yAxis: limit.value!, lineStyle: { color, type: limit.type } })),
         } } : {}),
       };
       if (!pointSetpoints) return [measured];
       return [measured, {
         id: `${series.id}:setpoint`, name: `${series.name}: ${labels.setpoint}`, type: 'line',
         yAxisIndex: units.indexOf(series.unit), step: 'end', showSymbol: false, connectNulls: false,
-        itemStyle: { color: theme.targetColor }, lineStyle: { color: theme.targetColor, type: 'dashed' },
-        emphasis: { itemStyle: { color: theme.targetColor }, lineStyle: { color: theme.targetColor } },
+        itemStyle: { color }, lineStyle: { color, type: 'dashed' },
+        emphasis: { itemStyle: { color }, lineStyle: { color } },
         tooltip: { valueFormatter: value => formatChartValue(value, number => formatters.formatValue(number, series.unit)) },
         data: series.points.map(point => [pointTime(point), point.setpoint ?? series.setpoint ?? null]),
       }];

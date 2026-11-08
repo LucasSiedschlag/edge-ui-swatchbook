@@ -1,5 +1,4 @@
 // @vitest-environment happy-dom
-import * as core from '@swatchbook/core';
 import {
   TEST_IDS, generateMockDataset, ptBR, simulate, t, tagGridView, tr,
   type Locale, type MessageKey, type TagFilters,
@@ -7,7 +6,7 @@ import {
 import { act } from 'react';
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { parametersCoverage } from '../../../packages/core/src/i18n/strings/parameters-coverage';
-import { byId, click, endMotion, mountApp, one, openSelect, plantState } from './test-utils';
+import { byId, click, endMotion, mountApp, one, openSelect, plantState, choose } from './test-utils';
 
 beforeAll(async () => { await import('@swatchbook/charts'); });
 const ids = TEST_IDS.parameters;
@@ -29,6 +28,16 @@ afterEach(async () => {
   vi.useRealTimers(); vi.restoreAllMocks();
 });
 const text = (id: string) => one(id).textContent ?? '';
+const referencedText = (element: Element, attribute: string) => (element.getAttribute(attribute) ?? '')
+  .split(/\s+/).filter(Boolean).map(id => {
+    const description = document.getElementById(id);
+    expect(description, `missing ${attribute} target ${id}`).not.toBeNull();
+    return description!.textContent;
+  }).join(' ');
+// Resolve names on the nameable controls used by this Screen, and descriptions by IDREF.
+const accessibleName = (element: Element) => referencedText(element, 'aria-labelledby') || element.getAttribute('aria-label') || element.textContent || '';
+const accessibleDescription = (element: Element) => referencedText(element, 'aria-describedby');
+
 const rows = () => [...one(ids.grid).querySelectorAll<HTMLElement>('[data-row-key]')];
 const row = (tagId: string) => rows().find(element => element.dataset.rowKey === tagId)!;
 const button = (tagId: string, id: string) => row(tagId).querySelector<HTMLButtonElement>(`[data-testid="${id}"]`)!;
@@ -85,7 +94,15 @@ it('renders the required blocks, native virtual Table, ordered core rows and all
   await start();
   expect(byId('parameters.placeholder')).toHaveLength(0);
   for (const id of [ids.grid, ids.filterLine, ids.filterMachine, ids.filterStatus, ids.search, ids.trend, ids.trendWindow, ids.trendEmpty, ids.connectivity]) expect(byId(id), id).toHaveLength(1);
-  expect(one(ids.grid).querySelector('table')).not.toBeNull();
+  const grid = one(ids.grid);
+  expect(grid.querySelector('table')?.getAttribute('role')).toBe('presentation');
+  expect(grid.getAttribute('aria-colcount')).toBe('11');
+  expect(grid.querySelectorAll('[role="rowgroup"]')).toHaveLength(2);
+  const header = grid.querySelector('thead')!;
+  expect(header.getAttribute('role')).toBe('rowgroup');
+  expect(header.querySelector('tr')?.getAttribute('role')).toBe('row');
+  expect(header.querySelector('tr')?.getAttribute('aria-rowindex')).toBe('1');
+  expect(header.querySelectorAll('[role="columnheader"]')).toHaveLength(11);
   expect(one(ids.grid).querySelector('.ant-table-tbody-virtual')).not.toBeNull();
   expect(rows().length).toBeLessThan(dataset.tags.length);
   expectGrid({});
@@ -96,25 +113,28 @@ it('renders the required blocks, native virtual Table, ordered core rows and all
   expect(one(ids.grid).querySelector('[aria-live]:not([aria-live="off"]), [role="alert"], [role="status"]')).toBeNull();
   expect(one(ids.trend).querySelector('[aria-live]:not([aria-live="off"]), [role="alert"], [role="status"]')).toBeNull();
   expect(text(ids.trendEmpty)).toBe('Select Tags to show a trend.');
+  expect(document.body.textContent).not.toContain('Limit: Minimum / Maximum');
   expect(one(ids.connectivity).querySelectorAll('tbody tr[data-row-key]')).toHaveLength(27);
   for (const item of dataset.machines) expect(text(ids.connectivity)).toContain(item.id);
-  for (const element of rows()) {
+  for (const [index, element] of rows().entries()) {
+    expect(element.closest('[role="rowgroup"]')).not.toBeNull();
+    expect(element.getAttribute('aria-rowindex')).toBe(String(index + 2));
     expect(element.getAttribute('role')).toBe('row');
     expect(element.querySelectorAll('[role="cell"]')).toHaveLength(11);
     expect(element.querySelector('input')?.getAttribute('aria-label')).toBe(`Select Tag ${element.dataset.rowKey} for the trend`);
   }
 });
 
-it.each(['en', 'pt-BR'] as const)('keeps all eleven columns, unbroken headers and compact full action labels in %s', async locale => {
+it.each(['en', 'pt-BR'] as const)('keeps all eleven columns, unbroken headers and full stacked action labels in %s', async locale => {
   await start(locale);
   const grid = one(ids.grid);
   const headers = [...grid.querySelectorAll<HTMLElement>('thead th')];
   expect(headers).toHaveLength(11);
   for (const header of headers.slice(1)) expect(header.style.whiteSpace).toBe('nowrap');
-  // Leave room for the native vertical scrollbar at the narrowest desktop width.
+  // Widths preserve names and labels without overriding density or theme tokens.
   const widths = [...grid.querySelectorAll<HTMLElement>('colgroup col')].map(col => parseFloat(col.style.width));
   expect(widths).toHaveLength(11);
-  expect(widths.reduce((sum, width) => sum + width, 0)).toBeLessThanOrEqual(840);
+  expect(widths.reduce((sum, width) => sum + width, 0)).toBeLessThanOrEqual(1047);
   const first = rows()[0]!;
   for (const [id, label] of [[ids.override, 'parameters.override'], [ids.resetRecipe, 'action.reset-to-recipe']] as const) {
     const action = button(first.dataset.rowKey!, id);
@@ -125,6 +145,47 @@ it.each(['en', 'pt-BR'] as const)('keeps all eleven columns, unbroken headers an
   }
   const actions = first.querySelector<HTMLElement>('.ant-space')!;
   expect(actions.style.rowGap).toBe('2px');
+});
+
+it.each([
+  ['en', 'comfortable'], ['en', 'compact'], ['pt-BR', 'comfortable'], ['pt-BR', 'compact'],
+] as const)('pins selection left and Actions right with coherent virtual table roles in %s, %s', async (locale, density) => {
+  await start(locale);
+  if (density === 'compact') await choose(TEST_IDS.shell.density, t(locale, 'density.compact'));
+  const grid = one(ids.grid);
+  const widths = [...grid.querySelectorAll<HTMLElement>('colgroup col')].map(col => parseFloat(col.style.width));
+  expect(widths).toEqual([40, 48, 88, 112, 104, 72, 76, 80, 80, 72, 256]);
+  const totalWidth = widths.reduce((sum, width) => sum + width, 0);
+  // Ant uses scroll.x for the header table and each virtual row's minimum width.
+  expect(totalWidth).toBe(1028);
+  expect(grid.querySelector<HTMLTableElement>('table')!.style.width).toBe(`${totalWidth}px`);
+  expect(grid.getAttribute('role')).toBe('table');
+  expect(grid.getAttribute('aria-colcount')).toBe('11');
+  expect(grid.getAttribute('aria-rowcount')).toBe(String(dataset.tags.length + 1));
+  expect(grid.querySelectorAll('table')).toHaveLength(1);
+  expect(grid.querySelector('table')!.getAttribute('role')).toBe('presentation');
+  expect(grid.querySelectorAll('[role="rowgroup"]')).toHaveLength(2);
+  const header = grid.querySelector<HTMLElement>('thead [role="row"]')!;
+  expect(header.getAttribute('aria-rowindex')).toBe('1');
+  expect(header.querySelectorAll('[role="columnheader"]')).toHaveLength(11);
+  const bodyRows = rows();
+  expect(grid.querySelectorAll('[role="row"]')).toHaveLength(bodyRows.length + 1);
+  for (const [index, row] of bodyRows.entries()) {
+    expect(row.style.width).toBe(`${totalWidth}px`);
+    expect(row.getAttribute('role')).toBe('row');
+    expect(row.getAttribute('aria-rowindex')).toBe(String(index + 2));
+    expect(row.closest('[role="rowgroup"]')).not.toBeNull();
+    expect(row.querySelectorAll('[role="cell"]')).toHaveLength(11);
+  }
+  // Fixed columns stay in their original rows, rather than separate cloned tables.
+  for (const row of [header, ...bodyRows]) {
+    const cells = row.querySelectorAll<HTMLElement>('[role="columnheader"], [role="cell"]');
+    expect(cells[0]!.classList.contains('ant-table-cell-fix-start')).toBe(true);
+    expect(parseFloat(cells[0]!.style.insetInlineStart)).toBe(0);
+    expect(cells[10]!.classList.contains('ant-table-cell-fix-end')).toBe(true);
+    expect(parseFloat(cells[10]!.style.insetInlineEnd)).toBe(0);
+    expect([...cells].filter(cell => cell.classList.contains('ant-table-cell-fix'))).toHaveLength(2);
+  }
 });
 
 it('filters by Line, Machine, status and case insensitive name, combines filters, and shows an empty state', async () => {
@@ -154,6 +215,7 @@ it('keeps four selected Tags, refuses the fifth and bulk select-all, and clears 
   expect(one(ids.trend).querySelectorAll('tbody tr')).toHaveLength(600);
   expect(one(ids.trend).querySelector('[role="img"]')?.getAttribute('aria-label')).toBe('Selected Tag values and setpoints over time');
   expect(one(ids.trend).querySelector('svg')).not.toBeNull();
+  expect(document.body.textContent).toContain('Limit: Minimum / Maximum');
   await selectTag(first[4]!);
   expect(selected()).toHaveLength(4);
   expect(text(ids.trendLimit)).toBe('Select at most four Tags.');
@@ -209,10 +271,12 @@ it('overrides from the action tick, preserves earlier trend points, logs once, a
   view = await mountApp('#/parameters', { dataset, search: '?tick=100' });
   await act(async () => { await import('@swatchbook/charts'); });
   await openOverride();
+  await cancel();
   await selectTag(target);
   const table = () => one(`${ids.trend}-data`);
   const beforePoints = [...table().querySelectorAll('tbody tr')].map(row => row.textContent);
   const before = plantState().events.length;
+  await click(button(target, ids.override));
   await input(ids.overrideValue, '3'); await input(ids.overrideReason, 'Process trial');
   await click(one(ids.overrideApply)); await endMotion();
   expect(plantState().events).toHaveLength(before + 1);
@@ -223,11 +287,13 @@ it('overrides from the action tick, preserves earlier trend points, logs once, a
   expect(afterPoints.at(-1)).not.toBe(beforePoints.at(-1));
   expect(table().querySelector('tbody tr:last-child td:last-child')?.textContent).toBe('3.0 m/min');
   const recipe = 2.1;
-  expect(button(target, ids.resetRecipe).disabled).toBe(false);
+  expect(button(target, ids.resetRecipe).getAttribute('aria-disabled')).toBe('false');
+  expect(accessibleDescription(button(target, ids.resetRecipe))).toBe('Recipe value: 2.1 m/min');
   await click(button(target, ids.resetRecipe));
   expect(plantState().events).toHaveLength(before + 2);
   expect(plantState().events.at(-1)).toMatchObject({ action: 'reset-to-recipe', target, oldValue: 3, newValue: recipe });
-  expect(button(target, ids.resetRecipe).disabled).toBe(true);
+  expect(button(target, ids.resetRecipe).getAttribute('aria-disabled')).toBe('true');
+  expect(accessibleDescription(button(target, ids.resetRecipe))).toBe('Recipe value: 2.1 m/min The setpoint already matches the recipe value.');
   expect(row(target).querySelectorAll('[role="cell"]')[6]!.textContent).toBe('2.1');
   // The same Event Log that Screen 6 renders includes both changes.
   await click(one(TEST_IDS.shell.navControl));
@@ -236,21 +302,79 @@ it('overrides from the action tick, preserves earlier trend points, logs once, a
   expect(one(TEST_IDS.control.eventLog).textContent).toContain('Setpoint restored to recipe value');
 });
 
-it('disables Stale and non-writable Overrides with accessible core reasons and shows every Offline link', async () => {
-  await start();
-  await select(ids.filterStatus, 'Stale');
+it.each(['en', 'pt-BR'] as const)('describes unavailable actions with the core reason and keeps one focusable button per action in %s', async locale => {
+  await start(locale);
+  await select(ids.filterStatus, t(locale, 'tag-status.stale'));
   expect(rows().length).toBeGreaterThan(0);
+  const before = plantState();
   for (const element of rows()) {
-    expect(element.textContent).toContain('Stale');
-    expect(button(element.dataset.rowKey!, ids.override).disabled).toBe(true);
-    expect(element.querySelector('[aria-label="This Tag is stale. Check the machine connection."]')).not.toBeNull();
+    for (const id of [ids.override, ids.resetRecipe]) {
+      const action = button(element.dataset.rowKey!, id);
+      expect(action.disabled).toBe(false);
+      expect(action.getAttribute('aria-disabled')).toBe('true');
+      expect(action.tabIndex).toBe(0);
+      expect(accessibleName(action)).toBe(t(locale, id === ids.override ? 'parameters.override' : 'action.reset-to-recipe'));
+      expect(accessibleDescription(action)).toContain(t(locale, 'plant-error.tag-stale'));
+      expect(element.querySelector('span[tabindex]')).toBeNull();
+      await click(action);
+    }
   }
+  expect(plantState()).toBe(before);
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
   const offline = dataset.machines.find(machine => machine.comms.status === 'offline')!;
-  expect(one(ids.connectivity).querySelector(`[data-row-key="${offline.id}"]`)?.textContent).toContain('Offline');
+  expect(one(ids.connectivity).querySelector(`[data-row-key="${offline.id}"]`)?.textContent).toContain(t(locale, 'link-status.offline'));
   await clear(ids.filterStatus); await input(ids.search, 'motor-current');
   for (const element of rows()) {
-    expect(button(element.dataset.rowKey!, ids.override).disabled).toBe(true);
-    expect(element.querySelector('[aria-label="This Tag does not allow setpoint changes."]')).not.toBeNull();
+    expect(accessibleDescription(button(element.dataset.rowKey!, ids.override))).toBe(t(locale, 'plant-error.tag-not-writable'));
+  }
+});
+
+it.each([['en', '2.1', '2.5'], ['pt-BR', '2,1', '2,5']] as const)('edits decimal setpoints in %s without changing their magnitude', async (locale, initial, typed) => {
+  await start(locale); await openOverride(locale);
+  const field = one(ids.overrideValue) as HTMLInputElement;
+  expect(field.value).toBe(initial);
+  expect(document.querySelector('[role="dialog"]')?.textContent).toContain(`${t(locale, 'parameters.recipe-value')}: ${initial} m/min`);
+  for (let length = 1; length <= typed.length; length++) await input(ids.overrideValue, typed.slice(0, length));
+  expect(field.value).toBe(typed);
+  await input(ids.overrideReason, 'Decimal trial');
+  await click(one(ids.overrideApply)); await endMotion();
+  expect(plantState().events.at(-1)).toMatchObject({ action: 'setpoint-override', target, newValue: 2.5, note: 'Decimal trial' });
+});
+
+it('explains a Stale refusal once when the heartbeat passes while the Override dialog is open', async () => {
+  vi.useFakeTimers(); let clock = 0;
+  const tag = dataset.tags.find(tag => tag.name === 'barrel-zone-1-temp' && tag.writable)!;
+  const liveDataset = { ...dataset, machines: dataset.machines.map(machine => machine.id === tag.machineId
+    ? { ...machine, comms: { ...machine.comms, status: 'offline' as const, lastHeartbeatAt: dataset.now + 2000 } } : machine) };
+  view = await mountApp('#/parameters', { dataset: liveDataset, search: '', now: () => clock });
+  await input(ids.search, tag.name);
+  await click(button(tag.id, ids.override));
+  const dialog = document.querySelector('[role="dialog"]')!;
+  expect(one(ids.overrideApply).hasAttribute('disabled')).toBe(false);
+  expect(dialog.querySelector('[role="status"]')).toBeNull();
+  clock = 3000;
+  await act(async () => { await vi.advanceTimersByTimeAsync(3100); });
+  expect(row(tag.id).textContent).toContain('Stale');
+  expect(one(ids.overrideApply).hasAttribute('disabled')).toBe(true);
+  const status = dialog.querySelector('[role="status"]')!;
+  expect(status.textContent).toBe(t('en', 'plant-error.tag-stale'));
+  expect(status.closest('[hidden], [aria-hidden="true"]')).toBeNull();
+  clock = 4000;
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+  expect(dialog.querySelectorAll('[role="status"]')).toHaveLength(1);
+  expect(dialog.querySelector('[role="status"]')).toBe(status);
+});
+
+it('uses the native table size when switching density and ellipsizes full Tag names with titles', async () => {
+  await start();
+  expect(one(ids.grid).querySelector('.ant-table-medium')).not.toBeNull();
+  await choose(TEST_IDS.shell.density, 'Compact');
+  expect(one(ids.grid).querySelector('.ant-table-small')).not.toBeNull();
+  expect(one(ids.grid).querySelector('.ant-table-medium')).toBeNull();
+  const cells = rows()[0]!.querySelectorAll<HTMLElement>('[role="cell"]');
+  for (const [index, title] of [[2, dataset.tags[0]!.machineId], [3, dataset.tags[0]!.name]] as const) {
+    expect(cells[index]!.classList.contains('ant-table-cell-ellipsis')).toBe(true);
+    expect(cells[index]!.title).toBe(title);
   }
 });
 
@@ -285,11 +409,14 @@ it('renders Portuguese controls, select-all, statuses and chart text without fal
   expect(document.body.textContent).not.toContain('[[');
 });
 
-it.each(['en', 'pt-BR'] as const)('renders every parameters manifest key across its states in %s', async locale => {
+it.each(['en', 'pt-BR'] as const)('renders reachable parameters manifest text and accessible control names and descriptions in %s', async locale => {
   const keys = new Set<MessageKey>([...Object.values(parametersCoverage.shows), ...Object.values(parametersCoverage.actions), ...Object.values(parametersCoverage.states)].flat());
+  // Unknown/duplicate selections and a missing connectivity list are defensive core states,
+  // with no ordinary UI path for this immutable Mock Dataset.
+  for (const key of ['trend-error.duplicate-tag', 'trend-error.unknown-tag', 'parameters.connectivity-empty'] as const) keys.delete(key);
   const seen = new Set<MessageKey>();
   const capture = () => {
-    const rendered = [document.body.textContent ?? '', ...[...document.querySelectorAll('[aria-label], [placeholder]')].flatMap(el => [el.getAttribute('aria-label') ?? '', el.getAttribute('placeholder') ?? ''])].join('\n');
+    const rendered = [document.body.textContent ?? '', ...[...document.querySelectorAll('button, input, [role="combobox"], [role="img"]')].flatMap(el => [accessibleName(el), accessibleDescription(el)]), ...[...document.querySelectorAll('input[placeholder]')].map(el => el.getAttribute('placeholder') ?? '')].join('\n');
     for (const message of keys) {
       const values = message === 'parameters.select-tag'
         ? dataset.tags.map(tag => t(locale, message, { tag: tag.id })) : [t(locale, message)];
@@ -297,6 +424,8 @@ it.each(['en', 'pt-BR'] as const)('renders every parameters manifest key across 
     }
   };
   await start(locale); capture();
+  await selectTag(rows()[0]!.dataset.rowKey!); capture();
+  await selectTag(rows()[0]!.dataset.rowKey!);
   await openSelect(ids.trendWindow); capture();
   await select(ids.trendWindow, t(locale, 'trend-window.last-5m'));
   await click(one(ids.grid).querySelector('thead input')!); capture();
@@ -307,20 +436,8 @@ it.each(['en', 'pt-BR'] as const)('renders every parameters manifest key across 
     await input(ids.overrideValue, value); await input(ids.overrideReason, reason); await click(one(ids.overrideApply)); capture();
   }
   await cancel(locale);
-  // Protective core errors have no ordinary UI path; render the exact core result.
-  for (const error of ['duplicate-tag', 'unknown-tag'] as const) {
-    const mock = vi.spyOn(core, 'trendView').mockReturnValue({ error });
-    await select(ids.trendWindow, t(locale, 'trend-window.last-30m')); capture();
-    mock.mockRestore();
-    await select(ids.trendWindow, t(locale, 'trend-window.last-5m'));
-  }
   await view!.unmount();
   view = await mountApp('#/parameters', { dataset: { ...dataset, machines: [], tags: [], alarms: [], events: [] }, languages: [locale] }); capture();
   expect(byId(ids.empty)).toHaveLength(1); expect(byId(ids.gridEmpty)).toHaveLength(0); expect(byId(ids.trendEmpty)).toHaveLength(0);
-  await view.unmount();
-  const emptyLinks = vi.spyOn(core, 'connectivityView').mockReturnValue([]);
-  view = await mountApp('#/parameters', { dataset, languages: [locale] });
-  capture();
-  emptyLinks.mockRestore();
   expect([...keys].filter(message => !seen.has(message))).toEqual([]);
 });

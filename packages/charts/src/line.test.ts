@@ -105,17 +105,6 @@ it('anchors four unit names to distinct axis sides and offsets with matching ali
   expect(new Set(axes.map(axis => `${axis.position}:${axis.offset}`)).size).toBe(4);
 });
 
-it('reserves a top legend band for caller fonts without taking space from the time labels', () => {
-  for (const fontSize of [12, 14, 24]) {
-    const option = buildLineTrendOption({ data, labels, formatters, theme: { ...darkChartTheme, fontSize } });
-    const legend = option.legend as { top: number; height: number };
-    const grid = option.grid as { top: number; bottom: number };
-    expect(legend.height).toBeGreaterThanOrEqual(fontSize + 12);
-    expect(grid.top).toBeGreaterThanOrEqual(legend.top + legend.height + 24);
-    expect(grid.bottom).toBeGreaterThan(0);
-  }
-});
-
 it('keeps single Tag limit labels inside the plot and hides them when another Tag is selected', () => {
   for (const selected of [data.slice(0, 1), data.slice(0, 2), data]) {
     const option = buildLineTrendOption({ data: selected, labels, formatters, theme: darkChartTheme });
@@ -124,4 +113,39 @@ it('keeps single Tag limit labels inside the plot and hides them when another Ta
       data: [{ name: labels.minimum, yAxis: 10 }, { name: labels.maximum, yAxis: 30 }, { name: labels.setpoint, yAxis: 20 }],
     } });
   }
+});
+
+it('uses each Tag colour for its dotted limits and dashed setpoints with translated interactive tooltips', () => {
+  const theme = { ...darkChartTheme, seriesColors: ['reserved-limit', 'violet', 'teal', 'orange', 'blue', 'green'] as const, limitColor: 'reserved-limit' };
+  const selected = [
+    { ...data[0]!, id: 'first', name: 'First' },
+    { ...data[0]!, id: 'second', name: 'Second', points: [{ tick: 1, value: 18, status: 'normal', setpoint: 21 }] },
+  ];
+  const translated = { ...labels, minimum: 'Mínimo', maximum: 'Máximo', setpoint: 'Setpoint' };
+  const option = buildLineTrendOption({ data: selected, labels: translated, formatters, theme });
+  const series = option.series as {
+    lineStyle: { color: string; type?: string };
+    itemStyle: { color: string };
+    markLine?: { silent: boolean; label: { show: boolean }; data: { name: string; yAxis: number; lineStyle: { color: string; type: string } }[];
+      tooltip: { trigger: string; formatter: (params: { name: string; value: number }) => string } };
+  }[];
+  expect(series).toMatchObject([
+    { name: 'First', lineStyle: { color: 'violet' }, markLine: { silent: false, label: { show: false }, data: [
+      { name: 'Mínimo', lineStyle: { color: 'violet', type: 'dotted' } },
+      { name: 'Máximo', lineStyle: { color: 'violet', type: 'dotted' } },
+      { name: 'Setpoint', lineStyle: { color: 'violet', type: 'dashed' } },
+    ] } },
+    { name: 'Second', lineStyle: { color: 'teal' }, markLine: { data: [
+      { name: 'Mínimo', lineStyle: { color: 'teal', type: 'dotted' } },
+      { name: 'Máximo', lineStyle: { color: 'teal', type: 'dotted' } },
+    ] } },
+    { name: 'Second: Setpoint', lineStyle: { color: 'teal', type: 'dashed' } },
+  ]);
+  for (const measured of series.filter(item => item.markLine)) {
+    for (const limit of measured.markLine!.data) expect(limit.lineStyle.color).toBe(measured.lineStyle.color);
+  }
+  expect(series[2]!.lineStyle.color).toBe(series[1]!.lineStyle.color);
+  expect(series[0]!.markLine!.tooltip.trigger).toBe('item');
+  expect(series[0]!.markLine!.tooltip.formatter({ name: 'Mínimo', value: 10 })).toBe('First - Mínimo: 10 °C');
+  expect(series[1]!.markLine!.tooltip.formatter({ name: 'Máximo', value: 30 })).toBe('Second - Máximo: 30 °C');
 });
