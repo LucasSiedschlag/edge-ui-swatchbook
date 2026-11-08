@@ -1,0 +1,3 @@
+# Shared runtime for Library apps
+
+One `runtime` package (`@swatchbook/runtime`) supplies React hooks and a provider with no UI and no Library dependency. The six Library apps must not re-implement the simulated clock, Plant State and Simulator consistency, preferences, shortcuts, Tour and routing, because separate paths for the same fact drift and break Parity. We considered copying the logic per app, keeping a context per app, and building a shared UI kit; the first two duplicate behavior, while a shared UI kit couples behavior to rendering that must stay native to each Library. The cost is one more package.
