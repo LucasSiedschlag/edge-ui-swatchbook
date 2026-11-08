@@ -4,7 +4,7 @@ import { HOUR, NOW } from '../mock/time';
 import type { HourlyRecord, MockDataset } from '../mock/types';
 import { createPlantState, reduce } from '../plant';
 import { readHours } from '../sim/kpis';
-import { performanceView, type RangeId, type Scope } from './performance';
+import { PERFORMANCE_DEFAULT_RANGE, PERFORMANCE_DEFAULT_SCOPE, performanceReason, performanceScopes, performanceStateView, performanceView, type RangeId, type Scope } from './performance';
 
 const d = generateMockDataset();
 const site: Scope = { kind: 'site' };
@@ -60,18 +60,18 @@ describe('performance windows', () => {
   const dataset = stub(hours.filter((h) => h.hourStart < NOW));
   const live = hours.filter((h) => h.hourStart >= NOW);
   const boundaries = [
-    { tick: 0, current: 0, shiftEnd: 0 },
-    { tick: 100, current: 0, shiftEnd: 0 },
-    { tick: 3600, current: 1, shiftEnd: 0 },
-    { tick: 28800, current: 8, shiftEnd: 8 },
-    { tick: 30000, current: 8, shiftEnd: 8 },
+    { tick: 0, current: 0 },
+    { tick: 100, current: 0 },
+    { tick: 3600, current: 1 },
+    { tick: 28800, current: 8 },
+    { tick: 30000, current: 8 },
   ];
 
-  for (const { tick, current, shiftEnd } of boundaries) {
+  for (const { tick, current } of boundaries) {
     it(`uses the completed Shift and adjacent equal windows at tick ${tick}`, () => {
       for (const range of ranges) {
         const count = range === 'last-shift' ? 8 : range === 'last-24h' ? 24 : range === 'last-7d' ? 168 : 720;
-        const end = range === 'last-shift' ? shiftEnd : range === 'last-24h' ? current + 1 : 0;
+        const end = range === 'last-shift' ? 0 : range === 'last-24h' ? current + 1 : 0;
         const selected = hours.filter((h) => h.hourStart >= NOW + (end - count) * HOUR && h.hourStart < NOW + end * HOUR);
         const previous = hours.filter((h) => h.hourStart >= NOW + (end - 2 * count) * HOUR && h.hourStart < NOW + (end - count) * HOUR);
         expect(selected).toHaveLength(count);
@@ -169,7 +169,7 @@ describe.each([0, 30000])('performance conservation at tick %i', (tick) => {
   const live = readHours(d, tick);
   const all = [...d.hourlyOutput, ...live];
   it.each(ranges)('%s balances minutes, output, Pareto and scope totals', (range) => {
-    const end = range === 'last-shift' ? NOW + (tick < 28800 ? 0 : 8) * HOUR : range === 'last-24h' ? NOW + (Math.floor(tick / 3600) + 1) * HOUR : NOW;
+    const end = range === 'last-shift' ? NOW : range === 'last-24h' ? NOW + (Math.floor(tick / 3600) + 1) * HOUR : NOW;
     const count = range === 'last-shift' ? 8 : range === 'last-24h' ? 24 : range === 'last-7d' ? 168 : 720;
     const window = all.filter((h) => h.hourStart >= end - count * HOUR && h.hourStart < end);
     const totals = scopes.map((scope) => {
@@ -342,4 +342,36 @@ describe('Screen 4 session invariants', () => {
       }
     }
   });
+});
+
+
+it('exports default filters and joined scope choices in dataset order', () => {
+  expect(PERFORMANCE_DEFAULT_SCOPE).toEqual({ kind: 'site' });
+  expect(PERFORMANCE_DEFAULT_RANGE).toBe('last-shift');
+  const choices = performanceScopes(d);
+  expect(choices.map(choice => choice.value)).toEqual(['site', 'extrusion', 'metalworking', 'assembly', 'E1', 'E2', 'RF1', 'P1', 'C1', 'A1', 'A2']);
+  expect(choices[0]).toMatchObject({ scope: PERFORMANCE_DEFAULT_SCOPE, name: { key: 'scope.site' } });
+  expect(choices[1]).toMatchObject({ scope: { kind: 'area', areaId: 'extrusion' }, name: d.areas[0]!.name });
+  expect(choices[4]).toMatchObject({ scope: { kind: 'line', lineId: 'E1' }, name: d.lines[0]!.name, id: 'E1' });
+});
+
+it('reads the Plant State overlay and refreshes reason selection from current rows', () => {
+  const initial = createPlantState(d);
+  const result = reduce(initial, { type: 'pause', lineId: 'E2' }, { tick: 0 });
+  if (!result.ok) throw new Error(result.error.code);
+  const state = result.state;
+  const scope: Scope = { kind: 'line', lineId: 'E2' };
+  const view = performanceStateView(state, 1800, scope, 'last-24h');
+  expect(view).toEqual(performanceView(d, readHours(d, 1800, state.overlay), 1800, scope, 'last-24h'));
+  expect(view.oee).not.toEqual(performanceStateView(initial, 1800, scope, 'last-24h').oee);
+  expect(performanceStateView(state, 30000)).toEqual(performanceStateView(initial, 0));
+  expect(performanceReason(view, view.pareto[0]!.reason)).toBe(view.pareto[0]);
+  expect(performanceReason(view, null)).toBeNull();
+  expect(performanceReason(view, 'absent')).toBeNull();
+});
+
+it('marks the earliest Shift when the best and worst OEE each tie', () => {
+  const dataset = stub([hour(-1), hour(-9), hour(-17, { goodUnits: 80 }), hour(-25, { goodUnits: 80 })]);
+  const view = performanceView(dataset, [], 0, site, 'last-shift');
+  expect(view.shifts.map(row => [row.best, row.worst])).toEqual([[false, false], [false, true], [false, false], [true, false]]);
 });

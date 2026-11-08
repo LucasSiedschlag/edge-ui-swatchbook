@@ -9,4 +9,4 @@ export { PREFERENCES_KEY, loadPreferences, savePreferences, type Preferences, ty
 export * from './labels';
 
 export { DECIMALS_BY_UNIT } from './precision';
-export { formatTagValue, formatChange } from './format';
+export { formatTagValue, formatChange, formatPercentagePoints } from './format';

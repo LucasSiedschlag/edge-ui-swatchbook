@@ -23,13 +23,11 @@ describe('hourly production agreement', () => {
     }
   });
 
-  it('agrees between Screen 1 just before the Shift ends and Screen 4 after it ends', () => {
-    const before = simulate(d, 28799);
+  it('keeps Screen 4 Last shift anchored at load after Screen 1 crosses a Shift boundary', () => {
     const after = simulate(d, 28800);
-    for (const line of before.lines) {
-      const view = performanceView(d, after.hours, 28800, { kind: 'line', lineId: line.lineId }, 'last-shift');
-      expect(line.availability, line.lineId).toBe(view.oee?.availability ?? 0);
-      expect(line.oee, line.lineId).toBe(view.oee?.value ?? 0);
+    for (const line of after.lines) {
+      const scope = { kind: 'line', lineId: line.lineId } as const;
+      expect(performanceView(d, after.hours, 28800, scope, 'last-shift')).toEqual(performanceView(d, [], 0, scope, 'last-shift'));
     }
   });
 

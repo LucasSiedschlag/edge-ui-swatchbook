@@ -25,3 +25,19 @@ it('keeps one SVG instance for updates, observes size and disposes on cleanup', 
   expect(disconnect).toHaveBeenCalledOnce();
   expect(chart.dispose).toHaveBeenCalledOnce();
 });
+
+
+it('delivers only indexed series clicks and releases handlers with the instance', () => {
+  let click: (params: { componentType: string; dataIndex: number }) => void = () => {};
+  const chart = { on: vi.fn((_: string, callback: typeof click) => { click = callback; }), dispose: vi.fn() };
+  vi.mocked(init).mockReturnValue(chart as unknown as ReturnType<typeof init>);
+  const select = vi.fn();
+  const instance = createChart({} as HTMLDivElement, select);
+  expect(chart.on).toHaveBeenCalledWith('click', expect.any(Function));
+  click({ componentType: 'series', dataIndex: 1 });
+  click({ componentType: 'legend', dataIndex: 0 });
+  click({ componentType: 'series', dataIndex: NaN });
+  expect(select.mock.calls).toEqual([[1]]);
+  instance.dispose();
+  expect(chart.dispose).toHaveBeenCalledOnce();
+});

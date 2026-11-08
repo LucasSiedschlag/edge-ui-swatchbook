@@ -1,10 +1,32 @@
 import { HOUR, shiftAt, spDate, spHour } from '../mock/time';
-import type { AreaId, DowntimeReason, HourlyRecord, LineId, MockDataset, ShiftId } from '../mock/types';
+import type { AreaId, DowntimeReason, HourlyRecord, LineId, MockDataset, ShiftId, TextRef } from '../mock/types';
 import { shiftInfo, simulatedTime } from '../sim/clock';
+
+import type { PlantState } from '../plant';
+import { readHours } from '../sim/kpis';
 
 import { type RangeId, performanceWindow } from './ranges';
 export type { RangeId } from './ranges';
 export type Scope = { kind: 'site' } | { kind: 'area'; areaId: AreaId } | { kind: 'line'; lineId: LineId };
+
+export const PERFORMANCE_DEFAULT_SCOPE: Scope = { kind: 'site' };
+export const PERFORMANCE_DEFAULT_RANGE: RangeId = 'last-shift';
+
+export interface PerformanceScopeOption { value: string; scope: Scope; name: TextRef; kind: Scope['kind']; id?: string }
+
+/** Joined scope choices in dataset order; Libraries only translate and render them. */
+export function performanceScopes(d: MockDataset): PerformanceScopeOption[] {
+  return [
+    { value: 'site', scope: { kind: 'site' }, kind: 'site', name: { key: 'scope.site' } },
+    ...d.areas.map(area => ({ value: area.id, scope: { kind: 'area', areaId: area.id } as Scope, kind: 'area' as const, name: area.name })),
+    ...d.lines.map(line => ({ value: line.id, scope: { kind: 'line', lineId: line.id } as Scope, kind: 'line' as const, name: line.name, id: line.id })),
+  ];
+}
+
+/** The Plant State overlay is authoritative for live production. */
+export function performanceStateView(state: PlantState, tick: number, scope: Scope = PERFORMANCE_DEFAULT_SCOPE, range: RangeId = PERFORMANCE_DEFAULT_RANGE): PerformanceView {
+  return performanceView(state.dataset, readHours(state.dataset, tick, state.overlay), tick, scope, range);
+}
 
 export interface OeeParts {
   value: number;
@@ -103,13 +125,13 @@ function paretoOf(minutes: Map<DowntimeReason, number>): ParetoRow[] {
 
 /**
  * All blocks sum the same hourly records. The previous window is adjacent and equal in length.
- * Long ranges end at load; short ranges use the Event Log windows.
+ * Last shift and long ranges stay fixed at load; Last 24 hours rolls with the Simulator.
  * Day buckets use America/Sao_Paulo dates, including partial boundary days.
  */
 export function performanceView(d: MockDataset, live: readonly HourlyRecord[], tick: number, scope: Scope, range: RangeId): PerformanceView {
   const { start, end, hours } = performanceWindow(range, tick);
   const daily = range === 'last-7d' || range === 'last-30d';
-  const shiftEnd = daily ? simulatedTime(0) : shiftInfo(tick).startsAt;
+  const shiftEnd = range === 'last-24h' ? shiftInfo(tick).startsAt : simulatedTime(0);
   const previousStart = start - hours * HOUR;
   const lines = new Set(d.lines.filter((line) => scope.kind === 'site' ||
     (scope.kind === 'area' ? line.areaId === scope.areaId : line.id === scope.lineId)).map((line) => line.id));
@@ -185,4 +207,9 @@ export function performanceView(d: MockDataset, live: readonly HourlyRecord[], t
     pareto: paretoOf(downtime), output, shifts,
     hasProduction: true,
   };
+}
+
+/** Selection follows refreshed core rows; a reason absent from this scope has no selection. */
+export function performanceReason(view: PerformanceView, reason: string | null): ParetoRow | null {
+  return view.pareto.find(row => row.reason === reason) ?? null;
 }

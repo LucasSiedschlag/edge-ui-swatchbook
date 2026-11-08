@@ -43,7 +43,7 @@ describe('short ranges share hours across Screens', () => {
       expect(shown.map((r) => r.id).sort()).toEqual(expected.map((e) => e.id).sort());
       // Screen 4 starts its first output slot on the same instant.
       const view = performanceView(d, readHours(d, tick), tick, { kind: 'site' }, range);
-      expect(view.output[0]?.start).toBe(w.start);
+      expect(view.output[0]?.start).toBe(performanceWindow(range, tick).start);
     }
   });
 
@@ -72,7 +72,8 @@ describe('Screen 4 fixed history windows', () => {
     const result = reduce(createPlantState(d), { type: 'shift-handover', note: 'New action' }, { tick: 30000 });
     if (!result.ok) throw new Error(result.error.code);
     if (range !== 'last-shift') expect(eventLogView(result.state, 30000, { range }).rows[0]?.note).toBe('New action');
-    if (range === 'last-shift' || range === 'last-24h') {
+    if (range === 'last-shift') expect(performanceWindow(range, 30000)).toEqual(rangeWindow(range, 0));
+    if (range === 'last-24h') {
       expect(performanceWindow(range, 30000)).toEqual(rangeWindow(range, 30000));
     }
   });

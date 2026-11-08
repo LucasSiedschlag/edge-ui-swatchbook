@@ -1,3 +1,4 @@
+import { formatPercentagePoints, formatTagValue } from './format';
 import { describe, expect, it, vi } from 'vitest';
 import { formatNumber, formatPercent, formatDate, formatTime, formatDateTime, formatDuration } from './format';
 
@@ -121,13 +122,26 @@ it('formats Tag precision and signed changes with literal bilingual strings', as
 it('exports the design suggestion precision table once through core', async () => {
   const { DECIMALS_BY_UNIT } = await import('../index');
   expect(DECIMALS_BY_UNIT).toEqual({
-    rpm: 0, spm: 0, mm: 0, 'mm/min': 0, ms: 0, s: 0, pcs: 0, h: 0, V: 0, mbar: 0, 'm³/h': 0,
+    rpm: 0, spm: 0, mm: 0, 'mm/min': 0, ms: 0, s: 0, min: 0, pcs: 0, h: 0, V: 0, mbar: 0, 'm³/h': 0,
     '°C': 1, bar: 1, kN: 1, kW: 1, A: 1, 'L/min': 1, Nm: 1, 'm/min': 1, 'mm/s': 1, '%': 1,
   });
+});
+
+it.each(['en', 'pt-BR'] as const)('formats integral minutes without trailing decimals in %s', locale => {
+  expect(formatTagValue(locale, 712, 'min')).toBe('712');
+  expect(formatTagValue(locale, 0, 'min')).toBe('0');
 });
 
 it('exports Intl decimal marks through core for numeric inputs', async () => {
   const { decimalSeparator } = await import('../index');
   expect(decimalSeparator('en')).toBe('.');
   expect(decimalSeparator('pt-BR')).toBe(',');
+});
+
+
+it.each(['en', 'pt-BR'] as const)('formats signed fraction differences as percentage points in %s', locale => {
+  expect(formatPercentagePoints(locale, 0.012)).toBe(locale === 'en' ? '+1.2 pp' : '+1,2 pp');
+  expect(formatPercentagePoints(locale, -0.004)).toBe(locale === 'en' ? '-0.4 pp' : '-0,4 pp');
+  expect(formatPercentagePoints(locale, 0)).toBe(locale === 'en' ? '+0.0 pp' : '+0,0 pp');
+  expect(formatPercentagePoints(locale, NaN)).toBe('-');
 });

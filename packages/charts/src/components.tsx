@@ -9,7 +9,7 @@ import type { ChartOption, LineTrendInput, OutputInput, ParetoInput } from './ty
 
 interface PresentationProps { theme?: ChartTheme; testId: string; height: number; emptyTestId?: string }
 export type LineTrendChartProps = Omit<LineTrendInput, 'theme'> & PresentationProps;
-export type ParetoChartProps = Omit<ParetoInput, 'theme'> & PresentationProps;
+export type ParetoChartProps = Omit<ParetoInput, 'theme'> & PresentationProps & { onReasonSelect?: (reason: string) => void };
 export type OutputChartProps = Omit<OutputInput, 'theme'> & PresentationProps;
 
 const hiddenTable: CSSProperties = {
@@ -17,14 +17,16 @@ const hiddenTable: CSSProperties = {
   overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0,
 };
 
-function ChartFrame({ theme, testId, height, emptyTestId, caption, emptyLabel, empty, option, children }: PresentationProps & {
-  theme: ChartTheme; caption: string; emptyLabel: string; empty: boolean; option: ChartOption; children: ReactNode;
+function ChartFrame({ theme, testId, height, emptyTestId, caption, emptyLabel, empty, option, onDataClick, children }: PresentationProps & {
+  onDataClick?: (index: number) => void; theme: ChartTheme; caption: string; emptyLabel: string; empty: boolean; option: ChartOption; children: ReactNode;
 }) {
+  const clickHandler = useRef(onDataClick);
+  clickHandler.current = onDataClick;
   const element = useRef<HTMLDivElement>(null);
   const instance = useRef<ReturnType<typeof createChart> | null>(null);
   useEffect(() => {
     if (empty || !element.current) return;
-    const chart = createChart(element.current);
+    const chart = createChart(element.current, index => clickHandler.current?.(index));
     instance.current = chart;
     return () => { instance.current = null; chart.dispose(); };
   }, [empty]);
@@ -68,7 +70,7 @@ export function ParetoChart(props: ParetoChartProps) {
   const theme = props.theme ?? contextTheme;
   const { data, labels, formatters } = props;
   const option = useMemo(() => buildParetoOption({ data, labels, formatters, theme, selectedReason: props.selectedReason }), [data, labels, formatters, theme, props.selectedReason]);
-  return <ChartFrame {...props} theme={theme} caption={labels.caption} emptyLabel={labels.empty} empty={!data.length} option={option}>
+  return <ChartFrame {...props} theme={theme} caption={labels.caption} emptyLabel={labels.empty} empty={!data.length} option={option} onDataClick={index => { const row = data[index]; if (row) props.onReasonSelect?.(row.reason); }}>
     <Headers labels={[labels.reason, labels.minutes, labels.share, labels.cumulative]} />
     <tbody>{data.map((row, index) => <tr key={index}>
       <th scope="row">{formatters.formatReason(row.reason)}</th><td>{formatChartValue(row.minutes, formatters.formatMinutes)}</td>
