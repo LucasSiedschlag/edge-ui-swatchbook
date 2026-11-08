@@ -198,9 +198,12 @@ it('keeps paused Resume probes cheap at late ticks, including uncached actions',
     console.info(`paused Resume ${tick / 3600} h: uncached ${fresh.toFixed(3)} ms; cached ${cached.toFixed(3)} ms`);
     measurements.push({ tick, fresh, cached });
   }
-  const day = measurements.find(m => m.tick === 86400)!;
-  expect(day.fresh).toBeLessThan(5);
-  expect(day.cached).toBeLessThan(5);
+  const at = (tick: number) => measurements.find(m => m.tick === tick)!;
+  // The old code rebuilt the whole history, so its cost grew about 60 times from 1 hour to 7 days. The growth is what we
+  // guard, because it survives a busy machine better than a tight absolute bound. The absolute bound is only a safety net.
+  expect(at(86400).fresh).toBeLessThan(25);
+  expect(at(86400).cached).toBeLessThan(25);
+  expect(at(604800).fresh / Math.max(at(3600).fresh, 0.05)).toBeLessThan(15);
 });
 
 it('keeps KPI kind tied to Line type while paused, idle or finished', () => {
