@@ -1,8 +1,8 @@
 import { resolveShortcut, type KeyEventLike, type KeyTargetLike, type ShortcutAction } from '@swatchbook/core';
-import { createContext, useContext, useEffect, useLayoutEffect, useRef, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react';
 import { useRoute } from './route';
 
-export type HandledShortcut = Exclude<ShortcutAction, { type: 'go-screen' }>;
+export type HandledShortcut = Exclude<ShortcutAction, { type: 'go-screen' | 'close' }>;
 export type ShortcutType = HandledShortcut['type'];
 /** Returning false declines the action. A void return means it was handled. */
 export type ShortcutHandler = (action: HandledShortcut) => boolean | void;
@@ -21,6 +21,7 @@ function targetLike(target: EventTarget | null): KeyTargetLike | null {
   const element = target as HTMLElement & { type?: string };
   return {
     tagName: element.tagName, type: element.type, role: element.getAttribute('role') ?? undefined,
+    ariaModal: element.getAttribute('aria-modal'),
     isContentEditable: element.isContentEditable, contentEditable: element.getAttribute('contenteditable') ?? undefined,
   };
 }
@@ -34,18 +35,22 @@ export function keyboardEventLike(event: KeyboardEvent): KeyEventLike {
   };
 }
 
-type Registration = { current: ShortcutHandlers };
+type Registration = { current: ShortcutHandlers; order: number };
+let sequence = 0;
 const ShortcutContext = createContext<Registration[] | null>(null);
 export function ShortcutsProvider({ children, rowFocused }: { children: ReactNode; rowFocused?: RowFocusPredicate }) {
   const stack = useRef<Registration[]>([]).current;
   const { go } = useRoute();
   useEffect(() => {
     function keydown(event: KeyboardEvent) {
+      if (event.key === 'Escape') return;
       const action = resolveShortcut(keyboardEventLike(event), { rowFocused: rowFocused?.(event) });
-      if (!action) return;
+      if (!action || action.type === 'close') return;
       if (action.type === 'go-screen') { go(action.screen); event.preventDefault(); return; }
-      const handler = topShortcutHandler(stack.map(entry => entry.current), action.type);
-      if (handler && handler(action) !== false) event.preventDefault();
+      for (let i = stack.length - 1; i >= 0; i--) {
+        const handler: ShortcutHandler | undefined = stack[i]!.current[action.type];
+        if (handler && handler(action) !== false) { event.preventDefault(); return; }
+      }
     }
     document.addEventListener('keydown', keydown);
     return () => document.removeEventListener('keydown', keydown);
@@ -56,11 +61,14 @@ export function ShortcutsProvider({ children, rowFocused }: { children: ReactNod
 export function useShortcutHandlers(handlers: ShortcutHandlers): void {
   const stack = useContext(ShortcutContext);
   if (!stack) throw new Error('useShortcutHandlers requires RuntimeProvider');
-  const registration = useRef<Registration>({ current: handlers });
+  // Render order is parent before child; effect order must not decide priority.
+  const [order] = useState(() => ++sequence);
+  const registration = useRef<Registration>({ current: handlers, order });
   useLayoutEffect(() => { registration.current.current = handlers; });
   useEffect(() => {
     const entry = registration.current;
     stack.push(entry);
+    stack.sort((a, b) => a.order - b.order);
     return () => { const index = stack.indexOf(entry); if (index !== -1) stack.splice(index, 1); };
   }, [stack]);
 }

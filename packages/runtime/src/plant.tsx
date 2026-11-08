@@ -2,9 +2,9 @@ import {
   createPlantStore, generateMockDataset, plantErrorLabels, simulate,
   type ActionResult, type MessageKey, type MockDataset, type PlantAction, type PlantState, type Snapshot, type StorageLike,
 } from '@swatchbook/core';
-import { createContext, useCallback, useContext, useMemo, useRef, useSyncExternalStore, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { readTestTick, useSessionClock } from './clock';
-import type { LibraryId } from './registry';
+import { LIBRARIES, LibraryContext, type LibraryId } from './registry';
 import { PreferencesProvider } from './preferences';
 import { ShortcutsProvider, type RowFocusPredicate } from './shortcuts';
 import { TourProvider } from './tour';
@@ -12,7 +12,7 @@ import { TourProvider } from './tour';
 export interface RuntimeProviderProps {
   children?: ReactNode;
   libraryId: LibraryId;
-  supportsDensity: boolean;
+  supportsDensityOverride?: boolean;
   dataset?: MockDataset;
   storage?: StorageLike;
   languages?: readonly string[];
@@ -22,15 +22,19 @@ export interface RuntimeProviderProps {
 }
 export interface Simulation { dataset: MockDataset; tick: number; state: PlantState; snapshot: Snapshot }
 export type Dispatch = (action: PlantAction) => ActionResult;
+export interface RuntimePlantState { state: PlantState; dispatch: Dispatch }
 const SimulationContext = createContext<Simulation | null>(null);
 const ActionsContext = createContext<Dispatch | null>(null);
+const PlantStateContext = createContext<RuntimePlantState | null>(null);
 
-export function RuntimeProvider({ children, dataset, search, now, supportsDensity, storage, languages, rowFocused }: RuntimeProviderProps) {
+export function RuntimeProvider({ children, libraryId, dataset, search, now, supportsDensityOverride, storage, languages, rowFocused }: RuntimeProviderProps) {
+  const library = LIBRARIES.find(entry => entry.id === libraryId);
+  if (!library) throw new RangeError(`Unknown Library: ${libraryId}`);
   const session = useRef<ReturnType<typeof createPlantStore> | null>(null);
   if (!session.current) session.current = createPlantStore(dataset ?? generateMockDataset());
   const store = session.current;
-  const initialSearch = useRef(search ?? location.search);
-  const clock = useSessionClock({ now, fixedTick: readTestTick(initialSearch.current) });
+  const [fixedTick] = useState(() => readTestTick(search ?? location.search));
+  const clock = useSessionClock({ now, fixedTick });
   const state = useSyncExternalStore(store.subscribe, store.getState);
   const tick = Math.max(clock.tick, state.lastTick);
   // A ref also avoids duplicate Simulator work during StrictMode render checks.
@@ -41,13 +45,18 @@ export function RuntimeProvider({ children, dataset, search, now, supportsDensit
   const snapshot = cachedSnapshot.current;
   const simulation = useMemo(() => ({ dataset: state.dataset, tick, state, snapshot }), [tick, state, snapshot]);
   const dispatch = useCallback<Dispatch>(action => store.dispatch(action, clock.readTick()), [store, clock.readTick]);
-  return <PreferencesProvider supportsDensity={supportsDensity} storage={storage} languages={languages}>
-    <ActionsContext value={dispatch}>
-      <SimulationContext value={simulation}>
-        <ShortcutsProvider rowFocused={rowFocused}><TourProvider>{children}</TourProvider></ShortcutsProvider>
-      </SimulationContext>
-    </ActionsContext>
-  </PreferencesProvider>;
+  const plant = useMemo(() => ({ state, dispatch }), [state, dispatch]);
+  return <LibraryContext value={library}>
+    <PreferencesProvider supportsDensity={supportsDensityOverride ?? library.supportsDensity} storage={storage} languages={languages}>
+      <ActionsContext value={dispatch}>
+        <PlantStateContext value={plant}>
+          <SimulationContext value={simulation}>
+            <ShortcutsProvider rowFocused={rowFocused}><TourProvider>{children}</TourProvider></ShortcutsProvider>
+          </SimulationContext>
+        </PlantStateContext>
+      </ActionsContext>
+    </PreferencesProvider>
+  </LibraryContext>;
 }
 
 export function useSimulation(): Simulation {
@@ -58,6 +67,11 @@ export function useSimulation(): Simulation {
 export function useActions(): Dispatch {
   const value = useContext(ActionsContext);
   if (!value) throw new Error('useActions requires RuntimeProvider');
+  return value;
+}
+export function usePlantState(): RuntimePlantState {
+  const value = useContext(PlantStateContext);
+  if (!value) throw new Error('usePlantState requires RuntimeProvider');
   return value;
 }
 export function actionErrorLabel(result: ActionResult): MessageKey | null {

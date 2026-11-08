@@ -18,7 +18,7 @@ export const SHORTCUTS: readonly ShortcutBinding[] = [
   ...SCREENS.map(({ id: screen }, i): ShortcutBinding => ({ key: String(i + 1), action: { type: 'go-screen', screen } })),
 ];
 
-export type KeyTargetLike = { tagName?: string; isContentEditable?: boolean; type?: string; role?: string; contentEditable?: string };
+export type KeyTargetLike = { tagName?: string; isContentEditable?: boolean; type?: string; role?: string; ariaModal?: string | null; contentEditable?: string };
 
 export type KeyEventLike = {
   key: string;
@@ -52,6 +52,7 @@ export function resolveShortcut(event: KeyEventLike, context?: { textFieldFocuse
   const altGraph = event.ctrlKey && event.altKey && event.getModifierState?.('AltGraph') === true;
   if (event.metaKey || ((event.ctrlKey || event.altKey) && !altGraph)) return null;
   const path = [event.target, ...(event.composedPath?.() ?? [])];
+  if (path.some(target => target?.ariaModal === 'true' || ['dialog', 'alertdialog'].includes((target?.role ?? '').toLowerCase()))) return null;
   if (context?.textFieldFocused || path.some(isTextEntryTarget)) return null;
   const key = event.key === 'A' ? 'a' : event.key;
   const binding = SHORTCUTS.find((s) => s.key === key);

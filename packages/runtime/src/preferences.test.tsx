@@ -9,7 +9,7 @@ import { mount } from './testing';
 afterEach(() => { vi.restoreAllMocks(); localStorage.clear(); history.replaceState(null, '', '/'); });
 const initial: Preferences = { language: 'en', theme: 'light', density: 'comfortable' };
 
-it('derives presets and applies both values, preserving unsupported density', () => {
+it('derives presets and applies both values even without density support', () => {
   expect(PRESETS).toEqual([
     { id: 'office', theme: 'light', density: 'comfortable' },
     { id: 'control-room', theme: 'dark', density: 'compact' },
@@ -21,7 +21,7 @@ it('derives presets and applies both values, preserving unsupported density', ()
   }
   expect(presetFor({ ...initial, density: 'compact' })).toBeNull();
   expect(preferenceChange(initial, { density: 'compact' }, false)).toEqual(initial);
-  expect(preferenceChange(initial, { preset: 'control-room' }, false)).toEqual({ ...initial, theme: 'dark' });
+  expect(preferenceChange(initial, { preset: 'control-room' }, false)).toEqual({ ...initial, theme: 'dark', density: 'compact' });
 });
 
 it('loads once, saves changes in one key, shares hook state and updates document language', async () => {
@@ -29,7 +29,7 @@ it('loads once, saves changes in one key, shares hook state and updates document
   let prefs!: ReturnType<typeof usePreferences>, other!: ReturnType<typeof usePreferences>;
   function Probe() { prefs = usePreferences(); return null; }
   function Other() { other = usePreferences(); return null; }
-  const view = await mount(<RuntimeProvider libraryId="ant-design" supportsDensity storage={storage} languages={['en']} search="?tick=0"><Probe /><Other /></RuntimeProvider>, true);
+  const view = await mount(<RuntimeProvider libraryId="ant-design" storage={storage} languages={['en']} search="?tick=0"><Probe /><Other /></RuntimeProvider>, true);
   try {
     expect(storage.getItem).toHaveBeenCalledTimes(1);
     expect(prefs).toBe(other);
@@ -52,7 +52,7 @@ it('loads once, saves changes in one key, shares hook state and updates document
 it('follows storage events without writing them back, and ignores other keys and storage areas', async () => {
   let prefs!: ReturnType<typeof usePreferences>;
   function Probe() { prefs = usePreferences(); return null; }
-  const view = await mount(<RuntimeProvider libraryId="ant-design" supportsDensity languages={['pt-BR']} search="?tick=0"><Probe /></RuntimeProvider>, true);
+  const view = await mount(<RuntimeProvider libraryId="ant-design" languages={['pt-BR']} search="?tick=0"><Probe /></RuntimeProvider>, true);
   try {
     const save = vi.spyOn(Storage.prototype, 'setItem');
     const remote: Preferences = { language: 'en', theme: 'dark', density: 'compact' };
@@ -72,22 +72,22 @@ it('follows storage events without writing them back, and ignores other keys and
   } finally { await view.unmount(); }
 });
 
-it('keeps density when the Library cannot render it, including preset and external changes', async () => {
+it('keeps direct density controls unavailable while presets and external changes stay shared', async () => {
   let prefs!: ReturnType<typeof usePreferences>;
   function Probe() { prefs = usePreferences(); return null; }
-  const view = await mount(<RuntimeProvider libraryId="ix" supportsDensity={false} languages={['en']} search="?tick=0"><Probe /></RuntimeProvider>);
+  const view = await mount(<RuntimeProvider libraryId="ix" languages={['en']} search="?tick=0"><Probe /></RuntimeProvider>);
   try {
     expect(prefs.densityUnavailable).toBe(true);
     expect(prefs.supportsDensity).toBe(false);
     await act(() => prefs.setDensity('compact'));
     expect(prefs.density).toBe('comfortable');
     await act(() => prefs.applyPreset('control-room'));
-    expect(prefs).toMatchObject({ theme: 'dark', density: 'comfortable', preset: 'night' });
+    expect(prefs).toMatchObject({ theme: 'dark', density: 'compact', preset: 'control-room' });
     await act(() => window.dispatchEvent(new StorageEvent('storage', { key: PREFERENCES_KEY, newValue: JSON.stringify({ language: 'pt-BR', theme: 'light', density: 'compact' }) })));
     // External preferences remain shared even if this Library cannot render their density.
     expect(prefs).toMatchObject({ language: 'pt-BR', theme: 'light', density: 'compact' });
     await act(() => prefs.applyPreset('office'));
-    expect(prefs.density).toBe('compact');
+    expect(prefs.density).toBe('comfortable');
   } finally { await view.unmount(); }
 });
 
@@ -95,10 +95,25 @@ it('survives unavailable storage and follows browser language defaults', async (
   const getter = vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => { throw new Error('blocked'); });
   let prefs!: ReturnType<typeof usePreferences>;
   function Probe() { prefs = usePreferences(); return null; }
-  const view = await mount(<RuntimeProvider libraryId="ui5" supportsDensity languages={['fr', 'pt-PT']} search="?tick=0"><Probe /></RuntimeProvider>);
+  const view = await mount(<RuntimeProvider libraryId="ui5" languages={['fr', 'pt-PT']} search="?tick=0"><Probe /></RuntimeProvider>);
   expect(prefs).toMatchObject({ ...initial, language: 'pt-BR' });
   await act(() => prefs.setLanguage('en'));
   expect(prefs.language).toBe('en');
   await view.unmount();
   getter.mockRestore();
+});
+
+
+it('persists each chosen preset and reports that choice in a Library without density', async () => {
+  let prefs!: ReturnType<typeof usePreferences>;
+  function Probe() { prefs = usePreferences(); return null; }
+  const view = await mount(<RuntimeProvider libraryId="ix" languages={['en']} search="?tick=0"><Probe /></RuntimeProvider>, true);
+  try {
+    for (const preset of PRESETS) {
+      await act(() => prefs.applyPreset(preset.id));
+      expect(prefs.preset).toBe(preset.id);
+      expect(prefs.densityUnavailable).toBe(true);
+      expect(JSON.parse(localStorage.getItem(PREFERENCES_KEY)!)).toEqual({ language: 'en', theme: preset.theme, density: preset.density });
+    }
+  } finally { await view.unmount(); }
 });

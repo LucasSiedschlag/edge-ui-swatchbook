@@ -5,6 +5,7 @@ import * as core from '@swatchbook/core';
 import { deckView, generateMockDataset, simulate, type ActionResult, type PlantAction } from '@swatchbook/core';
 import { RuntimeProvider, actionErrorLabel, useActions, useSimulation } from './plant';
 import { mount } from './testing';
+import { usePlantState } from './index';
 
 const dataset = generateMockDataset();
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); history.replaceState(null, '', '/'); });
@@ -23,7 +24,7 @@ it.each([false, true])('keeps every consumer and Line consistent through clock t
     return null;
   }
   function Other() { other = useSimulation(); return null; }
-  const view = await mount(<RuntimeProvider libraryId="ant-design" supportsDensity dataset={dataset} search={frozen ? '?tick=12' : ''} now={() => now}><Probe /><Other /></RuntimeProvider>, true);
+  const view = await mount(<RuntimeProvider libraryId="ant-design" dataset={dataset} search={frozen ? '?tick=12' : ''} now={() => now}><Probe /><Other /></RuntimeProvider>, true);
   try {
     const initial = session.snapshot;
     expect(session).toBe(other);
@@ -59,7 +60,7 @@ it('uses a fresh tick between renders and keeps a high water mark when the sourc
   let now = 100;
   let session!: ReturnType<typeof useSimulation>, dispatch!: ReturnType<typeof useActions>;
   function Probe() { session = useSimulation(); dispatch = useActions(); return null; }
-  const view = await mount(<RuntimeProvider libraryId="ant-design" supportsDensity dataset={dataset} search="" now={() => now}><Probe /></RuntimeProvider>);
+  const view = await mount(<RuntimeProvider libraryId="ant-design" dataset={dataset} search="" now={() => now}><Probe /></RuntimeProvider>);
   try {
     expect(session.tick).toBe(0);
     now = 7100;
@@ -83,10 +84,10 @@ it('uses a fresh tick between renders and keeps a high water mark when the sourc
 it('shares one snapshot on unrelated re-renders and resets Plant State on each mount', async () => {
   let session!: ReturnType<typeof useSimulation>, dispatch!: ReturnType<typeof useActions>;
   function Probe() { session = useSimulation(); dispatch = useActions(); return null; }
-  const tree = <RuntimeProvider libraryId="ant-design" supportsDensity dataset={dataset} search="?tick=0"><Probe /></RuntimeProvider>;
+  const tree = <RuntimeProvider libraryId="ant-design" dataset={dataset} search="?tick=0"><Probe /></RuntimeProvider>;
   const first = await mount(tree, true);
   const snapshot = session.snapshot;
-  await first.render(<RuntimeProvider libraryId="ant-design" supportsDensity dataset={dataset} search="?tick=0"><Probe /></RuntimeProvider>);
+  await first.render(<RuntimeProvider libraryId="ant-design" dataset={dataset} search="?tick=0"><Probe /></RuntimeProvider>);
   expect(session.snapshot).toBe(snapshot);
   await act(() => { dispatch({ type: 'pause', lineId: 'E2' }); });
   const old = session.state;
@@ -106,7 +107,7 @@ it('constructs once per mount and computes a snapshot once per tick and Overlay 
   const simulate = vi.spyOn(core, 'simulate');
   let now = 0, dispatch!: ReturnType<typeof useActions>;
   function Probe() { useSimulation(); dispatch = useActions(); return null; }
-  const tree = <RuntimeProvider libraryId="ant-design" supportsDensity search="" now={() => now}><Probe /></RuntimeProvider>;
+  const tree = <RuntimeProvider libraryId="ant-design" search="" now={() => now}><Probe /></RuntimeProvider>;
   const view = await mount(tree, true);
   try {
     expect(generate).toHaveBeenCalledTimes(1);
@@ -117,9 +118,38 @@ it('constructs once per mount and computes a snapshot once per tick and Overlay 
     expect(simulate).toHaveBeenCalledTimes(2);
     await act(() => { dispatch({ type: 'pause', lineId: 'E2' }); });
     expect(simulate).toHaveBeenCalledTimes(3);
-    await view.render(<RuntimeProvider libraryId="ant-design" supportsDensity search="" now={() => now}><Probe /></RuntimeProvider>);
+    await view.render(<RuntimeProvider libraryId="ant-design" search="" now={() => now}><Probe /></RuntimeProvider>);
     expect(generate).toHaveBeenCalledTimes(1);
     expect(create).toHaveBeenCalledTimes(1);
     expect(simulate).toHaveBeenCalledTimes(3);
+  } finally { await view.unmount(); }
+});
+
+it('keeps Plant State-only consumers stable through live ticks and notifies them on dispatch', async () => {
+  vi.useFakeTimers();
+  let now = 0, renders = 0;
+  let plant!: ReturnType<typeof usePlantState>, simulation!: ReturnType<typeof useSimulation>;
+  function Form() { plant = usePlantState(); renders++; return null; }
+  function Live() { simulation = useSimulation(); return null; }
+  const view = await mount(<RuntimeProvider libraryId="ant-design" dataset={dataset} search="" now={() => now}><Form /><Live /></RuntimeProvider>, true);
+  try {
+    const initialRenders = renders, initial = plant, dispatch = plant.dispatch;
+    expect(Object.keys(plant).sort()).toEqual(['dispatch', 'state']);
+    now = 3000;
+    await act(() => vi.advanceTimersByTime(3000));
+    expect(simulation.tick).toBe(3);
+    expect(plant).toBe(initial);
+    expect(renders).toBe(initialRenders);
+    await act(() => { expect(plant.dispatch({ type: 'pause', lineId: 'E2' }).ok).toBe(true); });
+    expect(plant.state).toBe(simulation.state);
+    expect(plant.state.controls.E2.paused).toBe(true);
+    expect(plant.dispatch).toBe(dispatch);
+    expect(renders).toBeGreaterThan(initialRenders);
+    const afterDispatch = renders, changed = plant;
+    now = 4000;
+    await act(() => vi.advanceTimersByTime(1000));
+    expect(simulation.tick).toBe(4);
+    expect(plant).toBe(changed);
+    expect(renders).toBe(afterDispatch);
   } finally { await view.unmount(); }
 });

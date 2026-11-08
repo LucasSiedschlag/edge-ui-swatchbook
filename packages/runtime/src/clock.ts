@@ -2,10 +2,12 @@ import { MAX_TICK, TICK_MS, tickAt } from '@swatchbook/core';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export interface SimClockOptions { now?: () => number; fixedTick?: number | null }
-const defaultNow = () => Date.now();
+const defaultNow = () => performance.now();
 
-export function readTestTick(search: string): number | null {
-  const values = new URLSearchParams(search).getAll('tick');
+export function readTestTick(search = location.search, hash = location.hash): number | null {
+  const query = new URLSearchParams(search);
+  const hashQuery = new URLSearchParams(hash.includes('?') ? hash.slice(hash.indexOf('?') + 1) : '');
+  const values = (query.has('tick') ? query : hashQuery).getAll('tick');
   const value = values[0];
   if (values.length !== 1 || value === undefined || !/^\d+$/.test(value)) return null;
   const tick = Number(value);
@@ -21,10 +23,14 @@ export function useSessionClock({ now = defaultNow, fixedTick = null }: SimClock
   if (fixedTick !== null && (!Number.isSafeInteger(fixedTick) || fixedTick < 0 || fixedTick > MAX_TICK)) {
     throw new RangeError(`fixedTick must be an integer from 0 to ${MAX_TICK}`);
   }
-  const source = useRef<{ now: () => number; origin: number } | null>(null);
-  if (!source.current) source.current = { now, origin: now() };
+  const source = useRef<{ now: () => number; origin: number; highest: number } | null>(null);
+  if (!source.current) source.current = { now, origin: now(), highest: 0 };
   const clock = source.current;
-  const readTick = useCallback(() => fixedTick ?? clockTick(clock.now() - clock.origin), [clock, fixedTick]);
+  const readTick = useCallback(() => {
+    if (fixedTick !== null) return fixedTick;
+    clock.highest = Math.max(clock.highest, clockTick(clock.now() - clock.origin));
+    return clock.highest;
+  }, [clock, fixedTick]);
   const [liveTick, setTick] = useState(readTick);
   useEffect(() => {
     if (fixedTick !== null) return;

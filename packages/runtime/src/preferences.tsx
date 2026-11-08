@@ -17,7 +17,7 @@ export function preferenceChange(current: Preferences, change: PreferenceChange,
   return {
     language: change.language ?? current.language,
     theme: preset?.theme ?? change.theme ?? current.theme,
-    density: supportsDensity ? preset?.density ?? change.density ?? current.density : current.density,
+    density: preset?.density ?? (supportsDensity ? change.density ?? current.density : current.density),
   };
 }
 
@@ -61,7 +61,7 @@ export function PreferencesProvider({ children, supportsDensity, storage, langua
   const change = useCallback((change: PreferenceChange) => {
     setState(previous => {
       const prefs = preferenceChange(previous.prefs, change, supportsDensity);
-      if (prefs.language === previous.prefs.language && prefs.theme === previous.prefs.theme && prefs.density === previous.prefs.density) return previous;
+      if (!change.preset && prefs.language === previous.prefs.language && prefs.theme === previous.prefs.theme && prefs.density === previous.prefs.density) return previous;
       return { prefs, local: true };
     });
   }, [supportsDensity]);

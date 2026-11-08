@@ -25,7 +25,7 @@ it('switches dictionary, numbers and dates together with preferences', async () 
   let i18n!: ReturnType<typeof useI18n>, prefs!: ReturnType<typeof usePreferences>;
   function Probe() { i18n = useI18n(); prefs = usePreferences(); return <span>{i18n.t('screen.deck')} {i18n.formatNumber(1234.5, { decimals: 1 })}</span>; }
   const storage = { getItem: () => null, setItem: () => {} };
-  const view = await mount(<RuntimeProvider libraryId="ant-design" supportsDensity languages={['en']} storage={storage} search="?tick=0"><Probe /></RuntimeProvider>, true);
+  const view = await mount(<RuntimeProvider libraryId="ant-design" languages={['en']} storage={storage} search="?tick=0"><Probe /></RuntimeProvider>, true);
   try {
     const time = Date.UTC(2026, 0, 12);
     expect(i18n.locale).toBe('en');

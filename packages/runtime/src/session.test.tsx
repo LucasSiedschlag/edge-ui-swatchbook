@@ -46,7 +46,7 @@ it.each([false, true])('runs a full session with no timers or listeners left aft
     });
     return null;
   }
-  const view = await mount(<RuntimeProvider libraryId="ant-design" supportsDensity dataset={dataset} languages={['en']} search="" now={() => now}><Probe /></RuntimeProvider>, strict);
+  const view = await mount(<RuntimeProvider libraryId="ant-design" dataset={dataset} languages={['en']} search="" now={() => now}><Probe /></RuntimeProvider>, strict);
   try {
     expect(documentListeners.countType('keydown')).toBe(1);
     expect(windowListeners.countType('storage')).toBe(1);
@@ -76,7 +76,7 @@ it.each([false, true])('runs a full session with no timers or listeners left aft
 it('has Parity across Library providers at the same tick and after the same action', async () => {
   const sessions: ReturnType<typeof useSimulation>[] = [], actions: ReturnType<typeof useActions>[] = [];
   function Probe({ index }: { index: number }) { sessions[index] = useSimulation(); actions[index] = useActions(); return null; }
-  const view = await mount(<>{(['ant-design', 'ui5', 'ix'] as const).map((libraryId, index) => <RuntimeProvider key={libraryId} libraryId={libraryId} supportsDensity={libraryId !== 'ix'} dataset={dataset} search="?tick=7"><Probe index={index} /></RuntimeProvider>)}</>);
+  const view = await mount(<>{(['ant-design', 'ui5', 'ix'] as const).map((libraryId, index) => <RuntimeProvider key={libraryId} libraryId={libraryId} dataset={dataset} search="?tick=7"><Probe index={index} /></RuntimeProvider>)}</>);
   try {
     for (const session of sessions.slice(1)) {
       expect(session.snapshot.tags).toEqual(sessions[0]!.snapshot.tags);
@@ -91,4 +91,36 @@ it('has Parity across Library providers at the same tick and after the same acti
     }
     expect(sessions.every(s => s.tick === 7 && s.state.lastTick === 7)).toBe(true);
   } finally { await view.unmount(); }
+});
+
+it('uses browser defaults for live time, frozen ticks, languages and preference persistence across mounts', async () => {
+  vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date', 'performance'] });
+  vi.spyOn(navigator, 'languages', 'get').mockReturnValue(['fr', 'pt-PT']);
+  history.replaceState(null, '', '/ant-design/#/deck');
+  let simulation!: ReturnType<typeof useSimulation>, prefs!: ReturnType<typeof usePreferences>;
+  function Probe() { simulation = useSimulation(); prefs = usePreferences(); return null; }
+  // No search, now, storage or languages props: exercise the production entry path.
+  const tree = <RuntimeProvider libraryId="ant-design" dataset={dataset}><Probe /></RuntimeProvider>;
+  const first = await mount(tree, true);
+  try {
+    expect(prefs.language).toBe('pt-BR');
+    expect(simulation.tick).toBe(0);
+    await act(() => vi.advanceTimersByTime(2500));
+    expect(simulation.tick).toBe(2);
+    vi.setSystemTime(new Date('1990-01-01'));
+    await act(() => vi.advanceTimersByTime(1000));
+    expect(simulation.tick).toBe(3);
+    await act(() => { prefs.setLanguage('en'); prefs.applyPreset('control-room'); });
+    expect(JSON.parse(localStorage.getItem(PREFERENCES_KEY)!)).toEqual({ language: 'en', theme: 'dark', density: 'compact' });
+  } finally { await first.unmount(); }
+  expect(vi.getTimerCount()).toBe(0);
+  history.replaceState(null, '', '/ant-design/?tick=7#/deck?tick=4');
+  const second = await mount(tree, true);
+  try {
+    expect(prefs).toMatchObject({ language: 'en', theme: 'dark', density: 'compact', preset: 'control-room' });
+    expect(simulation.tick).toBe(7);
+    expect(vi.getTimerCount()).toBe(0);
+    await act(() => vi.advanceTimersByTime(5000));
+    expect(simulation.tick).toBe(7);
+  } finally { await second.unmount(); }
 });

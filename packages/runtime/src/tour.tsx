@@ -1,5 +1,5 @@
-import { TOUR_STEPS, isLastStep, nextStep, previousStep, tourStepAt, type TourStep } from '@swatchbook/core';
-import { createContext, useContext, useEffect, useMemo, useReducer, type ReactNode } from 'react';
+import { TOUR_STEPS, isLastStep, nextStep, previousStep, stepForRoute, tourStepAt, type TourStep } from '@swatchbook/core';
+import { createContext, useContext, useMemo, useState, type ReactNode } from 'react';
 import { useRoute } from './route';
 
 export interface TourState { active: boolean; index: number }
@@ -23,16 +23,21 @@ export interface RuntimeTour extends TourState {
 }
 const TourContext = createContext<RuntimeTour | null>(null);
 export function TourProvider({ children }: { children: ReactNode }) {
-  const [state, dispatch] = useReducer(tourTransition, { active: false, index: 0 });
-  const { go } = useRoute();
-  useEffect(() => {
-    if (state.active) go(tourStepAt(state.index)!.screen);
-  }, [state, go]);
+  const [started, setStarted] = useState(false);
+  const { route, go } = useRoute();
+  const routeIndex = stepForRoute(route ?? '');
+  // End on the render that observes an outside route, before normalization effects.
+  if (started && routeIndex === null) setStarted(false);
+  const active = started && routeIndex !== null;
+  const index = active ? routeIndex : 0;
   const value = useMemo<RuntimeTour>(() => ({
-    ...state, step: state.active ? tourStepAt(state.index) : undefined, total: TOUR_STEPS.length,
-    start: () => dispatch('start'), next: () => dispatch('next'), previous: () => dispatch('previous'), finish: () => dispatch('finish'),
-    isFirst: state.active && state.index === 0, isLast: state.active && isLastStep(state.index),
-  }), [state]);
+    active, index, step: active ? tourStepAt(index) : undefined, total: TOUR_STEPS.length,
+    start: () => { go(TOUR_STEPS[0]!.screen); setStarted(true); },
+    next: () => { const next = active ? nextStep(index) : null; if (next !== null) go(TOUR_STEPS[next]!.screen); },
+    previous: () => { const previous = active ? previousStep(index) : null; if (previous !== null) go(TOUR_STEPS[previous]!.screen); },
+    finish: () => setStarted(false),
+    isFirst: active && index === 0, isLast: active && isLastStep(index),
+  }), [active, index, go]);
   return <TourContext value={value}>{children}</TourContext>;
 }
 export function useTour(): RuntimeTour {

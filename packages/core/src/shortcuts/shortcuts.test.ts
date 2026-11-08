@@ -3,6 +3,13 @@ import { SHORTCUTS, SHORTCUT_HELP, SHORTCUT_MESSAGES, isTextEntryTarget, resolve
 
 const SCREEN_ORDER = ['deck', 'recipes', 'ledger', 'performance', 'parameters', 'control'];
 
+it.each(SHORTCUTS)('ignores $key when any target or composed-path ancestor is a dialog', ({ key }) => {
+  for (const modal of [{ ariaModal: 'true' }, { role: 'dialog' }, { role: 'alertdialog' }]) {
+    expect(resolveShortcut({ key, target: modal }, { rowFocused: true })).toBeNull();
+    expect(resolveShortcut({ key, target: { tagName: 'SPAN' }, composedPath: () => [{ tagName: 'SPAN' }, modal] }, { rowFocused: true })).toBeNull();
+  }
+});
+
 describe('SHORTCUTS table', () => {
   it('lists the ten bindings from the screens README', () => {
     expect(SHORTCUTS.map((s) => s.key)).toEqual(['/', 'Enter', 'Escape', 'a', '1', '2', '3', '4', '5', '6']);

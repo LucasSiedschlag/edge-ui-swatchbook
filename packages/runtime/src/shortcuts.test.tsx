@@ -14,11 +14,30 @@ async function key(key: string, target: EventTarget = document, options: Keyboar
   return event;
 }
 
+it.each([false, true])('gives a child priority in one commit and after route remount, with fallthrough (decline=%s)', async decline => {
+  const parent = vi.fn(), child = vi.fn(() => decline ? false : undefined);
+  let route!: ReturnType<typeof useRoute>;
+  function Child() { useShortcut('acknowledge', child); return null; }
+  function Parent() { useShortcut('acknowledge', parent); return <Child />; }
+  function Screens() { route = useRoute(); return route.screen === 'deck' ? <Parent /> : null; }
+  const view = await mount(<RuntimeProvider libraryId="ant-design" search="?tick=0"><Screens /></RuntimeProvider>, true);
+  try {
+    for (let visit = 1; visit <= 2; visit++) {
+      expect((await key('a')).defaultPrevented).toBe(true);
+      expect(child).toHaveBeenCalledTimes(visit);
+      expect(parent).toHaveBeenCalledTimes(decline ? visit : 0);
+      await act(() => route.go('recipes'));
+      expect((await key('a')).defaultPrevented).toBe(false);
+      await act(() => route.go('deck'));
+    }
+  } finally { await view.unmount(); }
+});
+
 it('selects the top registered handler for each action', () => {
   const first = vi.fn(), second = vi.fn();
-  expect(topShortcutHandler([{ close: first }, { acknowledge: second }], 'close')).toBe(first);
-  expect(topShortcutHandler([{ close: first }, { close: second }], 'close')).toBe(second);
-  expect(topShortcutHandler([], 'close')).toBeUndefined();
+  expect(topShortcutHandler([{ 'focus-search': first }, { acknowledge: second }], 'focus-search')).toBe(first);
+  expect(topShortcutHandler([{ 'focus-search': first }, { 'focus-search': second }], 'focus-search')).toBe(second);
+  expect(topShortcutHandler([], 'focus-search')).toBeUndefined();
 });
 
 it('handles acknowledge, filters text inputs and native Enter, and owns Screen shortcuts', async () => {
@@ -29,7 +48,7 @@ it('handles acknowledge, filters text inputs and native Enter, and owns Screen s
     screen = useRoute().screen;
     return <><input /><button>Native</button><div role="row" tabIndex={0} /></>;
   }
-  const view = await mount(<RuntimeProvider libraryId="ant-design" supportsDensity search="?tick=0"><Probe /></RuntimeProvider>, true);
+  const view = await mount(<RuntimeProvider libraryId="ant-design" search="?tick=0"><Probe /></RuntimeProvider>, true);
   try {
     expect((await key('a')).defaultPrevented).toBe(true);
     expect(acknowledge).toHaveBeenCalledTimes(1);
@@ -52,49 +71,49 @@ it('handles acknowledge, filters text inputs and native Enter, and owns Screen s
   expect((await key('a')).defaultPrevented).toBe(false);
 });
 
-it('lets a drawer take close, preserves its priority on re-render, and falls back on unmount', async () => {
+it('keeps the latest mounted search handler on re-render and falls back on unmount', async () => {
   const first = vi.fn(), updated = vi.fn(), drawer = vi.fn();
-  function Screen({ changed }: { changed: boolean }) { useShortcut('close', changed ? updated : first); return null; }
-  function Drawer() { useShortcut('close', drawer); return null; }
-  const tree = (show: boolean, changed = false) => <RuntimeProvider libraryId="ant-design" supportsDensity search="?tick=0"><Screen changed={changed} />{show && <Drawer />}</RuntimeProvider>;
+  function Screen({ changed }: { changed: boolean }) { useShortcut('focus-search', changed ? updated : first); return null; }
+  function Drawer() { useShortcut('focus-search', drawer); return null; }
+  const tree = (show: boolean, changed = false) => <RuntimeProvider libraryId="ant-design" search="?tick=0"><Screen changed={changed} />{show && <Drawer />}</RuntimeProvider>;
   const view = await mount(tree(false), true);
   try {
-    await key('Escape');
+    await key('/');
     expect(first).toHaveBeenCalledTimes(1);
     await view.render(tree(true));
-    await key('Escape');
+    await key('/');
     expect(drawer).toHaveBeenCalledTimes(1);
     await view.render(tree(true, true));
-    await key('Escape');
+    await key('/');
     expect(drawer).toHaveBeenCalledTimes(2);
     expect(updated).not.toHaveBeenCalled();
     await view.render(tree(false, true));
-    await key('Escape');
+    await key('/');
     expect(updated).toHaveBeenCalledTimes(1);
-    await view.render(<RuntimeProvider libraryId="ant-design" supportsDensity search="?tick=0" />);
-    expect((await key('Escape')).defaultPrevented).toBe(false);
+    await view.render(<RuntimeProvider libraryId="ant-design" search="?tick=0" />);
+    expect((await key('/')).defaultPrevented).toBe(false);
   } finally { await view.unmount(); }
 });
 
 it('only prevents default when handled and accepts an optional row focus predicate', async () => {
-  const close = vi.fn(() => false), open = vi.fn();
-  function Probe() { useShortcutHandlers({ close, 'open-details': open }); return <div data-row="yes" />; }
-  const view = await mount(<RuntimeProvider libraryId="ant-design" supportsDensity search="?tick=0" rowFocused={event => (event.target as HTMLElement)?.dataset?.row === 'yes'}><Probe /></RuntimeProvider>);
+  const search = vi.fn(() => false), open = vi.fn();
+  function Probe() { useShortcutHandlers({ 'focus-search': search, 'open-details': open }); return <div data-row="yes" />; }
+  const view = await mount(<RuntimeProvider libraryId="ant-design" search="?tick=0" rowFocused={event => (event.target as HTMLElement)?.dataset?.row === 'yes'}><Probe /></RuntimeProvider>);
   try {
-    expect((await key('Escape')).defaultPrevented).toBe(false);
-    expect(close).toHaveBeenCalledTimes(1);
+    expect((await key('/')).defaultPrevented).toBe(false);
+    expect(search).toHaveBeenCalledTimes(1);
     expect((await key('Enter', view.container.querySelector('div')!)).defaultPrevented).toBe(true);
-    const event = new KeyboardEvent('keydown', { key: 'Escape', cancelable: true });
+    const event = new KeyboardEvent('keydown', { key: '/', cancelable: true });
     event.preventDefault();
     await act(() => { document.dispatchEvent(event); });
-    expect(close).toHaveBeenCalledTimes(1);
+    expect(search).toHaveBeenCalledTimes(1);
   } finally { await view.unmount(); }
 });
 
 it('forwards composed paths and modifier state from real keyboard events', async () => {
   const acknowledge = vi.fn();
   function Probe() { useShortcut('acknowledge', acknowledge); return <div />; }
-  const view = await mount(<RuntimeProvider libraryId="ant-design" supportsDensity search="?tick=0"><Probe /></RuntimeProvider>);
+  const view = await mount(<RuntimeProvider libraryId="ant-design" search="?tick=0"><Probe /></RuntimeProvider>);
   try {
     const host = view.container.querySelector('div')!;
     const input = document.createElement('input');
@@ -107,5 +126,52 @@ it('forwards composed paths and modifier state from real keyboard events', async
     expect(adapted.getModifierState?.('AltGraph')).toBe(true);
     expect(modifier).toHaveBeenCalledWith('AltGraph');
     expect(adapted).toMatchObject({ key: 'a', ctrlKey: true, altKey: true, shiftKey: true, defaultPrevented: false, isComposing: false, keyCode: 0 });
+  } finally { await view.unmount(); }
+});
+
+
+it('leaves every Escape to the Library, including unsupported legacy close registrations', async () => {
+  const handler = vi.fn(), rowFocused = vi.fn(() => true);
+  function Probe() {
+    // @ts-expect-error Library components own close; it is not a runtime action.
+    useShortcut('close', handler);
+    // @ts-expect-error Handler maps also exclude close.
+    useShortcutHandlers({ close: handler });
+    useShortcutHandlers({ acknowledge: handler, 'focus-search': handler, 'open-details': handler });
+    return <><input /><button /><div role="dialog"><span /></div></>;
+  }
+  const view = await mount(<RuntimeProvider libraryId="ant-design" search="?tick=0" rowFocused={rowFocused}><Probe /></RuntimeProvider>, true);
+  try {
+    for (const target of [document, ...view.container.querySelectorAll('*')]) {
+      expect((await key('Escape', target)).defaultPrevented).toBe(false);
+    }
+    expect(handler).not.toHaveBeenCalled();
+    expect(rowFocused).not.toHaveBeenCalled();
+  } finally { await view.unmount(); }
+});
+
+it('blocks runtime shortcuts from descendants of dialogs, including across a shadow boundary', async () => {
+  const handler = vi.fn();
+  let screen = '';
+  function Probe() {
+    useShortcutHandlers({ acknowledge: handler, 'focus-search': handler, 'open-details': handler });
+    screen = useRoute().screen;
+    return <><div role="dialog"><span /></div><div role="alertdialog"><span /></div><div aria-modal="true"><span /></div><section /></>;
+  }
+  const view = await mount(<RuntimeProvider libraryId="ant-design" search="?tick=0" rowFocused={() => true}><Probe /></RuntimeProvider>, true);
+  try {
+    const host = view.container.querySelector('section')!;
+    const dialog = document.createElement('div');
+    dialog.setAttribute('aria-modal', 'true');
+    const span = document.createElement('span');
+    dialog.append(span);
+    host.attachShadow({ mode: 'open' }).append(dialog);
+    for (const target of [...view.container.querySelectorAll('span'), span]) {
+      for (const shortcut of ['/', 'Enter', 'Escape', 'a', '1', '2', '3', '4', '5', '6']) {
+        expect((await key(shortcut, target, { composed: true })).defaultPrevented).toBe(false);
+        expect(screen).toBe('deck');
+      }
+    }
+    expect(handler).not.toHaveBeenCalled();
   } finally { await view.unmount(); }
 });
