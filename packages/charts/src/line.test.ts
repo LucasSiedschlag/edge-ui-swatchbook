@@ -73,12 +73,55 @@ it('uses four offset axes and keeps every measured, limit and setpoint line on i
     { name: '°C', position: 'left', offset: 0 }, { name: 'bar', position: 'right', offset: 0 },
     { name: 'rpm', position: 'left', offset: 96 }, { name: 'm/min', position: 'right', offset: 96 },
   ]);
-  expect(option.grid).toMatchObject({ left: 160, right: 160 });
+  expect(option.grid).toMatchObject({ left: 12, right: 12, outerBoundsMode: 'same', outerBoundsContain: 'all' });
+  expect(option.legend).toMatchObject({ type: 'scroll', top: 0, left: 12, right: 12 });
   const plotted = option.series as { yAxisIndex: number; markLine?: { data: { yAxis: number }[] } }[];
   expect(plotted).toHaveLength(8);
   for (let i = 0; i < 4; i++) {
     expect(plotted[i * 2]!.yAxisIndex).toBe(i);
+    expect(plotted[i * 2]!.markLine).toMatchObject({ label: { show: false } });
     expect(plotted[i * 2]!.markLine!.data.map(l => l.yAxis)).toEqual([i + 1, i + 10]);
     expect(plotted[i * 2 + 1]!.yAxisIndex).toBe(i);
+  }
+});
+
+it('anchors four unit names to distinct axis sides and offsets with matching alignment', () => {
+  const units = ['A', 'degC', 'V', 'kW'];
+  const option = buildLineTrendOption({
+    data: units.map((unit, index) => ({ ...data[0]!, id: `tag-${index}`, unit })),
+    labels, formatters, theme: darkChartTheme,
+  });
+  const axes = option.yAxis as {
+    name: string; position: string; offset: number; nameLocation: string; nameGap: number;
+    nameTextStyle: { align: string }; axisLine: { onZero: boolean };
+  }[];
+  expect(axes.map(axis => axis.name)).toEqual(units);
+  for (const axis of axes) {
+    expect(axis.axisLine.onZero).toBe(false);
+    expect(axis.nameLocation).toBe('end');
+    expect(axis.nameGap).toBeGreaterThan(0);
+    expect(axis.nameTextStyle.align).toBe(axis.position);
+  }
+  expect(new Set(axes.map(axis => `${axis.position}:${axis.offset}`)).size).toBe(4);
+});
+
+it('reserves a top legend band for caller fonts without taking space from the time labels', () => {
+  for (const fontSize of [12, 14, 24]) {
+    const option = buildLineTrendOption({ data, labels, formatters, theme: { ...darkChartTheme, fontSize } });
+    const legend = option.legend as { top: number; height: number };
+    const grid = option.grid as { top: number; bottom: number };
+    expect(legend.height).toBeGreaterThanOrEqual(fontSize + 12);
+    expect(grid.top).toBeGreaterThanOrEqual(legend.top + legend.height + 24);
+    expect(grid.bottom).toBeGreaterThan(0);
+  }
+});
+
+it('keeps single Tag limit labels inside the plot and hides them when another Tag is selected', () => {
+  for (const selected of [data.slice(0, 1), data.slice(0, 2), data]) {
+    const option = buildLineTrendOption({ data: selected, labels, formatters, theme: darkChartTheme });
+    expect((option.series as object[])[0]).toMatchObject({ markLine: {
+      label: { show: selected.length === 1, position: 'insideEndTop' },
+      data: [{ name: labels.minimum, yAxis: 10 }, { name: labels.maximum, yAxis: 30 }, { name: labels.setpoint, yAxis: 20 }],
+    } });
   }
 });

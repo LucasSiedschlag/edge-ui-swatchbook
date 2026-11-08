@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import type { Overlay } from '../sim/overlay';
 import { tagSeries } from '../sim/series';
-import { TREND_WINDOWS, trendTicks, trendView, type TrendWindowId } from './trend';
+import { DEFAULT_TREND_WINDOW, TREND_WINDOWS, trendTicks, trendView, type TrendWindowId } from './trend';
 
 const d = generateMockDataset();
 const units = d.tags.slice(0, 2).map(tag => tag.unit);
@@ -142,4 +142,13 @@ it('requires an Overlay at the type boundary', () => {
     // @ts-expect-error Screens must explicitly pass their session Overlay.
     trendView(d, ids, '5m', 0);
   }
+});
+
+it('exports the default live window and carries chart metadata without an app join', () => {
+  expect(DEFAULT_TREND_WINDOW).toBe('5m');
+  const selected = d.tags.slice(0, 4);
+  const rows = series(trendView(d, selected.map(tag => tag.id), DEFAULT_TREND_WINDOW, 0, {}));
+  expect(rows.map(({ tagId, name, machineId, unit, min, max }) => ({ tagId, name, machineId, unit, min, max }))).toEqual(
+    selected.map(tag => ({ tagId: tag.id, name: tag.name, machineId: tag.machineId, unit: tag.unit, min: tag.min, max: tag.max })),
+  );
 });

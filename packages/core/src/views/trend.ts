@@ -11,6 +11,8 @@ export const TREND_WINDOWS = {
   '2h': { ticks: 7200, step: 40 },
 } as const;
 
+export const DEFAULT_TREND_WINDOW = '5m' as const;
+
 export type TrendWindowId = keyof typeof TREND_WINDOWS;
 
 export interface TrendPoint {
@@ -22,6 +24,11 @@ export interface TrendPoint {
 
 export interface TrendSeries {
   tagId: string;
+  name: string;
+  machineId: string;
+  unit: string;
+  min: number;
+  max: number;
   points: TrendPoint[];
 }
 
@@ -49,8 +56,10 @@ export function trendView(d: MockDataset, tagIds: readonly string[], window: Tre
   const from = grid[0]!;
   const to = grid[grid.length - 1]!;
   const { step } = TREND_WINDOWS[window];
+  const metadata = new Map(d.tags.map(tag => [tag.id, { name: tag.name, machineId: tag.machineId, unit: tag.unit, min: tag.min, max: tag.max }]));
   return { series: tagIds.map((tagId) => ({
     tagId,
+    ...metadata.get(tagId)!,
     points: tagSeries(d, tagId, from, to, step, overlay).map(({ tick, value, status, setpoint }) => ({ tick, value, status, setpoint })),
   })) };
 }

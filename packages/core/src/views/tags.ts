@@ -15,6 +15,8 @@ interface TagFilterValues {
 }
 export type TagFilters = FilterInput<TagFilterValues>;
 
+export const TAG_GRID_DEFAULT_FILTERS: TagFilters = Object.freeze({});
+
 export interface TagRow {
   tagId: string;
   lineId: LineId;
@@ -31,6 +33,10 @@ export interface TagRow {
   writable: boolean;
   /** Writable and not Stale. A Tag of an Offline Machine cannot be overridden. */
   canOverride: boolean;
+  /** Core refusal reason for an unavailable Override. */
+  overrideUnavailable: 'tag-stale' | 'tag-not-writable' | null;
+  /** Null also covers an unchanged Recipe value, for which reset is a no-op. */
+  resetUnavailable: 'tag-stale' | 'no-recipe-value' | null;
   recipeValue: number | null;
   /** A different Recipe value exists and the Tag is not Stale, matching reset-to-recipe. */
   canResetToRecipe: boolean;
@@ -39,7 +45,7 @@ export interface TagRow {
 }
 
 /** The Live Parameter Matrix grid (Screen 5): one row per Tag in dataset order. Filters combine with AND. */
-export function tagGridView(d: MockDataset, snapshot: Snapshot, input: TagFilters | null = {}): { rows: TagRow[]; empty: boolean } {
+export function tagGridView(d: MockDataset, snapshot: Snapshot, input: TagFilters | null = TAG_GRID_DEFAULT_FILTERS): { rows: TagRow[]; empty: boolean } {
   const filters = normalizeFilters<TagFilterValues>(input);
   assertSessionTick(snapshot.tick);
   const readings = new Map(snapshot.tags.map((r) => [r.tagId, r]));
@@ -58,11 +64,18 @@ export function tagGridView(d: MockDataset, snapshot: Snapshot, input: TagFilter
       tagId: tag.id, lineId: tag.lineId, machineId: tag.machineId, name: tag.name, value: reading.value, unit: tag.unit,
       setpoint: reading.setpoint, min: tag.min, max: tag.max, status: reading.status, alarm: reading.alarm,
       writable: tag.writable, canOverride: tag.writable && reading.status !== 'stale',
+      overrideUnavailable: reading.status === 'stale' ? 'tag-stale' : !tag.writable ? 'tag-not-writable' : null,
+      resetUnavailable: reading.status === 'stale' ? 'tag-stale' : recipeValue === null ? 'no-recipe-value' : null,
       recipeValue, canResetToRecipe: reading.status !== 'stale' && recipeValue !== null && recipeValue !== reading.setpoint,
       linkStatus: link.status, lastSeenAt: link.lastSeenAt,
     });
   }
   return { rows, empty: rows.length === 0 };
+}
+
+/** Current details for an open Tag dialog, independent of grid filters and virtualization. */
+export function tagDetailView(d: MockDataset, snapshot: Snapshot, tagId: string): TagRow | null {
+  return tagGridView(d, snapshot).rows.find(row => row.tagId === tagId) ?? null;
 }
 
 export interface ConnectivityRow {

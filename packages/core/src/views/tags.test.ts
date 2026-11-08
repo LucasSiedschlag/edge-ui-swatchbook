@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import { simulate } from '../sim/simulate';
-import { connectivityView, tagGridView } from './tags';
+import { TAG_GRID_DEFAULT_FILTERS, connectivityView, tagDetailView, tagGridView } from './tags';
 
 const d = generateMockDataset();
 const snap = simulate(d, 0);
@@ -162,4 +162,22 @@ it('shares active Recipe values and reset availability with reduce', async () =>
       expect(row.canResetToRecipe).toBe(reset.ok && reset.events.length > 0);
     }
   }
+});
+
+it('exports unfiltered defaults and supplies current Tag details and action refusal reasons', () => {
+  expect(TAG_GRID_DEFAULT_FILTERS).toEqual({});
+  const rows = tagGridView(d, snap, TAG_GRID_DEFAULT_FILTERS).rows;
+  for (const row of rows) {
+    expect(tagDetailView(d, snap, row.tagId)).toEqual(row);
+    expect(row.overrideUnavailable).toBe(row.status === 'stale' ? 'tag-stale' : !row.writable ? 'tag-not-writable' : null);
+    expect(row.resetUnavailable).toBe(row.status === 'stale' ? 'tag-stale' : row.recipeValue === null ? 'no-recipe-value' : null);
+  }
+  expect(tagDetailView(d, snap, 'missing')).toBeNull();
+});
+
+it('refreshes dialog details from the supplied Plant State snapshot', () => {
+  const id = 'E1-puller.puller-speed';
+  const changed = simulate(d, 100, { setpoints: new Map([[id, [{ fromTick: 100, value: 3 }]]]) });
+  expect(tagDetailView(d, changed, id)).toMatchObject({ setpoint: 3, recipeValue: 2.1, canResetToRecipe: true });
+  expect(tagDetailView(d, snap, id)).toMatchObject({ setpoint: 2.1, canResetToRecipe: false });
 });
