@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LOCALES } from '../index';
-import { t, tr, resolveLocale } from './translate';
+import { t, tr, tCount, resolveLocale } from './translate';
 
 describe('translation', () => {
   it('matches supported locales and resolves the first supported browser language', () => {
@@ -38,4 +38,29 @@ it('matches complete language prefixes and ignores malformed entries', () => {
   expect(resolveLocale(['ptx', 'en'])).toBe('en');
   expect(resolveLocale([undefined, null, 42, {}, 'PT-br'])).toBe('pt-BR');
   expect(resolveLocale(['en-GB'])).toBe('en');
+});
+
+describe('tCount', () => {
+  it('uses the singular only for exactly one, in both languages', () => {
+    expect(tCount('en', 'deck.alarm-count', 1)).toBe('1 active Critical Alarm');
+    expect(tCount('en', 'deck.alarm-count', 0)).toBe('0 active Critical Alarms');
+    expect(tCount('en', 'deck.alarm-count', 2)).toBe('2 active Critical Alarms');
+    expect(tCount('pt-BR', 'deck.alarm-count', 1)).toBe('1 Alarme crítico ativo');
+    expect(tCount('pt-BR', 'deck.alarm-count', 0)).toBe('0 Alarmes críticos ativos');
+    expect(tCount('pt-BR', 'deck.alarm-count', 3)).toBe('3 Alarmes críticos ativos');
+  });
+
+  it('covers the other counted texts and accepts extra params', () => {
+    expect(tCount('en', 'common.row-count', 1)).toBe('1 record');
+    expect(tCount('pt-BR', 'common.row-count', 5000)).toBe('5000 registros');
+    expect(tCount('en', 'common.selected-count', 1)).toBe('1 selected');
+    expect(tCount('pt-BR', 'ledger.selected-hidden', 1)).toBe('1 lote de produção selecionado oculto pelos filtros');
+  });
+
+  it('only accepts keys that have both forms (a compile time check)', () => {
+    expect(() => {
+      // @ts-expect-error a key without .one and .other is not a counted text
+      tCount('en', 'deck.pause', 1);
+    }).toThrow();
+  });
 });

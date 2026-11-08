@@ -1,7 +1,26 @@
+import type { ScreenId } from './screens';
 import type { LedgerFilterColumn } from './views/ledger';
 
 /** Required Parity hooks, grouped by Screen. Specs are checked against this registry. */
 export const TEST_IDS = {
+  shell: {
+    navDeck: 'shell.nav-deck',
+    navRecipes: 'shell.nav-recipes',
+    navLedger: 'shell.nav-ledger',
+    navPerformance: 'shell.nav-performance',
+    navParameters: 'shell.nav-parameters',
+    navControl: 'shell.nav-control',
+    libraryPicker: 'shell.library-picker',
+    language: 'shell.language',
+    theme: 'shell.theme',
+    density: 'shell.density',
+    preset: 'shell.preset',
+    tourStart: 'shell.tour-start',
+    tour: 'shell.tour',
+    tourPrevious: 'shell.tour-previous',
+    tourNext: 'shell.tour-next',
+    tourFinish: 'shell.tour-finish',
+  },
   deck: {
     lineSelect: 'deck.line-select',
     lineStatus: 'deck.line-status',
@@ -125,6 +144,11 @@ export const TEST_IDS = {
     diagnosticsSort: 'control.diagnostics-sort',
   },
 } as const;
+
+/** Navigation entry of a Screen in the Shell. */
+export function shellNavId<S extends ScreenId>(screen: S): `shell.nav-${S}` {
+  return `shell.nav-${screen}`;
+}
 
 /** Column names are the same as ledgerView filters, including plural choice lists. */
 export function ledgerFilterId<C extends LedgerFilterColumn>(column: C): `ledger.filter-${C}` {

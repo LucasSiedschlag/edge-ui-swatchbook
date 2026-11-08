@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import { raises } from '../sim/alarms';
 import { en, ptBR, type MessageKey } from './messages';
-import { t } from './translate';
+import { t, tCount } from './translate';
 import * as labels from './labels';
 
 const placeholders = (text: string) => [...new Set([...text.matchAll(/\{([a-z]+)\}/g)].map((m) => m[1]))].sort();
@@ -105,8 +105,8 @@ it('renders shared Screen messages through the public dictionary', () => {
   const params = { produced: 10, target: 20, percent: '50%' };
   expect(t('en', progress, params)).toBe('10 of 20 (50%)');
   expect(t('pt-BR', progress, params)).toBe('10 de 20 (50%)');
-  expect(t('en', 'common.row-count', { count: 12 })).toBe('12 records');
-  expect(t('pt-BR', 'common.row-count', { count: 12 })).toBe('12 registros');
+  expect(tCount('en', 'common.row-count', 12)).toBe('12 records');
+  expect(tCount('pt-BR', 'common.row-count', 12)).toBe('12 registros');
   for (const key of Object.keys(en) as MessageKey[]) {
     const names = [...en[key].matchAll(/\{([a-z]+)\}/g)].map(match => match[1]!);
     const samples = Object.fromEntries(names.map(name => [name, 'sample']));

@@ -23,3 +23,15 @@ export function t(locale: Locale, key: MessageKey, params?: MessageParams): stri
 export function tr(locale: Locale, ref: TextRef): string {
   return Object.hasOwn(en, ref.key) ? t(locale, ref.key as MessageKey, ref.params) : `[[${ref.key}]]`;
 }
+
+/** Keys that exist in a singular and a plural form: `<base>.one` and `<base>.other`. */
+export type CountKey = { [K in MessageKey]: K extends `${infer B}.one` ? (`${B}.other` extends MessageKey ? B : never) : never }[MessageKey];
+
+/**
+ * A counted text. Exactly one uses `<base>.one`, everything else (including zero) uses `<base>.other`, in both languages, so
+ * every Library picks the same form. The count is passed to the text as `{count}`.
+ */
+export function tCount(locale: Locale, base: CountKey, count: number, params?: MessageParams): string {
+  const form = count === 1 ? 'one' : 'other';
+  return t(locale, `${base}.${form}` as MessageKey, { ...params, count });
+}
