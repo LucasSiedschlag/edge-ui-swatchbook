@@ -1,9 +1,9 @@
 // @vitest-environment happy-dom
 import {
-  TEST_IDS, alarmListView, alarmPriorityLabels, alarmStateLabels, connectivityView, en, eventActionLabels,
-  eventLogView, eventTargetLabels, eventValueLabelKey, formatDateTime, formatDuration, formatNumber,
+  EVENT_LOG_DEFAULT_RANGE, TEST_IDS, alarmListView, alarmPriorityLabels, alarmStateLabels, connectivityView, en, eventActionLabels,
+  eventLogView, eventTargetLabels, formatDateTime, formatDuration, formatNumber,
   formatPercentValue, generateMockDataset, linkStatusLabels, ptBR, rangeLabels, roleLabels, simulate, t, tr,
-  type AlarmFilters, type ConnectivitySort, type EventFilters, type EventRow, type RangeId,
+  type AlarmFilters, type ConnectivitySort, type EventFilters, type RangeId,
 } from '@swatchbook/core';
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
@@ -13,7 +13,7 @@ const ids = TEST_IDS.control;
 const dataset = generateMockDataset();
 let view: Awaited<ReturnType<typeof mountApp>> | undefined;
 beforeEach(() => { localStorage.clear(); document.body.innerHTML = ''; });
-afterEach(async () => { await view?.unmount(); view = undefined; history.replaceState(null, '', '/'); vi.restoreAllMocks(); });
+afterEach(async () => { await view?.unmount(); view = undefined; history.replaceState(null, '', '/'); vi.useRealTimers(); vi.restoreAllMocks(); });
 const start = async () => { view = await mountApp('#/control', { dataset }); };
 const text = (id: string) => one(id).textContent ?? '';
 const tableRows = (id: string) => [...one(id).querySelectorAll<HTMLElement>('tbody tr[data-row-key]')];
@@ -27,7 +27,7 @@ const key = (target: Element, value: string, extra: KeyboardEventInit = {}) => a
 async function select(id: string, label: string) {
   if (one(id).querySelector('input')?.getAttribute('aria-expanded') !== 'true') await openSelect(id);
   const dropdown = [...document.querySelectorAll<HTMLElement>('.ant-select-dropdown')].find(el => !el.classList.contains('ant-select-dropdown-hidden'))!;
-  const option = [...dropdown.querySelectorAll<HTMLElement>('.ant-select-item-option')].find(el => el.textContent === label || el.textContent?.includes(label));
+  const option = [...dropdown.querySelectorAll<HTMLElement>('.ant-select-item-option')].find(el => el.textContent === label);
   if (!option) throw new Error(`no option ${label}`);
   await click(option);
   await key(one(id).querySelector('input')!, 'Escape', { keyCode: 27 });
@@ -41,12 +41,8 @@ async function clear(id: string) {
 function expectAlarms(filters: AlarmFilters = {}) {
   expect(rowKeys(ids.alarmList)).toEqual(alarmListView(plantState(), 0, filters).rows.map(row => row.id));
 }
-function expectEvents(filters: EventFilters = { range: 'last-24h' }) {
+function expectEvents(filters: EventFilters = { range: EVENT_LOG_DEFAULT_RANGE }) {
   expect(rowKeys(ids.eventLog)).toEqual(eventLogView(plantState(), 0, filters).rows.map(row => row.id));
-}
-function eventValue(row: EventRow, value: EventRow['oldValue']) {
-  const label = eventValueLabelKey(row.action, value);
-  return value === null ? en['common.none'] : label ? t('en', label) : typeof value === 'number' ? formatNumber('en', value, { decimals: 2 }) : value;
 }
 
 it('renders the required IDs, repeated Alarm row and selection IDs, and core content in order', async () => {
@@ -63,6 +59,10 @@ it('renders the required IDs, repeated Alarm row and selection IDs, and core con
   expect(byId(ids.alarmSelect)).toHaveLength(alarms.length);
   expectAlarms();
   expectEvents();
+  for (const id of [ids.alarmList, ids.eventLog]) {
+    expect(one(id).querySelectorAll('table')).toHaveLength(1);
+    expect(one(id).querySelector('table')?.style.tableLayout).not.toBe('fixed');
+  }
   expect((one(ids.acknowledge) as HTMLButtonElement).disabled).toBe(true);
   for (const row of alarms) {
     const element = alarmRow(row.id);
@@ -88,7 +88,7 @@ it('filters Alarms by priority, state, Area and Line, combines filters, and clea
   await clear(ids.alarmFilterState);
   await select(ids.alarmFilterArea, en['area.extrusion']);
   expectAlarms({ areaId: 'extrusion' });
-  await select(ids.alarmFilterLine, 'E1');
+  await select(ids.alarmFilterLine, `E1 · ${tr('en', dataset.lines.find(line => line.id === 'E1')!.name)}`);
   expectAlarms({ areaId: 'extrusion', lineId: 'E1' });
   await select(ids.alarmFilterArea, en['area.assembly']);
   expectAlarms({ areaId: 'assembly', lineId: 'E1' });
@@ -103,7 +103,7 @@ it('shows the Alarm empty state on idle C1 and clears selection when filtering',
   await start();
   await selectAlarm(alarmListView(plantState(), 0).rows[0]!.id);
   expect((one(ids.acknowledge) as HTMLButtonElement).disabled).toBe(false);
-  await select(ids.alarmFilterLine, 'C1');
+  await select(ids.alarmFilterLine, `C1 · ${tr('en', dataset.lines.find(line => line.id === 'C1')!.name)}`);
   expect(byId(ids.alarmRow)).toHaveLength(0);
   expect(byId(ids.alarmEmpty)).toHaveLength(1);
   expect(text(ids.alarmEmpty)).toContain(en['control.alarm-empty']);
@@ -151,9 +151,50 @@ it('uses the runtime a shortcut for multi-selection and lets core report repeate
   expect(plantState()).toBe(state);
   expect(plantState().events).toHaveLength(before + 2);
   expect(document.body.textContent).toContain(en['control.already-acknowledged']);
+  const firstNotice = document.querySelector('[role="alert"]');
   await click(one(ids.acknowledge));
   expect(plantState()).toBe(state);
+  expect(document.querySelector('[role="alert"]')).not.toBe(firstNotice);
+  expect(document.body.textContent).toContain(en['control.already-acknowledged']);
+  // Clear the notice through a selection change, then select an acknowledged Alarm again.
+  for (const row of selected) await selectAlarm(row.id);
+  expect(document.body.textContent).not.toContain(en['control.already-acknowledged']);
+  await selectAlarm(selected[0]!.id);
+  expect((one(ids.acknowledge) as HTMLButtonElement).disabled).toBe(false);
+  await click(one(ids.acknowledge));
+  expect(plantState().events).toHaveLength(before + 2);
+  expect(document.body.textContent).toContain(en['control.already-acknowledged']);
   expectEvents();
+});
+
+it('adds exactly one event for a mixed acknowledged and unacknowledged selection', async () => {
+  await start();
+  const rows = alarmListView(plantState(), 0).rows;
+  const acknowledged = rows.find(row => row.state === 'active-acknowledged')!;
+  const unacknowledged = rows.find(row => row.state === 'active-unacknowledged')!;
+  await selectAlarm(acknowledged.id);
+  await selectAlarm(unacknowledged.id);
+  const before = plantState().events.length;
+  await click(one(ids.acknowledge));
+  expect(plantState().events).toHaveLength(before + 1);
+  expect(plantState().events.at(-1)).toMatchObject({ action: 'alarm-acknowledge', target: unacknowledged.id });
+});
+
+it('updates Alarm Age with the live clock and preserves selection across a tick', async () => {
+  vi.useFakeTimers();
+  let clock = 0;
+  view = await mountApp('#/control', { dataset, search: '', now: () => clock });
+  const target = alarmListView(plantState(), 0).rows.find(row => row.state === 'active-acknowledged')!;
+  const age = () => alarmRow(target.id).querySelectorAll('td')[7]!.textContent;
+  await selectAlarm(target.id);
+  const before = age();
+  expect(before).toBe(formatDuration(target.ageSeconds));
+  clock = 60_000;
+  await act(async () => { await vi.advanceTimersByTimeAsync(1100); });
+  expect(age()).not.toBe(before);
+  expect(age()).toBe(formatDuration(target.ageSeconds + 60));
+  expect(alarmRow(target.id).querySelector<HTMLInputElement>('input')!.checked).toBe(true);
+  expect((one(ids.acknowledge) as HTMLButtonElement).disabled).toBe(false);
 });
 
 it('keeps shortcuts inactive in text controls and dialogs, rejects repeats, and focuses filters with /', async () => {
@@ -184,9 +225,16 @@ it('renders Event Log Users, Roles, action and target types, notes and old/new v
     const element = tableRows(ids.eventLog).find(row => row.dataset.rowKey === event.id)!;
     const values = [formatDateTime('en', event.at), event.userName, t('en', roleLabels[event.role]),
       t('en', eventActionLabels[event.action]), t('en', eventTargetLabels[event.targetKind]), event.target,
-      eventValue(event, event.oldValue), eventValue(event, event.newValue),
       event.note === null ? en['common.none'] : typeof event.note === 'string' ? event.note : tr('en', event.note)];
-    expect([...element.querySelectorAll('td')].map(cell => cell.textContent)).toEqual(values);
+    const cells = [...element.querySelectorAll('td')].map(cell => cell.textContent);
+    expect([...cells.slice(0, 6), cells[8]]).toEqual(values);
+  }
+  for (const [id, values] of [
+    ['EV-0678', ['Active, unacknowledged', 'Active, acknowledged']],
+    ['EV-0653', ['2.62', '2.47']],
+  ] as const) {
+    const element = tableRows(ids.eventLog).find(row => row.dataset.rowKey === id)!;
+    expect([...element.querySelectorAll('td')].slice(6, 8).map(cell => cell.textContent)).toEqual(values);
   }
 });
 
@@ -253,8 +301,9 @@ it('uses core diagnostics sorts in both directions, including null latency last 
 
 it('opens the Offline Machine Alarm by alarmId even when Alarm filters hide it', async () => {
   await start();
+  const scroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
   const offline = connectivityView(dataset, simulate(dataset, 0, plantState().overlay)).find(row => row.alarmId)!;
-  await select(ids.alarmFilterLine, 'C1');
+  await select(ids.alarmFilterLine, `C1 · ${tr('en', dataset.lines.find(line => line.id === 'C1')!.name)}`);
   expect(byId(ids.alarmEmpty)).toHaveLength(1);
   const diagnostic = tableRows(ids.diagnostics).find(row => row.dataset.rowKey === offline.machineId)!;
   const link = diagnostic.querySelector('button')!;
@@ -265,6 +314,7 @@ it('opens the Offline Machine Alarm by alarmId even when Alarm filters hide it',
   expect(byId(ids.alarmEmpty)).toHaveLength(0);
   const target = alarmRow(offline.alarmId!);
   expect(document.activeElement).toBe(target);
+  expect(scroll).toHaveBeenCalledWith({ block: 'nearest' });
   expect(target.querySelector<HTMLInputElement>('input')!.checked).toBe(true);
   expect(target.textContent).toContain(offline.machineId);
 });
@@ -272,6 +322,7 @@ it('opens the Offline Machine Alarm by alarmId even when Alarm filters hide it',
 it('renders Portuguese labels, translated event values and empty states without fallback keys', async () => {
   view = await mountApp('#/control', { dataset, languages: ['pt-BR'] });
   expect(document.documentElement.lang).toBe('pt-BR');
+  expect(one(ids.alarmList).querySelector('thead input')?.getAttribute('aria-label')).toBe(ptBR['control.select-all-alarms']);
   for (const label of ['control.alarms', 'control.filter-alarms', 'control.alarm-priority', 'control.alarm-state',
     'control.event-role', 'control.event-old-value', 'control.event-new-value', 'control.event-note',
     'control.diagnostics', 'control.diagnostics-sort', 'control.diagnostics-heartbeat'] as const) {
@@ -283,7 +334,7 @@ it('renders Portuguese labels, translated event values and empty states without 
   expect(tableRows(ids.eventLog)[0]!.textContent).toContain(ptBR['alarm-state.active-acknowledged']);
   await click(one(ids.acknowledge));
   expect(document.body.textContent).toContain(ptBR['control.already-acknowledged']);
-  await select(ids.alarmFilterLine, 'C1');
+  await select(ids.alarmFilterLine, `C1 · ${tr('pt-BR', dataset.lines.find(line => line.id === 'C1')!.name)}`);
   expect(text(ids.alarmEmpty)).toContain(ptBR['control.alarm-empty']);
   const user = dataset.users.find(user => user.role === 'operator')!;
   await select(ids.eventFilterUser, user.name);

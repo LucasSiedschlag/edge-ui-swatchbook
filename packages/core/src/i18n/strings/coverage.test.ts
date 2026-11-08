@@ -316,7 +316,7 @@ const manifest: Record<string, ScreenCoverage> = {
         "scope.line",
       ],
       "Acknowledge": [
-        "action.alarm-acknowledge",
+        "action.alarm-acknowledge", "control.select-all-alarms",
       ],
       "Filter the Event Log": [
         "control.filter-events", "control.event-user", "control.event-action", "control.event-range",

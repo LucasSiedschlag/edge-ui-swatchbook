@@ -1,5 +1,5 @@
 import {
-  TEST_IDS, alarmListView, alarmPriorityLabels, alarmStateLabels, connectivityView, eventActionLabels,
+  DIAGNOSTICS_DEFAULT_SORT, EVENT_LOG_DEFAULT_RANGE, TEST_IDS, alarmListView, alarmPriorityLabels, alarmStateLabels, connectivityView, eventActionLabels,
   eventLogView, eventTargetLabels, eventValueLabelKey, linkStatusLabels, rangeLabels, roleLabels,
   type AlarmFilters, type AlarmRow, type ConnectivitySort, type EventFilters, type EventRow, type MessageKey,
 } from '@swatchbook/core';
@@ -23,7 +23,7 @@ function Filter({ label, children }: { label: string; children: ReactNode }) {
 function EventLog() {
   const { state, tick, dataset } = useSimulation();
   const { t, tr, formatDateTime, formatNumber, tCount } = useI18n();
-  const [filters, setFilters] = useState<EventFilters>({ range: 'last-24h' });
+  const [filters, setFilters] = useState<EventFilters>({ range: EVENT_LOG_DEFAULT_RANGE });
   const events = eventLogView(state, tick, filters);
   const value = (row: EventRow, raw: EventRow['oldValue']) => {
     if (raw === null) return t('common.none');
@@ -66,7 +66,7 @@ function EventLog() {
         <Typography.Text type="secondary">{tCount('common.row-count', events.rows.length)}</Typography.Text>
         <Table<EventRow>
           data-testid={ids.eventLog} rowKey="id" size="small" pagination={false}
-          scroll={{ x: 'max-content', y: 360 }} dataSource={events.rows}
+          dataSource={events.rows}
           locale={{ emptyText: <Empty data-testid={ids.eventEmpty} description={t('control.event-empty')} /> }}
           columns={[
             { key: 'time', title: t('common.time'), render: (_, row) => formatDateTime(row.at) },
@@ -90,7 +90,7 @@ function EventLog() {
 function Diagnostics({ openAlarm }: { openAlarm(id: string): void }) {
   const { dataset, snapshot } = useSimulation();
   const { t, formatNumber, formatPercentValue, formatDateTime } = useI18n();
-  const [sort, setSort] = useState<ConnectivitySort>({ column: 'status', direction: 'asc' });
+  const [sort, setSort] = useState<ConnectivitySort>(DIAGNOSTICS_DEFAULT_SORT);
   const sorts = (Object.entries(SORT_COLUMNS) as [ConnectivitySort['column'], MessageKey][]).flatMap(([column, key]) =>
     DIRECTIONS.map(direction => ({
       value: `${column}-${direction}`, column, direction,
@@ -135,14 +135,18 @@ export function Control() {
   const [filters, setFilters] = useState<AlarmFilters>({});
   const [selection, setSelection] = useState<Key[]>([]);
   const [notice, setNotice] = useState<MessageKey | null>(null);
+  const [noticeType, setNoticeType] = useState<'info' | 'warning'>('info');
+  const [acknowledgeAttempts, setAcknowledgeAttempts] = useState(0);
   const [focusedAlarm, setFocusedAlarm] = useState<string | null>(null);
   const priorityFilter = useRef<RefSelectProps>(null);
   const alarms = alarmListView(state, tick, filters);
   const selectedIds = alarms.rows.filter(row => selection.includes(row.id)).map(row => row.id);
 
   function acknowledge() {
+    setAcknowledgeAttempts(attempts => attempts + 1);
     if (!selectedIds.length) return false;
     const result = dispatch({ type: 'acknowledge', alarmIds: selectedIds });
+    setNoticeType(result.ok ? 'info' : 'warning');
     setNotice(result.ok ? result.events.length === 0 ? 'control.already-acknowledged' : null : actionErrorLabel(result));
   }
   useShortcutHandlers({ acknowledge, 'focus-search': () => priorityFilter.current?.focus() });
@@ -211,13 +215,14 @@ export function Control() {
             <Button data-testid={ids.acknowledge} type="primary" disabled={!selectedIds.length} onClick={acknowledge}>{t('action.alarm-acknowledge')}</Button>
             <Typography.Text>{tCount('common.selected-count', selectedIds.length)}</Typography.Text>
           </Space>
-          {notice && <Alert type="info" showIcon title={t(notice)} />}
+          {notice && <Alert key={acknowledgeAttempts} type={noticeType} showIcon title={t(notice)} />}
           <Table<AlarmRow>
             data-testid={ids.alarmList} rowKey="id" size="small" pagination={false}
-            dataSource={alarms.rows} scroll={{ x: 'max-content', y: 360 }}
+            dataSource={alarms.rows}
             onRow={row => ({ id: alarmElementId(row.id), 'data-testid': ids.alarmRow, tabIndex: -1 })}
             rowSelection={{
-              selectedRowKeys: selectedIds, onChange: setSelection,
+              selectedRowKeys: selectedIds, onChange: keys => { setSelection(keys); setNotice(null); },
+              getTitleCheckboxProps: () => ({ 'aria-label': t('control.select-all-alarms') }),
               getCheckboxProps: row => ({ 'data-testid': ids.alarmSelect, 'aria-label': t('control.select-alarm', { alarm: row.id }) }),
             }}
             locale={{ emptyText: <Empty data-testid={ids.alarmEmpty} description={t('control.alarm-empty')} /> }}
