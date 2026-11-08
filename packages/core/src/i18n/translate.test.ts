@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LOCALES } from '../index';
-import { t, tr, tCount, resolveLocale } from './translate';
+import { t, tr, tCount, resolveLocale, type CountKey } from './translate';
 
 describe('translation', () => {
   it('matches supported locales and resolves the first supported browser language', () => {
@@ -52,15 +52,15 @@ describe('tCount', () => {
 
   it('covers the other counted texts and accepts extra params', () => {
     expect(tCount('en', 'common.row-count', 1)).toBe('1 record');
-    expect(tCount('pt-BR', 'common.row-count', 5000)).toBe('5000 registros');
+    expect(tCount('pt-BR', 'common.row-count', 5000)).toBe('5.000 registros');
     expect(tCount('en', 'common.selected-count', 1)).toBe('1 selected');
     expect(tCount('pt-BR', 'ledger.selected-hidden', 1)).toBe('1 lote de produção selecionado oculto pelos filtros');
   });
 
   it('only accepts keys that have both forms (a compile time check)', () => {
-    expect(() => {
-      // @ts-expect-error a key without .one and .other is not a counted text
-      tCount('en', 'deck.pause', 1);
-    }).toThrow();
+    // @ts-expect-error 'deck.batch' is a real key without .one and .other, so it is not a counted text
+    const wrong: CountKey = 'deck.batch';
+    expect(wrong).toBe('deck.batch');
+    expect(tCount('en', 'common.row-count', 5000)).toBe('5,000 records');
   });
 });

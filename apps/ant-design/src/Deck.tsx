@@ -1,5 +1,5 @@
 import {
-  TEST_IDS, deckView, formatTagValue, lineStatusLabels, shiftLabels, stopReasonLabels, type DeckView, type LineId, type MessageKey, type PlantAction,
+  DEFAULT_DECK_LINE, TEST_IDS, deckView, formatTagValue, lineStatusLabels, shiftLabels, stopReasonLabels, type DeckView, type LineId, type MessageKey, type PlantAction,
 } from '@swatchbook/core';
 import { actionErrorLabel, useActions, useI18n, useSimulation } from '@swatchbook/runtime';
 import { Alert, Button, Card, Col, Descriptions, Input, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
@@ -80,6 +80,8 @@ function BatchBlock({ view }: { view: DeckView }) {
               { key: 'version', label: t('event-target.recipe-version'), children: formatNumber(batch.recipeVersion) },
               { key: 'start', label: t('common.start'), children: formatDateTime(batch.start) },
               { key: 'elapsed', label: t('deck.batch-elapsed'), children: formatDuration(batch.elapsedMs / 1000) },
+              { key: 'produced', label: t('deck.batch-produced'), children: formatNumber(batch.producedUnits) },
+              { key: 'target', label: t('deck.batch-target'), children: formatNumber(batch.targetUnits) },
             ]}
           />
           <div data-testid={ids.batchProgress}>
@@ -115,6 +117,9 @@ function Kpis({ view }: { view: DeckView }) {
   const speed = kpis.lineSpeed;
   const cycle = kpis.cycle;
   return (
+    <section aria-label={t('deck.kpis')}>
+    <Typography.Title level={5} style={{ marginTop: 0 }}>{t('deck.kpis')}</Typography.Title>
+    {!view.hasProduction && <Typography.Paragraph data-testid={ids.kpiEmpty} type="secondary">{t('deck.kpi-empty')}</Typography.Paragraph>}
     <Row gutter={[16, 16]}>
       <Col span={6}>
         <Kpi
@@ -155,6 +160,7 @@ function Kpis({ view }: { view: DeckView }) {
         <Kpi testId={ids.kpiScrap} title={t('deck.kpi-scrap')} value={formatNumber(kpis.scrapThisShift)} />
       </Col>
     </Row>
+    </section>
   );
 }
 
@@ -167,6 +173,9 @@ function AlarmBanner({ view }: { view: DeckView }) {
   return (
     <Alert
       data-testid={ids.alarmBanner}
+      // The Age column changes every second, so this must not be an assertive live region.
+      role="region"
+      aria-label={t('deck.alarm-banner')}
       type={count > 0 ? 'error' : 'info'}
       showIcon
       title={tCount('deck.alarm-count', count)}
@@ -199,6 +208,9 @@ function ShiftBlock({ view }: { view: DeckView }) {
   const { shift } = view;
   return (
     <Card title={t('deck.shift')} data-testid={ids.shift} style={{ height: '100%' }}>
+      {!view.hasShift ? (
+        <Typography.Text data-testid={ids.shiftEmpty} type="secondary">{t('deck.shift-empty')}</Typography.Text>
+      ) : (
       <Descriptions
         size="small"
         column={1}
@@ -209,6 +221,7 @@ function ShiftBlock({ view }: { view: DeckView }) {
           { key: 'end', label: t('common.end'), children: formatTime(shift.endsAt) },
         ]}
       />
+      )}
     </Card>
   );
 }
@@ -219,8 +232,6 @@ function Actions({ view, lineId }: { view: DeckView; lineId: LineId }) {
   const [error, setError] = useState<MessageKey | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [handover, setHandover] = useState<{ note: string; error: MessageKey | null } | null>(null);
-  const [lastLine, setLastLine] = useState(lineId);
-  if (lastLine !== lineId) { setLastLine(lineId); setError(null); setConfirming(false); }
 
   function run(action: PlantAction): MessageKey | null {
     const refused = actionErrorLabel(dispatch(action));
@@ -235,9 +246,9 @@ function Actions({ view, lineId }: { view: DeckView; lineId: LineId }) {
         <Button data-testid={ids.resume} disabled={!actions.resume} onClick={() => run({ type: 'resume', lineId })}>{t('action.resume')}</Button>
         <Button data-testid={ids.estop} danger type="primary" disabled={!actions.emergencyStop} onClick={() => setConfirming(true)}>{t('action.emergency-stop')}</Button>
         <Button data-testid={ids.reset} disabled={!actions.reset} onClick={() => run({ type: 'reset', lineId })}>{t('action.reset')}</Button>
-        <Button data-testid={ids.handover} disabled={!actions.shiftHandover} onClick={() => setHandover({ note: '', error: null })}>{t('deck.handover')}</Button>
+        <Button data-testid={ids.handover} disabled={!actions.shiftHandover} onClick={() => setHandover({ note: '', error: null })}>{t('action.shift-handover')}</Button>
       </Space>
-      <ErrorAlert messageKey={error} testId="deck.action-error" />
+      <ErrorAlert messageKey={error} testId={ids.actionError} />
       <Modal
         destroyOnHidden
         open={confirming}
@@ -285,18 +296,18 @@ function Actions({ view, lineId }: { view: DeckView; lineId: LineId }) {
 
 export function Deck() {
   const { state, snapshot, tick } = useSimulation();
-  const [lineId, setLineId] = useState<LineId>('E1');
+  const [lineId, setLineId] = useState<LineId>(DEFAULT_DECK_LINE);
   const view = deckView(state, snapshot, lineId, tick);
   return (
     <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
       <LineHeader view={view} lineId={lineId} onChange={setLineId} />
-      <AlarmBanner view={view} />
+      <AlarmBanner key={lineId} view={view} />
       <Row gutter={[16, 16]}>
         <Col span={16}><BatchBlock view={view} /></Col>
         <Col span={8}><ShiftBlock view={view} /></Col>
       </Row>
       <Kpis view={view} />
-      <Card><Actions view={view} lineId={lineId} /></Card>
+      <Card><Actions key={lineId} view={view} lineId={lineId} /></Card>
     </Space>
   );
 }

@@ -4,7 +4,7 @@ import {
 } from '@swatchbook/core';
 import { act } from 'react';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
-import { byId, click, mountApp, endMotion, one, openDialogs, pickOption, plantState } from './test-utils';
+import { byId, choose, click, mountApp, memoryStorage, endMotion, one, openDialogs, openSelect, options, pickOption, plantState } from './test-utils';
 
 const ids = TEST_IDS.deck;
 let view: Awaited<ReturnType<typeof mountApp>> | undefined;
@@ -29,8 +29,66 @@ it('shows E1 at tick 0 in Alarm with one Critical Alarm and the right buttons', 
 
 it('lists every Line with its status in the selector', async () => {
   view = await mountApp('#/deck');
+  await openSelect(ids.lineSelect);
+  const shown = options();
+  expect(shown).toHaveLength(plantState().dataset.lines.length);
+  const statusLabels = Object.values(lineStatusLabels).map(key => t('en', key));
+  for (const option of shown) expect(statusLabels.some(label => option.textContent?.includes(label)), option.textContent ?? '').toBe(true);
   await pickOption(ids.lineSelect, 'A2');
   expect(text(ids.lineStatus)).toContain(t('en', lineStatusLabels.stopped));
+});
+
+it('keeps the selected Line when the language or the theme changes', async () => {
+  view = await mountApp('#/deck');
+  await line('A2');
+  await choose(TEST_IDS.shell.language, en['language.portuguese']);
+  await choose(TEST_IDS.shell.theme, ptBR['theme.dark']);
+  expect(text(ids.lineSelect)).toContain('A2');
+});
+
+it('renders the banner as a labelled region, not an assertive alert, and starts it collapsed on every Line', async () => {
+  view = await mountApp('#/deck');
+  const banner = one(ids.alarmBanner);
+  expect(banner.getAttribute('role')).toBe('region');
+  expect(banner.getAttribute('aria-label')).toBe(en['deck.alarm-banner']);
+  await click(banner.querySelector('button')!);
+  expect(banner.querySelector('table')).not.toBeNull();
+  await line('E2');
+  await line('E1');
+  expect(one(ids.alarmBanner).querySelector('table')).toBeNull();
+});
+
+it('shows the assigned labels: Shift handover action, KPI heading, produced and target', async () => {
+  view = await mountApp('#/deck');
+  expect(text(ids.handover)).toBe(en['action.shift-handover']);
+  expect(document.body.textContent).toContain(en['deck.kpis']);
+  expect(text(ids.batch)).toContain(en['deck.batch-produced']);
+  expect(text(ids.batch)).toContain(en['deck.batch-target']);
+});
+
+it('shows the KPI empty note only when the Line has no production', async () => {
+  view = await mountApp('#/deck');
+  expect(byId(ids.kpiEmpty)).toHaveLength(0);
+  expect(byId(ids.shiftEmpty)).toHaveLength(0);
+  await line('C1');
+  expect(byId(ids.batchEmpty)).toHaveLength(1);
+  expect(text(ids.kpiEmpty)).toBe(en['deck.kpi-empty']);
+});
+
+it('stores only language, theme and density, and no Plant State', async () => {
+  const storage = memoryStorage();
+  view = await mountApp('#/deck', { storage });
+  await click(one(ids.pause));
+  await choose(TEST_IDS.shell.language, en['language.portuguese']);
+  expect([...storage.data.keys()]).toEqual(['swatchbook.preferences']);
+  expect(Object.keys(JSON.parse(storage.data.get('swatchbook.preferences')!)).sort()).toEqual(['density', 'language', 'theme']);
+});
+
+it('ignores a screen shortcut while the Emergency stop dialog is open', async () => {
+  view = await mountApp('#/deck');
+  await click(one(ids.estop));
+  await act(() => { document.activeElement?.dispatchEvent(new KeyboardEvent('keydown', { key: '3', bubbles: true })); });
+  expect(location.hash).toBe('#/deck');
 });
 
 it('shows Fault on A2 and the empty Batch state on C1', async () => {

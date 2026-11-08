@@ -27,9 +27,12 @@ function Header() {
   const library = useLibrary();
   const tour = useTour();
   const { screen } = useRoute();
+  const { token } = theme.useToken();
   return (
-    <Layout.Header style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap', height: 'auto', lineHeight: 'normal', paddingBlock: 12 }}>
-      <Typography.Title level={4} style={{ margin: 0, color: 'inherit', whiteSpace: 'nowrap' }}>{t('shell.app-title')}</Typography.Title>
+    <Layout.Header
+      style={{ display: 'flex', alignItems: 'center', gap: 24, flexWrap: 'wrap', height: 'auto', lineHeight: 'normal', paddingBlock: 12, background: token.colorBgContainer, borderBlockEnd: 'solid', borderWidth: 1, borderColor: token.colorBorderSecondary }}
+    >
+      <Typography.Title level={4} style={{ margin: 0, whiteSpace: 'nowrap' }}>{t('shell.app-title')}</Typography.Title>
       <Space size="large" wrap style={{ marginInlineStart: 'auto' }}>
         <Control label={t('shell.library-picker')}>
           <Select
@@ -100,10 +103,11 @@ function TourBanner() {
   return (
     <Alert
       data-testid={TEST_IDS.shell.tour}
+      role="status"
       type="info"
       showIcon={false}
       style={{ marginBottom: 16 }}
-      title={`${t(tour.step.titleKey)} - ${t('tour.progress', { current: tour.index + 1, total: tour.total })}`}
+      title={<Space><span>{t(tour.step.titleKey)}</span><Typography.Text type="secondary">{t('tour.progress', { current: tour.index + 1, total: tour.total })}</Typography.Text></Space>}
       description={t(tour.step.noteKey)}
       action={
         <Space>
@@ -121,12 +125,14 @@ function Navigation() {
   const { screen, go } = useRoute();
   return (
     <Layout.Sider width={280} theme="light">
+      <nav aria-label={t('shell.navigation')}>
       <Menu
         mode="inline"
         selectedKeys={[screen]}
         onClick={({ key }) => go(key as ScreenId)}
         items={SCREENS.map(entry => ({ key: entry.id, label: t(screenLabels[entry.id]), 'data-testid': shellNavId(entry.id) }))}
       />
+      </nav>
     </Layout.Sider>
   );
 }

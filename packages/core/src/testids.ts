@@ -40,6 +40,9 @@ export const TEST_IDS = {
     reset: 'deck.reset',
     handover: 'deck.handover',
     handoverNote: 'deck.handover-note',
+    actionError: 'deck.action-error',
+    kpiEmpty: 'deck.kpi-empty',
+    shiftEmpty: 'deck.shift-empty',
     shift: 'deck.shift',
   },
   recipes: {

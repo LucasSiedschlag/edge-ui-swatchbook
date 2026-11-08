@@ -1,3 +1,4 @@
+import { formatNumber } from './format';
 import type { TextRef } from '../mock/types';
 import { en, ptBR, type MessageKey } from './messages';
 import type { Locale, MessageParams } from './types';
@@ -33,5 +34,5 @@ export type CountKey = { [K in MessageKey]: K extends `${infer B}.one` ? (`${B}.
  */
 export function tCount(locale: Locale, base: CountKey, count: number, params?: MessageParams): string {
   const form = count === 1 ? 'one' : 'other';
-  return t(locale, `${base}.${form}` as MessageKey, { ...params, count });
+  return t(locale, `${base}.${form}` as MessageKey, { ...params, count: formatNumber(locale, count) });
 }

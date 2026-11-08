@@ -291,6 +291,7 @@ const base: Record<BaseKey, string> = {
   "theme.light": "Claro",
   "theme.dark": "Escuro",
   "shell.density": "Densidade",
+  "shell.navigation": "Navegação",
   "density.comfortable": "Confortável",
   "density.compact": "Compacta",
   "density.unsupported": "Não disponível nesta Biblioteca",

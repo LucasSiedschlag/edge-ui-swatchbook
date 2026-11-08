@@ -73,6 +73,12 @@ const manifest: Record<string, ScreenCoverage> = {
       "No Critical Alarms: the banner shows zero and cannot expand.": [
         "deck.alarm-empty",
       ],
+      "No Batch and nothing made this Shift on the Line: the KPI block shows the empty note under the KPIs.": [
+        "deck.kpi-empty",
+      ],
+      "No current Shift in the Snapshot: the Shift block shows an empty state.": [
+        "deck.shift-empty",
+      ],
     },
   },
   recipes: {

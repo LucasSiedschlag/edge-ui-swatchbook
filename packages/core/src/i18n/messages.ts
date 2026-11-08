@@ -247,6 +247,7 @@ const base = {
   "theme.light": "Light",
   "theme.dark": "Dark",
   "shell.density": "Density",
+  "shell.navigation": "Navigation",
   "density.comfortable": "Comfortable",
   "density.compact": "Compact",
   "density.unsupported": "Not supported by this Library",
