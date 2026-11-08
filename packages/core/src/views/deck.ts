@@ -5,6 +5,9 @@ import type { BatchProgress, LineLive } from '../sim/kpis';
 import type { Snapshot } from '../sim/simulate';
 import { criticalBannerView } from './banner';
 
+/** The Line the Deck shows first. */
+export const DEFAULT_DECK_LINE: LineId = 'E1';
+
 export interface DeckLine extends LineStatus { id: LineId }
 export interface DeckSelected { id: LineId; status: LineStatus['status']; stopReason: LineStatus['reason']; criticalAlarms: number }
 export interface DeckBatch extends BatchProgress { productCode: string; recipeVersion: number; start: number }
@@ -20,6 +23,10 @@ export interface DeckView {
   selected: DeckSelected;
   batch: DeckBatch | null;
   emptyBatch: boolean;
+  /** False when the Line has no Batch and has made nothing this Shift, so no live KPI data is shown. */
+  hasProduction: boolean;
+  /** False when the Snapshot carries no usable current Shift. */
+  hasShift: boolean;
   kpis: DeckKpis;
   banner: ReturnType<typeof criticalBannerView>;
   shift: DeckShift;
@@ -70,6 +77,8 @@ export function deckView(state: PlantState, snapshot: Snapshot, lineId: LineId, 
     actions: actionsAt(state, lineId, tick),
     lines, selected: { id: lineId, status: selected.status, stopReason: selected.reason, criticalAlarms: selected.criticalAlarms },
     batch, emptyBatch: batch === null,
+    hasProduction: batch !== null || live.outputThisShift > 0 || live.scrapThisShift > 0,
+    hasShift: snapshot.shift.endsAt > snapshot.shift.startsAt,
     kpis: { kind: line.type === 'assembly' ? 'cycle' : 'lineSpeed', oee: live.oee, availability: live.availability, performance: live.performance, quality: live.quality,
       outputThisShift: live.outputThisShift, scrapThisShift: live.scrapThisShift, cycle: live.cycle, lineSpeed: live.lineSpeed },
     banner: criticalBannerView(state, tick, lineId),

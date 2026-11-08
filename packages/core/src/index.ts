@@ -27,4 +27,4 @@ export { activeRecipeParameter } from './parameters';
 export { STEP_KINDS, SHIFT_IDS, BATCH_STATUSES } from './mock/types';
 export { batchModel } from './sim/kpis';
 export { MAX_TREND_TAGS, TAKT_SECONDS, NEVER } from './limits';
-export { TEST_IDS, ledgerFilterId } from './testids';
+export { TEST_IDS, ledgerFilterId, shellNavId } from './testids';

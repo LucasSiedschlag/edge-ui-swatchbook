@@ -11,6 +11,14 @@ Each spec says what a Screen must show, which actions it offers, and which state
 | 5 | Live Parameter Matrix | `/parameters` | [05-live-parameter-matrix.md](05-live-parameter-matrix.md) |
 | 6 | Control Room Command | `/control` | [06-control-room-command.md](06-control-room-command.md) |
 
+## Shell
+
+Every Library has the same Shell around the Screens: a header with the Library picker, language switch, theme toggle, density toggle, preset picker and Tour start, plus navigation with the six Screens. Planned Libraries are shown disabled. While the Tour is active, a neutral banner shows the Screen name, the note and `Step x of y` with Previous, Next and Finish. The route is the single source of the Tour step.
+
+Required test IDs: `shell.nav-deck`, `shell.nav-recipes`, `shell.nav-ledger`, `shell.nav-performance`, `shell.nav-parameters`, `shell.nav-control`, `shell.library-picker`, `shell.language`, `shell.theme`, `shell.density`, `shell.preset`, `shell.tour-start`, `shell.tour`, `shell.tour-previous`, `shell.tour-next`, `shell.tour-finish`.
+
+A Screen that is not built yet in a Library shows a translated placeholder block with `data-testid="<route>.placeholder"` (for example `deck.placeholder`). It is not a required ID.
+
 ## The plant
 
 A fictional PVC window and door frame maker in the Joinville/SC region. 3 Areas, 7 Lines, 27 Machines.
