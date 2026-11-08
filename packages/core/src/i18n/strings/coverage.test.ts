@@ -5,6 +5,7 @@ import performanceSpec from '../../../../../docs/screens/04-plant-performance-ce
 import parametersSpec from '../../../../../docs/screens/05-live-parameter-matrix.md?raw';
 import controlSpec from '../../../../../docs/screens/06-control-room-command.md?raw';
 import { describe, expect, it } from 'vitest';
+import { controlCoverage } from './control-coverage';
 import { en, ptBR, type MessageKey } from '../messages';
 
 // This manifest names UI elements, not layouts. Exact action rows and State lines
@@ -32,7 +33,7 @@ const manifest: Record<string, ScreenCoverage> = {
         "deck.kpi-takt", "deck.kpi-speed", "deck.kpi-scrap", "deck.kpi-empty",
       ],
       "Critical alarm banner": [
-        "deck.alarm-banner", "deck.alarm-count", "term.machine", "common.message",
+        "deck.alarm-banner", "deck.alarm-count.other", "term.machine", "common.message",
         "common.age",
       ],
       "Current Shift": [
@@ -73,6 +74,12 @@ const manifest: Record<string, ScreenCoverage> = {
       "No Critical Alarms: the banner shows zero and cannot expand.": [
         "deck.alarm-empty",
       ],
+      "No Batch and nothing made this Shift on the Line: the KPI block shows the empty note under the KPIs.": [
+        "deck.kpi-empty",
+      ],
+      "No current Shift in the Snapshot: the Shift block shows an empty state.": [
+        "deck.shift-empty",
+      ],
     },
   },
   recipes: {
@@ -81,7 +88,7 @@ const manifest: Record<string, ScreenCoverage> = {
       "Recipe library": [
         "recipes.library", "recipes.column-recipe-id", "recipes.column-name", "common.product",
         "recipes.filter-line-type", "recipes.column-version", "recipes.filter-status", "recipes.search-placeholder",
-        "common.search", "common.row-count",
+        "common.search", "common.row-count.other",
       ],
       "Recipe Version view": [
         "recipes.version", "recipes.steps", "recipes.step-number", "recipes.step-kind",
@@ -137,7 +144,7 @@ const manifest: Record<string, ScreenCoverage> = {
         "ledger.grid", "common.batch-id", "term.lot", "ledger.column.upstream-lot",
         "scope.area", "scope.line", "common.product", "event-target.recipe-version",
         "event-target.shift", "common.start", "common.end", "common.duration",
-        "common.status", "ledger.column.yield", "ledger.column.scrap", "common.row-count",
+        "common.status", "ledger.column.yield", "ledger.column.scrap", "common.row-count.other",
         "ledger.filter-column", "ledger.search-placeholder", "ledger.compare-panel", "ledger.drawer.header",
         "ledger.drawer.genealogy", "ledger.drawer.parameters", "ledger.drawer.alarms", "ledger.genealogy.material-lot",
         "ledger.genealogy.extrusion-run", "ledger.genealogy.metalwork-lot", "ledger.genealogy.assembly-serial", "common.actual",
@@ -155,10 +162,10 @@ const manifest: Record<string, ScreenCoverage> = {
         "ledger.filter-column", "common.filter", "common.from", "common.to",
       ],
       "Clear filters": [
-        "action.clear-filters", "common.row-count",
+        "action.clear-filters", "common.row-count.other",
       ],
       "Select rows": [
-        "ledger.select-batch", "ledger.selected-hidden", "common.selected-count", "common.select-item",
+        "ledger.select-batch", "ledger.selected-hidden.other", "common.selected-count.other", "common.select-item",
         "ledger.result.selected", "ledger.result.deselected",
       ],
       "Compare": [
@@ -286,55 +293,7 @@ const manifest: Record<string, ScreenCoverage> = {
       ],
     },
   },
-  control: {
-    file: "06-control-room-command.md",
-    shows: {
-      "Active alarm list": [
-        "control.alarms", "control.alarm-priority", "control.alarm-state", "scope.line",
-        "term.machine", "common.message", "control.alarm-raised", "common.age",
-        "control.alarm-acknowledged-by", "control.select-alarm",
-      ],
-      "Event Log": [
-        "term.event-log", "common.time", "control.event-user", "control.event-role",
-        "control.event-action", "control.event-target", "control.event-target-kind", "control.event-old-value",
-        "control.event-new-value", "control.event-note", "common.change", "control.event-range",
-      ],
-      "Communication diagnostics": [
-        "control.diagnostics", "term.machine", "parameters.link-status", "control.diagnostics-latency",
-        "control.diagnostics-packet-loss", "control.diagnostics-heartbeat", "control.diagnostics-error-count", "control.diagnostics-empty",
-      ],
-    },
-    actions: {
-      "Filter Alarms": [
-        "control.filter-alarms", "control.alarm-priority", "control.alarm-state", "scope.area",
-        "scope.line",
-      ],
-      "Acknowledge": [
-        "action.alarm-acknowledge",
-      ],
-      "Filter the Event Log": [
-        "control.filter-events", "control.event-user", "control.event-action", "control.event-range",
-      ],
-      "Sort diagnostics": [
-        "control.diagnostics-sort", "common.sort", "parameters.link-status", "control.diagnostics-latency",
-        "control.diagnostics-packet-loss", "term.machine",
-      ],
-    },
-    states: {
-      "No active Alarms: empty state in the list.": [
-        "control.alarm-empty",
-      ],
-      "Event Log filter with no match: empty state.": [
-        "control.event-empty",
-      ],
-      "Offline Machine: shown first in diagnostics and linked to its Alarm if one exists.": [
-        "link-status.offline", "control.open-machine-alarm",
-      ],
-      "Acknowledging an Alarm that is already acknowledged: no change, no log entry.": [
-        "control.already-acknowledged",
-      ],
-    },
-  },
+  control: controlCoverage,
 };
 
 function section(spec: string, heading: string): string {
@@ -383,7 +342,9 @@ describe('Screen spec coverage', () => {
       const referenced = new Set(Object.values(entry).flatMap(value =>
         typeof value === 'string' ? [] : Object.values(value).flat()));
       for (const key of Object.keys(en).filter(key => key.startsWith(`${screen}.`))) {
-        expect(referenced.has(key as MessageKey), `${key} needs a required-element reference`).toBe(true);
+        // A counted text has a singular and a plural key; the element references the plural one and the singular is covered with it.
+        const covered = key.endsWith('.one') ? `${key.slice(0, -4)}.other` : key;
+        expect(referenced.has(covered as MessageKey), `${key} needs a required-element reference`).toBe(true);
       }
     });
   }

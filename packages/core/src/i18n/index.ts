@@ -1,6 +1,6 @@
 export { en, ptBR, type MessageKey } from './messages';
 export type { Locale, MessageParams } from './types';
-export { t, tr, resolveLocale } from './translate';
+export { t, tr, tCount, resolveLocale, type CountKey } from './translate';
 export {
   formatNumber, formatPercent, formatPercentValue, formatDate, formatTime, formatDateTime, formatDuration,
   type NumberOptions, type TimeOptions,

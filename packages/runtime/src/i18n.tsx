@@ -1,12 +1,12 @@
 import {
-  t, tr, formatNumber, formatPercent, formatPercentValue, formatTime, formatDate, formatDateTime, formatDuration, type Locale,
+  t, tr, tCount, formatNumber, formatPercent, formatPercentValue, formatTime, formatDate, formatDateTime, formatDuration, type Locale,
 } from '@swatchbook/core';
 import { useMemo } from 'react';
 import { usePreferences } from './preferences';
 
 export function bindI18n(locale: Locale) {
   return {
-    locale, t: t.bind(null, locale), tr: tr.bind(null, locale),
+    locale, t: t.bind(null, locale), tr: tr.bind(null, locale), tCount: tCount.bind(null, locale),
     formatNumber: formatNumber.bind(null, locale), formatPercent: formatPercent.bind(null, locale),
     formatPercentValue: formatPercentValue.bind(null, locale), formatTime: formatTime.bind(null, locale),
     formatDate: formatDate.bind(null, locale), formatDateTime: formatDateTime.bind(null, locale), formatDuration,

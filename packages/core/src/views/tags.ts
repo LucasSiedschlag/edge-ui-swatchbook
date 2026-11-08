@@ -79,13 +79,15 @@ export interface ConnectivityRow {
 const LINK_RANK: Record<LinkStatus, number> = { offline: 0, degraded: 1, online: 2 };
 
 export interface ConnectivitySort { column: 'status' | 'latency' | 'packetLoss' | 'machine'; direction: 'asc' | 'desc' }
+
+export const DIAGNOSTICS_DEFAULT_SORT: ConnectivitySort = { column: 'status', direction: 'asc' };
 /**
  * Default: Offline, Degraded, Online, then Machine id. Explicit status uses that severity order.
  * Explicit sorts put nulls last in both directions; ties always use Machine id ascending.
  */
 export function connectivityView(d: MockDataset, snapshot: Snapshot, sort?: ConnectivitySort): ConnectivityRow[] {
   assertSessionTick(snapshot.tick);
-  const { column, direction } = sort ?? { column: 'status', direction: 'asc' };
+  const { column, direction } = sort ?? DIAGNOSTICS_DEFAULT_SORT;
   if (!['status', 'latency', 'packetLoss', 'machine'].includes(column)) throw new Error('unknown connectivity column');
   if (direction !== 'asc' && direction !== 'desc') throw new Error('unknown connectivity direction');
   const alarmByMachine = new Map<string, string>();

@@ -8,6 +8,8 @@ import { simulatedTime } from '../sim/clock';
 import { type RangeId, rangeWindow } from './ranges';
 export type { RangeId } from './ranges';
 
+export const EVENT_LOG_DEFAULT_RANGE: RangeId = 'last-24h';
+
 interface EventFilterValues {
   userId?: string;
   actions?: EventAction[];

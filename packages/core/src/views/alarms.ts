@@ -21,11 +21,13 @@ export interface AlarmRow {
   lineId: LineId;
   areaId: AreaId;
   machineId: string;
+  machineName: TextRef;
   tagId: string | null;
   message: TextRef;
   raisedAt: Timestamp;
   ageSeconds: number;
   acknowledgedBy: string | null;
+  acknowledgedByName: string | null;
   canAcknowledge: boolean;
 }
 
@@ -42,6 +44,8 @@ export function alarmListView(state: PlantState, tick: number, input: AlarmFilte
   const now = simulatedTime(tick);
   const states = filters.states ?? DEFAULT_STATES;
   const areaOfLine = new Map(state.dataset.lines.map((l) => [l.id, l.areaId]));
+  const machines = new Map(state.dataset.machines.map(machine => [machine.id, machine]));
+  const users = new Map(state.dataset.users.map(user => [user.id, user]));
   const rows: AlarmRow[] = [];
   for (const a of alarmList(state, tick)) {
     const areaId = areaOfLine.get(a.lineId)!;
@@ -51,6 +55,7 @@ export function alarmListView(state: PlantState, tick: number, input: AlarmFilte
     if (filters.lineId && filters.lineId !== a.lineId) continue;
     rows.push({
       id: a.id, priority: a.priority, state: a.state, lineId: a.lineId, areaId, machineId: a.machineId, tagId: a.tagId,
+      machineName: machines.get(a.machineId)!.name, acknowledgedByName: a.acknowledgedBy === null ? null : users.get(a.acknowledgedBy)!.name,
       message: a.message, raisedAt: a.raisedAt, ageSeconds: (now - a.raisedAt) / 1000, acknowledgedBy: a.acknowledgedBy,
       canAcknowledge: a.state === 'active-unacknowledged' || a.state === 'returned-unacknowledged',
     });

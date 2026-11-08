@@ -5,7 +5,10 @@ import type { EventLogEntry } from '../mock/types';
 import { createPlantState, reduce } from '../plant';
 import type { PlantAction, PlantState } from '../plant';
 import { shiftInfo, simulatedTime } from '../sim/clock';
-import { eventLogView } from './events';
+import { EVENT_LOG_DEFAULT_RANGE, eventLogView } from './events';
+import { rangeLabels } from '../i18n';
+
+it('exports a valid Event Log default range', () => { expect(Object.keys(rangeLabels)).toContain(EVENT_LOG_DEFAULT_RANGE); });
 
 const d = generateMockDataset();
 const start = () => createPlantState(d);

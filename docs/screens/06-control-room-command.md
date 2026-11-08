@@ -14,14 +14,14 @@ Route `/control`. Alarms, the Event Log and communication diagnostics.
 |--------|--------|
 | Filter Alarms | By priority, state, Area and Line. |
 | Acknowledge | One or several selected Alarms, with `a` or a button. An active unacknowledged Alarm becomes active acknowledged. A returned to normal unacknowledged Alarm becomes cleared. Logged. |
-| Filter the Event Log | By User, action type and time range (the four standard ranges). |
+| Filter the Event Log | By User, action type and time range (the four standard ranges); default range: Last 24 hours. |
 | Sort diagnostics | By status severity (Offline, Degraded, Online), latency, packet loss or Machine id. Default is severity then Machine id. Explicit sorts put null latency last in both directions and break ties by Machine id ascending. |
 
 ## States
 
-- No active Alarms: empty state in the list.
+- No active Alarms with no filters: `control.alarm-empty`. With any filter set, including Cleared only: `control.alarm-empty-filtered`.
 - Event Log filter with no match: empty state.
-- Offline Machine: shown first in diagnostics and linked to its Alarm if one exists.
+- Offline Machine: shown first in diagnostics and linked to its Alarm if one exists. Opening the link clears Alarm filters, scrolls to and focuses its Alarm row without changing the selection.
 - Acknowledging an Alarm that is already acknowledged: no change, no log entry.
 
 ## Required test IDs
