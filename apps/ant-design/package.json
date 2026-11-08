@@ -10,6 +10,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@ant-design/icons": "^6.3.4",
     "@swatchbook/charts": "workspace:*",
     "@swatchbook/core": "workspace:*",
     "@swatchbook/runtime": "workspace:*",

@@ -38,6 +38,21 @@ it('lists every Line with its status in the selector', async () => {
   expect(text(ids.lineStatus)).toContain(t('en', lineStatusLabels.stopped));
 });
 
+it('names every Line option and the Batch progress for assistive technology, in both languages', async () => {
+  view = await mountApp('#/deck');
+  await openSelect(ids.lineSelect);
+  const named = [...document.querySelectorAll('[role="option"]')].map(o => o.getAttribute('aria-label'));
+  // The list is virtual, so only the rows near the top are in the DOM.
+  expect(named.length).toBeGreaterThan(0);
+  for (const label of named) expect(label, String(label)).toMatch(/^[A-Z]+\d /);
+  expect(named.some(label => label?.includes(t('en', lineStatusLabels.alarm)))).toBe(true);
+  const bar = one(ids.batchProgress).querySelector('[role="progressbar"]')!;
+  expect(bar.getAttribute('aria-label')).toBe(en['deck.batch']);
+  expect(bar.getAttribute('aria-valuetext')).toMatch(/\d.* \d/);
+  const icon = one(ids.alarmBanner).querySelector('[role="img"]')!;
+  expect(icon.getAttribute('aria-hidden')).toBe('true');
+});
+
 it('keeps the selected Line when the language or the theme changes', async () => {
   view = await mountApp('#/deck');
   await line('A2');
@@ -230,14 +245,14 @@ it('renders in Portuguese without fallback keys', async () => {
 });
 
 it('freezes the clock with ?tick=0 and moves with a live clock', async () => {
+  vi.useFakeTimers();
   let clock = 0;
   view = await mountApp('#/deck?tick=0', { search: '', now: () => clock });
   const frozen = text(ids.batch);
   clock = 600_000;
-  await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+  await act(async () => { await vi.advanceTimersByTimeAsync(3100); });
   expect(text(ids.batch)).toBe(frozen);
   await view.unmount();
-  vi.useFakeTimers();
   clock = 0;
   view = await mountApp('#/deck', { search: '', now: () => clock });
   const live = text(ids.batch);

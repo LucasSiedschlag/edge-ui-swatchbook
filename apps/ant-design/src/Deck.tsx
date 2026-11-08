@@ -3,6 +3,7 @@ import {
 } from '@swatchbook/core';
 import { actionErrorLabel, useActions, useI18n, useSimulation } from '@swatchbook/runtime';
 import { Alert, Button, Card, Col, Descriptions, Input, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { CloseCircleFilled, InfoCircleFilled } from '@ant-design/icons';
 import { useState, type ReactNode } from 'react';
 
 const ids = TEST_IDS.deck;
@@ -37,6 +38,8 @@ function LineHeader({ view, lineId, onChange }: { view: DeckView; lineId: LineId
           onChange={onChange}
           options={view.lines.map(line => ({
             value: line.id,
+            // The visible label is JSX, so screen readers need the same words as text.
+            'aria-label': [line.id, tr(dataset.lines.find(entry => entry.id === line.id)!.name), t(lineStatusLabels[line.status])].join(' '),
             label: (
               <Space>
                 <Typography.Text strong>{line.id}</Typography.Text>
@@ -64,6 +67,9 @@ function LineHeader({ view, lineId, onChange }: { view: DeckView; lineId: LineId
 function BatchBlock({ view }: { view: DeckView }) {
   const { t, formatDateTime, formatDuration, formatNumber, formatPercentValue } = useI18n();
   const batch = view.batch;
+  const progressText = batch && t('deck.batch-progress', {
+    produced: formatNumber(batch.producedUnits), target: formatNumber(batch.targetUnits), percent: formatPercentValue(batch.percent),
+  });
   return (
     <Card title={t('deck.batch')} data-testid={ids.batch} style={{ height: '100%' }}>
       {batch === null ? (
@@ -87,9 +93,9 @@ function BatchBlock({ view }: { view: DeckView }) {
           <div data-testid={ids.batchProgress}>
             <Progress
               percent={batch.percent}
-              format={() => t('deck.batch-progress', {
-                produced: formatNumber(batch.producedUnits), target: formatNumber(batch.targetUnits), percent: formatPercentValue(batch.percent),
-              })}
+              aria-label={t('deck.batch')}
+              aria-valuetext={progressText}
+              format={() => progressText}
             />
           </div>
         </Space>
@@ -164,6 +170,11 @@ function Kpis({ view }: { view: DeckView }) {
   );
 }
 
+function AlertIcon({ critical }: { critical: boolean }) {
+  const Icon = critical ? CloseCircleFilled : InfoCircleFilled;
+  return <Icon aria-hidden />;
+}
+
 function AlarmBanner({ view }: { view: DeckView }) {
   const { t, tr, tCount, formatDuration } = useI18n();
   const { dataset } = useSimulation();
@@ -178,6 +189,8 @@ function AlarmBanner({ view }: { view: DeckView }) {
       aria-label={t('deck.alarm-banner')}
       type={count > 0 ? 'error' : 'info'}
       showIcon
+      // The default icon is named in English ("close-circle"), so hide it; the text carries the meaning.
+      icon={<AlertIcon critical={count > 0} />}
       title={tCount('deck.alarm-count', count)}
       description={
         expanded ? (

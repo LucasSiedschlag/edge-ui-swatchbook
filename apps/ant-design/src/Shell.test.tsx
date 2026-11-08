@@ -6,6 +6,8 @@ import { byId, choose, click, memoryStorage, mountApp, one, options, openSelect,
 let view: Awaited<ReturnType<typeof mountApp>> | undefined;
 beforeEach(() => { localStorage.clear(); document.body.innerHTML = ''; });
 afterEach(async () => { await view?.unmount(); view = undefined; history.replaceState(null, '', '/'); });
+/** All CSS Ant Design has injected, so a token change shows up here. */
+const antStyles = () => [...document.querySelectorAll('style')].map(el => el.textContent).join('\n');
 const root = () => document.querySelector<HTMLElement>('[data-app-root]')!;
 
 it('renders the six navigation items and follows the route', async () => {
@@ -30,10 +32,13 @@ it('toggles theme and density on the ConfigProvider and persists them', async ()
   view = await mountApp('#/deck', { storage: window.localStorage });
   expect(root().dataset.theme).toBe('light');
   expect(root().dataset.density).toBe('comfortable');
+  const lightStyles = antStyles();
   await choose(TEST_IDS.shell.theme, en['theme.dark']);
   await choose(TEST_IDS.shell.density, en['density.compact']);
   expect(root().dataset.theme).toBe('dark');
   expect(root().dataset.density).toBe('compact');
+  // The Ant Design algorithms, not only the attributes the app sets: dark and compact change the rendered CSS.
+  expect(antStyles()).not.toBe(lightStyles);
   expect(JSON.parse(localStorage.getItem(PREFERENCES_KEY)!)).toMatchObject({ theme: 'dark', density: 'compact' });
 });
 
