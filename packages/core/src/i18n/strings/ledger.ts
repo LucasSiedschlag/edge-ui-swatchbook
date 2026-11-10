@@ -4,6 +4,9 @@
  * lote da metalurgia and número de série da montagem. Upstream Lot uses lote rastreável de origem.
  */
 export const en = {
+  "ledger.duration-minutes": "Duration (min)",
+  "ledger.select-all": "Select all visible Batches (maximum four)",
+  "ledger.sort-default": "Restore default sort",
   "ledger.grid": "Historical Batches",
   "ledger.column.upstream-lot": "Upstream Lot",
   "ledger.column.yield": "Yield percentage",
@@ -38,6 +41,9 @@ export const en = {
 } as const;
 
 export const ptBR: Record<keyof typeof en, string> = {
+  "ledger.duration-minutes": "Duração (min)",
+  "ledger.select-all": "Selecionar todos os lotes de produção visíveis (máximo quatro)",
+  "ledger.sort-default": "Restaurar ordenação padrão",
   "ledger.grid": "Lotes de produção históricos",
   "ledger.column.upstream-lot": "Lote rastreável de origem",
   "ledger.column.yield": "Rendimento percentual",

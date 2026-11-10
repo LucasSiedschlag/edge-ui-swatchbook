@@ -36,3 +36,9 @@ The 14 filter IDs use the exact `ledgerView` filter names; `ledgerFilterId(colum
 ## Out of scope
 
 Editing Batches, export, saved filter sets, grouping and aggregation.
+
+## Shared view defaults and presentation
+
+Core exports `LEDGER_DEFAULT_FILTERS` (no filters), `LEDGER_DEFAULT_SORT` (start descending), `MIN_COMPARE` (2) and `MAX_COMPARE` (4). `nextLedgerSort` cycles a newly chosen column ascending, then descending, then restores the default sort. There is always an active sort. Duration filters use minutes; core also supplies duration seconds for display. Row names and active filter descriptions come from core through `ledgerFilterDescriptions`, `ledgerFilterLabels` and `ledgerGenealogyLabels`. `LEDGER_SORT_COLUMNS` lists the supported sort fields. Every Genealogy node naming an existing Batch links to that Batch, including the current one. Select-all is unavailable when visible rows plus hidden selections exceed four. Its accessible label describes the four-Batch maximum. Comparison refusal remains focusable and describes the reason. Selection changes report selected or deselected; refusals use a warning status. Date ranges include whole local dates in `America/Sao_Paulo`.
+
+Additional bilingual labels: `ledger.duration-minutes`, `ledger.select-all`, `ledger.sort-default`.

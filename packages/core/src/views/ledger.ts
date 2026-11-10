@@ -1,3 +1,4 @@
+import { t, tr, formatNumber, formatPercentValue, formatDuration, type Locale, type MessageKey } from '../i18n';
 import { SHIFT_IDS, BATCH_STATUSES } from '../mock/types';
 import { normalizeFilters, type FilterInput } from './filters';
 import { spDayStart, spDayEnd } from '../mock/time';
@@ -23,11 +24,25 @@ export interface LedgerRow {
   start: number;
   end: number;
   durationMinutes: number;
+  durationSeconds: number;
+  areaName: TextRef;
+  lineName: TextRef;
+  productName: TextRef;
   status: BatchStatus;
   yieldPct: number;
   scrap: number;
 }
-export type LedgerColumn = keyof LedgerRow;
+export type LedgerColumn = Exclude<keyof LedgerRow, 'areaName' | 'lineName' | 'productName' | 'durationSeconds'>;
+export type LedgerSort = NonNullable<LedgerQuery['sort']> & { default?: true };
+export const LEDGER_DEFAULT_SORT: LedgerSort = Object.freeze({ column: 'start', direction: 'desc', default: true });
+export const LEDGER_DEFAULT_FILTERS: LedgerFilterValues = Object.freeze({});
+export const MIN_COMPARE = 2;
+
+/** A header cycles ascending, descending, then the default order, without an unsorted state. */
+export function nextLedgerSort(current: LedgerSort, column: LedgerColumn): LedgerSort {
+  return current.default || current.column !== column ? { column, direction: 'asc' }
+    : current.direction === 'asc' ? { column, direction: 'desc' } : LEDGER_DEFAULT_SORT;
+}
 export interface LedgerRange { min?: number; max?: number }
 /** Lists combine with AND. Local start dates and numeric ranges are inclusive. */
 export interface LedgerFilterValues {
@@ -63,6 +78,7 @@ export interface LedgerView {
   selectedCount: number;
   /** Count of distinct selected Batches absent from the filtered rows. */
   selectedHidden: number;
+  canSelectAll: boolean;
 }
 
 interface BaseRows {
@@ -80,14 +96,17 @@ function baseOf(d: MockDataset): BaseRows {
   const lots = new Map(d.lots.map(l => [l.id, l]));
   const lines = new Map(d.lines.map(l => [l.id, l]));
   const products = new Map(d.products.map(p => [p.id, p]));
+  const areas = new Map(d.areas.map(a => [a.id, a]));
   // Finished history always reads Mock Dataset versions; only running Batches use session versions.
   const versions = new Map(d.recipeVersions.map(v => [v.id, v]));
   const rows = d.batches.map((b): Readonly<LedgerRow> => Object.freeze({
     batchId: b.id, lotId: b.lotId, upstreamLotId: lots.get(b.lotId)!.upstreamLotId,
     areaId: lines.get(b.lineId)!.areaId, lineId: b.lineId,
+    areaName: areas.get(lines.get(b.lineId)!.areaId)!.name,
+    lineName: lines.get(b.lineId)!.name, productName: products.get(b.productId)!.name,
     productId: b.productId, productCode: products.get(b.productId)!.code,
     recipeVersionId: b.recipeVersionId, recipeVersion: versions.get(b.recipeVersionId)!.number,
-    shift: b.shift, start: b.start, end: b.end, durationMinutes: (b.end - b.start) / 60000,
+    shift: b.shift, start: b.start, end: b.end, durationMinutes: (b.end - b.start) / 60000, durationSeconds: (b.end - b.start) / 1000,
     status: b.status, yieldPct: b.yieldPct, scrap: b.scrap,
   }));
   base = {
@@ -98,15 +117,15 @@ function baseOf(d: MockDataset): BaseRows {
   return base;
 }
 
-const COLUMNS: readonly LedgerColumn[] = ['batchId', 'lotId', 'upstreamLotId', 'areaId', 'lineId', 'productId', 'productCode', 'recipeVersionId', 'recipeVersion', 'shift', 'start', 'end', 'durationMinutes', 'status', 'yieldPct', 'scrap'];
+export const LEDGER_SORT_COLUMNS: readonly LedgerColumn[] = ['batchId', 'lotId', 'upstreamLotId', 'areaId', 'lineId', 'productId', 'productCode', 'recipeVersionId', 'recipeVersion', 'shift', 'start', 'end', 'durationMinutes', 'status', 'yieldPct', 'scrap'];
 export const LEDGER_FILTER_COLUMNS = ['batchId', 'lotId', 'upstreamLotId', 'areas', 'lines', 'products', 'recipeVersion', 'shifts', 'start', 'end', 'duration', 'statuses', 'yield', 'scrap'] as const satisfies readonly (keyof LedgerFilterValues)[];
 export type LedgerFilterColumn = typeof LEDGER_FILTER_COLUMNS[number];
 const inRange = (n: number, r?: LedgerRange) => !r || ((r.min === undefined || n >= r.min) && (r.max === undefined || n <= r.max));
 
 /** Finished Batches only. Code point ordering, null first ascending. Batch id ties always ascend. */
 export function ledgerView(d: MockDataset, query: LedgerQuery): LedgerView {
-  const { column, direction } = query.sort ?? { column: 'start', direction: 'desc' };
-  if (!COLUMNS.includes(column)) throw new Error('unknown ledger column');
+  const { column, direction } = query.sort ?? LEDGER_DEFAULT_SORT;
+  if (!LEDGER_SORT_COLUMNS.includes(column)) throw new Error('unknown ledger column');
   if (direction !== 'asc' && direction !== 'desc') throw new Error('unknown ledger direction');
   const f = normalizeFilters<LedgerFilterValues>(query.filters);
   const choices: [readonly string[] | undefined, readonly string[]][] = [
@@ -146,8 +165,9 @@ export function ledgerView(d: MockDataset, query: LedgerQuery): LedgerView {
   rows.sort((a, b) => order(a[column], b[column]) * (direction === 'asc' ? 1 : -1) || order(a.batchId, b.batchId));
   const selected = new Set(query.selected ?? []);
   const visible = new Set(rows.map(r => r.batchId));
+  const selectedHidden = [...selected].filter(id => !visible.has(id)).length;
   return { rows, rowCount: rows.length, totalCount: base.rows.length, empty: rows.length === 0, activeFilters,
-    selectedCount: selected.size, selectedHidden: [...selected].filter(id => !visible.has(id)).length };
+    selectedCount: selected.size, selectedHidden, canSelectAll: rows.length + selectedHidden <= MAX_COMPARE };
 }
 
 
@@ -163,12 +183,12 @@ export function toggleSelection(selected: readonly string[], batchId: string): S
 
 export function canCompare(selected: readonly string[]): boolean {
   const count = new Set(selected).size;
-  return count >= 2 && count <= MAX_COMPARE;
+  return count >= MIN_COMPARE && count <= MAX_COMPARE;
 }
 
 export interface ParameterActual { actual: number | null; setpoint: number; deviationPct: number | null }
 export interface CompareParameter { key: string; name: TextRef; unit: string; values: (ParameterActual | null)[] }
-export type CompareColumn = Pick<LedgerRow, 'batchId' | 'durationMinutes' | 'yieldPct' | 'scrap' | 'status' | 'lineId'>;
+export type CompareColumn = Pick<LedgerRow, 'batchId' | 'durationMinutes' | 'durationSeconds' | 'yieldPct' | 'scrap' | 'status' | 'lineId'>;
 export type CompareView = { columns: CompareColumn[]; parameters: CompareParameter[] } | { error: 'compare-count' | 'unknown-batch' };
 
 function runParameters(version: RecipeVersion): Parameter[] {
@@ -195,7 +215,7 @@ export function compareBatches(d: MockDataset, ids: readonly string[]): CompareV
   return {
     columns: batches.map(b => {
       const row = base.rowsById.get(b.id)!;
-      return { batchId: row.batchId, durationMinutes: row.durationMinutes, yieldPct: row.yieldPct, scrap: row.scrap, status: row.status, lineId: row.lineId };
+      return { batchId: row.batchId, durationMinutes: row.durationMinutes, durationSeconds: row.durationSeconds, yieldPct: row.yieldPct, scrap: row.scrap, status: row.status, lineId: row.lineId };
     }),
     parameters: [...union].sort(([a], [b]) => order(a, b)).map(([key, p]) => ({
       key, name: p.name, unit: p.unit,
@@ -237,7 +257,7 @@ export function batchDetail(state: PlantState, tick: number, batchId: string): B
   const genealogy: DetailGenealogyNode[] = [];
   for (const kind of ['materialLot', 'extrusion', 'metalwork', 'assembly'] as const) {
     const node = chain?.[kind];
-    if (node) genealogy.push({ kind, ...node, linked: node.batchId !== null && node.batchId !== b.id && findBatch(d, node.batchId) !== undefined });
+    if (node) genealogy.push({ kind, ...node, linked: node.batchId !== null && findBatch(d, node.batchId) !== undefined });
   }
   const version = ('end' in b ? d.recipeVersions : state.recipeVersions).find(v => v.id === b.recipeVersionId)!;
   const parameters = runParameters(version).map((p): DetailParameter => {
@@ -255,4 +275,39 @@ export function batchDetail(state: PlantState, tick: number, batchId: string): B
       productCode: d.products.find(p => p.id === b.productId)!.code, start: b.start, end: completed ? end : null },
     genealogy, parameters, alarms,
   };
+}
+
+/** Shared labels for controls and active filter summaries. Duration ranges are minutes. */
+export const ledgerFilterLabels: Record<LedgerFilterColumn, MessageKey> = {
+  batchId: 'common.batch-id', lotId: 'term.lot', upstreamLotId: 'ledger.column.upstream-lot',
+  areas: 'scope.area', lines: 'scope.line', products: 'common.product', recipeVersion: 'event-target.recipe-version',
+  shifts: 'event-target.shift', start: 'common.start', end: 'common.end', duration: 'ledger.duration-minutes',
+  statuses: 'common.status', yield: 'ledger.column.yield', scrap: 'ledger.column.scrap',
+};
+export const ledgerGenealogyLabels: Record<GenealogyKind, MessageKey> = {
+  materialLot: 'ledger.genealogy.material-lot', extrusion: 'ledger.genealogy.extrusion-run',
+  metalwork: 'ledger.genealogy.metalwork-lot', assembly: 'ledger.genealogy.assembly-serial',
+};
+
+export function ledgerFilterDescriptions(d: MockDataset, filters: readonly ActiveFilter[], locale: Locale): string[] {
+  return filters.map(filter => {
+    const label = t(locale, ledgerFilterLabels[filter.column]);
+    let value: string;
+    switch (filter.column) {
+      case 'areas': value = filter.value.map(id => tr(locale, d.areas.find(a => a.id === id)!.name)).join(', '); break;
+      case 'lines': value = filter.value.map(id => `${id} · ${tr(locale, d.lines.find(l => l.id === id)!.name)}`).join(', '); break;
+      case 'products': value = filter.value.map(id => tr(locale, d.products.find(p => p.id === id)!.name)).join(', '); break;
+      case 'shifts': value = filter.value.map(id => t(locale, id === 'S1' ? 'shift.first' : id === 'S2' ? 'shift.second' : 'shift.third')).join(', '); break;
+      case 'statuses': value = filter.value.map(id => t(locale, `batch-status.${id}`)).join(', '); break;
+      case 'start': case 'end': value = [filter.value.fromDate && `${t(locale, 'common.from')}: ${filter.value.fromDate}`, filter.value.toDate && `${t(locale, 'common.to')}: ${filter.value.toDate}`].filter(Boolean).join(', '); break;
+      case 'recipeVersion': case 'yield': case 'scrap': case 'duration': {
+        const number = (n: number) => filter.column === 'yield' ? formatPercentValue(locale, n)
+          : filter.column === 'duration' ? formatDuration(n * 60) : formatNumber(locale, n, { decimals: filter.column === 'recipeVersion' || filter.column === 'scrap' ? 0 : 1 });
+        value = [filter.value.min !== undefined && `${t(locale, 'common.from')}: ${number(filter.value.min)}`, filter.value.max !== undefined && `${t(locale, 'common.to')}: ${number(filter.value.max)}`].filter(Boolean).join(', ');
+        break;
+      }
+      default: value = filter.value;
+    }
+    return `${label}: ${value}`;
+  });
 }

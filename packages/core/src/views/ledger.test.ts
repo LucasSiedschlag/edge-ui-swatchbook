@@ -1,7 +1,7 @@
 import { batchModel } from '../sim/kpis';
 import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
-import { batchDetail, canCompare, compareBatches, MAX_COMPARE, toggleSelection, ledgerView } from './ledger';
+import { batchDetail, canCompare, compareBatches, MAX_COMPARE, toggleSelection, ledgerView, LEDGER_SORT_COLUMNS, LEDGER_DEFAULT_SORT, nextLedgerSort, ledgerFilterDescriptions } from './ledger';
 
 import { alarmList, createPlantState } from '../plant';
 import { alarmListView } from './alarms';
@@ -20,9 +20,11 @@ describe('ledger rows', () => {
     expect(v.rows.find(r => r.batchId === b.id)).toEqual({
       batchId: b.id, lotId: b.lotId, upstreamLotId: d.lots.find(l => l.id === b.lotId)!.upstreamLotId,
       areaId: d.lines.find(l => l.id === b.lineId)!.areaId, lineId: b.lineId,
+      areaName: d.areas.find(a => a.id === d.lines.find(l => l.id === b.lineId)!.areaId)!.name,
+      lineName: d.lines.find(l => l.id === b.lineId)!.name, productName: d.products.find(p => p.id === b.productId)!.name,
       productId: b.productId, productCode: d.products.find(p => p.id === b.productId)!.code,
       recipeVersionId: b.recipeVersionId, recipeVersion: d.recipeVersions.find(r => r.id === b.recipeVersionId)!.number,
-      shift: b.shift, start: b.start, end: b.end, durationMinutes: (b.end - b.start) / 60000,
+      shift: b.shift, start: b.start, end: b.end, durationMinutes: (b.end - b.start) / 60000, durationSeconds: (b.end - b.start) / 1000,
       status: b.status, yieldPct: b.yieldPct, scrap: b.scrap,
     });
     expect(v.rows.every(r => !d.activeBatches.some(b => b.id === r.batchId))).toBe(true);
@@ -92,7 +94,7 @@ describe('ledger filters and ordering', () => {
     expect(active.find(f => f.column === 'scrap')!.value).not.toBe(filters.scrap);
   });
   it('sorts every column both ways, keeping Batch id ties ascending', () => {
-    const columns = Object.keys(ledgerView(d, {}).rows[0]!) as import('./ledger').LedgerColumn[];
+    const columns = LEDGER_SORT_COLUMNS;
     for (const column of columns) for (const direction of ['asc', 'desc'] as const) {
       const rows = ledgerView(d, { sort: { column, direction } }).rows;
       for (let i = 1; i < rows.length; i++) {
@@ -141,7 +143,7 @@ describe('ledger selection and comparison', () => {
     expect(v.columns.map(c => c.batchId)).toEqual(batches.map(b => b.id));
     const expectedKeys = new Set<string>();
     for (const [i, b] of batches.entries()) {
-      expect(v.columns[i]).toEqual({ batchId: b.id, durationMinutes: (b.end - b.start) / 60000, yieldPct: b.yieldPct, scrap: b.scrap, status: b.status, lineId: b.lineId });
+      expect(v.columns[i]).toEqual({ batchId: b.id, durationMinutes: (b.end - b.start) / 60000, durationSeconds: (b.end - b.start) / 1000, yieldPct: b.yieldPct, scrap: b.scrap, status: b.status, lineId: b.lineId });
       const parameters = d.recipeVersions.find(v => v.id === b.recipeVersionId)!.steps.filter(s => s.kind === 'run' || s.kind === 'process').flatMap(s => s.parameters);
       for (const p of parameters) expectedKeys.add(p.key);
       for (const row of v.parameters) {
@@ -168,7 +170,7 @@ describe('Batch detail', () => {
       const g = d.genealogies.find(g => g.lotId === b.lotId)!;
       const expected = (['materialLot', 'extrusion', 'metalwork', 'assembly'] as const).flatMap(kind => {
         const node = g[kind];
-        return node ? [{ kind, ...node, linked: node.batchId !== null && node.batchId !== b.id && [...d.batches, ...d.activeBatches].some(b => b.id === node.batchId) }] : [];
+        return node ? [{ kind, ...node, linked: node.batchId !== null && [...d.batches, ...d.activeBatches].some(b => b.id === node.batchId) }] : [];
       });
       expect(detail.genealogy).toEqual(expected);
       expect(detail.header).toEqual({ batchId: b.id, lotId: b.lotId, status: b.status, lineId: b.lineId, productCode: d.products.find(p => p.id === b.productId)!.code, start: b.start, end: b.end });
@@ -206,7 +208,7 @@ describe('Batch detail', () => {
     expect(detail.header).toMatchObject({ batchId: b.id, status: 'running', end: null });
     expect(detail.parameters.length).toBeGreaterThan(0);
     expect(detail.parameters.every(p => p.actual === null && p.deviationPct === null && p.insideLimits === null)).toBe(true);
-    expect(detail.genealogy.some(n => n.batchId === b.id && !n.linked)).toBe(true);
+    expect(detail.genealogy.some(n => n.batchId === b.id && n.linked)).toBe(true);
   });
 });
 
@@ -389,4 +391,19 @@ it('filters Recipe Version numbers and inclusive end dates as the remaining Ledg
   expect(rows.every(r => r.recipeVersion === 2 && r.end >= Date.UTC(2025, 11, 31, 3) && r.end < Date.UTC(2026, 0, 1, 3))).toBe(true);
   expect(() => ledgerView(d, { filters: { end: { fromDate: '2026-01-01', toDate: '2025-12-31' } } })).toThrow('end fromDate must not be after toDate');
   expect(() => ledgerView(d, { filters: { recipeVersion: { min: 3, max: 2 } } })).toThrow('recipeVersion min must not exceed max');
+});
+
+it('exports the sort cycle, duration units, selection safety and localized filter summaries', () => {
+  expect(nextLedgerSort({ ...LEDGER_DEFAULT_SORT }, 'start')).toEqual({ column: 'start', direction: 'asc' });
+  const asc = nextLedgerSort(LEDGER_DEFAULT_SORT, 'batchId');
+  expect(asc).toEqual({ column: 'batchId', direction: 'asc' });
+  const desc = nextLedgerSort(asc, 'batchId');
+  expect(desc).toEqual({ column: 'batchId', direction: 'desc' });
+  expect(nextLedgerSort(desc, 'batchId')).toEqual(LEDGER_DEFAULT_SORT);
+  expect(ledgerView(d, {}).canSelectAll).toBe(false);
+  expect(ledgerView(sample, {}).canSelectAll).toBe(true);
+  expect(ledgerView(sample, { selected: ['hidden', 'also-hidden'] }).canSelectAll).toBe(false);
+  const filters = ledgerView(d, { filters: { areas: ['extrusion'], duration: { min: 2.5 }, batchId: 'missing' } }).activeFilters;
+  expect(ledgerFilterDescriptions(d, filters, 'en')).toEqual(['Batch ID: missing', 'Area: Extrusion', 'Duration (min): From: 2 min 30 s']);
+  expect(ledgerFilterDescriptions(d, filters, 'pt-BR')).toEqual(['ID do lote de produção: missing', 'Área: Extrusão', 'Duração (min): De: 2 min 30 s']);
 });

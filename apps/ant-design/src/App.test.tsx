@@ -17,7 +17,7 @@ it.each(SCREENS.map(screen => screen.route))('mounts AppRoot at %s without error
     expect(byId(shellNavId(id as (typeof SCREENS)[number]['id']))).toHaveLength(1);
     expect(byId(TEST_IDS.shell.libraryPicker)).toHaveLength(1);
     expect(document.body.textContent).not.toContain('[[');
-    expect(byId(id === 'deck' ? TEST_IDS.deck.lineStatus : id === 'control' ? TEST_IDS.control.alarmList : id === 'performance' ? TEST_IDS.performance.oee : id === 'parameters' ? TEST_IDS.parameters.grid : `${id}.placeholder`)).toHaveLength(1);
+    expect(byId(id === 'ledger' ? TEST_IDS.ledger.grid : id === 'deck' ? TEST_IDS.deck.lineStatus : id === 'control' ? TEST_IDS.control.alarmList : id === 'performance' ? TEST_IDS.performance.oee : id === 'parameters' ? TEST_IDS.parameters.grid : `${id}.placeholder`)).toHaveLength(1);
     expect(errors).not.toHaveBeenCalled();
     expect(warnings).not.toHaveBeenCalled();
   } finally {
