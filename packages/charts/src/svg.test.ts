@@ -1,3 +1,4 @@
+import { downtimeLabels, t } from '@swatchbook/core';
 import { expect, it } from 'vitest';
 import { buildLineTrendOption, buildOutputOption, buildParetoOption } from './options';
 import { outputInput, paretoInput, trendInput } from './fixtures';
@@ -65,4 +66,51 @@ it.each([
   expect(longLines.length).toBeGreaterThanOrEqual(4);
   for (const coordinates of longLines) expect(coordinates.sort((a, b) => a! - b!)).toEqual([plotTop, plotBottom]);
   expect(legendBottom).toBeLessThan(plotTop);
+});
+
+it.each([
+  ['pareto', buildParetoOption(paretoInput), 'Minutes', 288.5],
+  ['output', buildOutputOption(outputInput), 'Good', 255.5],
+] as const)('reserves a separate rendered legend band for %s', (_, option, legend, plotBottom) => {
+  const svg = renderChartSvg(option, { width: 640, height: 320 });
+  const legendText = [...svg.matchAll(new RegExp(`<text[^>]*>${legend}</text>`, 'g'))].map(match => match[0]).find(text => text.includes('x="30"'))!;
+  const translateY = Number(legendText.match(/transform="translate\([^ ]+ ([^)]+)\)"/)![1]);
+  const localY = Number(legendText.match(/ y="([^"]+)"/)![1]);
+  expect([translateY + localY - 6, translateY + localY + 6]).toEqual([6.5, 18.5]);
+  const gridYs = [...svg.matchAll(/<path d="M[\d.]+ ([\d.]+)L[\d.]+ ([\d.]+)"[^>]*stroke="#dedede"[^>]*>/g)]
+    .filter(match => match[1] === match[2]).map(match => Number(match[1]));
+  expect([Math.min(...gridYs), Math.max(...gridYs)]).toEqual([83.5, plotBottom]);
+  expect(18.5).toBeLessThan(Math.min(...gridYs));
+});
+
+it.each(['en', 'pt-BR'] as const)('renders every full wrapped reason in %s at desktop chart widths', locale => {
+  const reasons = Object.keys(downtimeLabels) as (keyof typeof downtimeLabels)[];
+  const data = reasons.map((reason, i) => ({ reason, minutes: 8 - i, sharePct: 12.5, cumulativePct: (i + 1) * 12.5 }));
+  const input = { ...paretoInput, data, theme: { ...paretoInput.theme, fontSize: 14 }, labels: { ...paretoInput.labels, minutes: t(locale, 'performance.minutes'), cumulative: t(locale, 'performance.series.cumulative-percentage') }, formatters: { ...paretoInput.formatters, formatReason: (reason: string) => t(locale, downtimeLabels[reason as keyof typeof downtimeLabels]) } };
+  const option = buildParetoOption(input);
+  // Full categories also supply the tooltip header, without truncation.
+  expect(option.xAxis).toMatchObject({ data: reasons.map(input.formatters.formatReason), tooltip: { show: true } });
+  // Include chart widths inside a Shell at 1280/1440 and the viewport widths themselves.
+  for (const width of [880, 1040, 1280, 1440]) {
+    const svg = renderChartSvg(option, { width, height: 360 });
+    const textNodes = [...svg.matchAll(/<text([^>]*)>([^<]*)<\/text>/g)];
+    const byX = new Map<number, { text: string; ys: number[] }>();
+    for (const [, attributes, content] of textNodes) {
+      if (!attributes!.includes('text-anchor="middle"')) continue;
+      const position = attributes!.match(/transform="translate\(([-\d.]+) ([-\d.]+)\)"/);
+      if (!position) continue;
+      const x = Number(position[1]);
+      const y = Number(position[2]) + Number(attributes!.match(/ y="([-\d.]+)"/)?.[1] ?? 0);
+      const group = byX.get(x) ?? { text: '', ys: [] };
+      group.text += content!.replace(/\s/g, ''); group.ys.push(y); byX.set(x, group);
+    }
+    const centers = reasons.map(reason => {
+      const full = input.formatters.formatReason(reason).replace(/\s/g, '');
+      const found = [...byX].find(([, group]) => group.text === full);
+      expect(found, `${locale}/${width}/${reason}`).toBeDefined();
+      for (const y of found![1].ys) { expect(y - 7).toBeGreaterThan(0); expect(y + 7).toBeLessThanOrEqual(348); }
+      return found![0];
+    });
+    for (let i = 1; i < centers.length; i++) expect(centers[i]! - centers[i - 1]!).toBeGreaterThanOrEqual(80);
+  }
 });

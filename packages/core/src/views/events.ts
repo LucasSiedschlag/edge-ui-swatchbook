@@ -32,7 +32,7 @@ export interface EventRow {
   note: string | { key: string; params?: Record<string, string | number> } | null;
 }
 
-/** An entry is in a range when it falls in the rolling Event Log window: from its first instant (included) to its end (excluded). */
+/** An entry is in a range when it falls in the selected Event Log window: from its first instant (included) to its end (excluded). */
 function inRange(range: RangeId, at: Timestamp, tick: number): boolean {
   const w = rangeWindow(range, tick);
   return at >= w.start && at < w.end;

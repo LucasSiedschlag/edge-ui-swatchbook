@@ -118,3 +118,9 @@ export function formatChange(locale: Locale, delta: number, kind: 'points' | 'pe
   if (number === '-') return number;
   return `${number.startsWith('-') ? '' : '+'}${number}${kind === 'percent' ? '%' : ''}`;
 }
+
+/** Fraction differences shown as signed percentage points on the 0–100 scale. */
+export function formatPercentagePoints(locale: Locale, fraction: number): string {
+  const value = formatChange(locale, fraction * 100, 'points');
+  return value === '-' ? value : `${value} pp`;
+}
