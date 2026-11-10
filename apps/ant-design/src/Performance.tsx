@@ -1,17 +1,19 @@
+import { useChartTheme } from './useChartTheme';
 import {
   DECIMALS_BY_UNIT, PERFORMANCE_DEFAULT_RANGE, PERFORMANCE_DEFAULT_SCOPE, TEST_IDS, downtimeLabels, performanceReason,
-  performanceScopes, performanceStateView, rangeLabels, scopeLabels,
-  type OeeParts, type PerformanceShift, type RangeId, type Scope,
+  performanceScopes, performanceStateView, performanceTick, rangeLabels, scopeLabels, shiftLabels,
+  type HourlyRecord, type OeeParts, type PerformanceShift, type RangeId, type Scope,
 } from '@swatchbook/core';
 import { useI18n, usePreferences, useShortcutHandlers, useSimulation } from '@swatchbook/runtime';
-import type { ChartTheme, OutputFormatters, OutputLabels, ParetoFormatters, ParetoLabels } from '@swatchbook/charts';
-import { Button, Card, Col, Empty, Row, Select, Space, Statistic, Table, Tag, Typography, theme } from 'antd';
+import type { OutputFormatters, OutputLabels, ParetoFormatters, ParetoLabels } from '@swatchbook/charts';
+import { Button, Card, Col, Descriptions, Empty, Row, Select, Space, Statistic, Table, Tag, Typography, theme } from 'antd';
 import type { RefSelectProps } from 'antd';
-import { lazy, Suspense, useMemo, useRef, useState } from 'react';
+import { lazy, memo, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 
 const ParetoChart = lazy(() => import('@swatchbook/charts').then(module => ({ default: module.ParetoChart })));
 const OutputChart = lazy(() => import('@swatchbook/charts').then(module => ({ default: module.OutputChart })));
 const ids = TEST_IDS.performance;
+const noLiveHours: readonly HourlyRecord[] = [];
 const fullWidth = { width: '100%', minWidth: 0 };
 const passiveLoading = { spinning: false, 'aria-live': 'off' } as const;
 const cellStyle = { wordBreak: 'normal', overflowWrap: 'normal' } as const;
@@ -25,42 +27,38 @@ const kpis = [
 
 function Kpi({ part, id, label, oee }: typeof kpis[number] & { oee: OeeParts & { previous: OeeParts | null; change: OeeParts | null } }) {
   const { t, formatPercent, formatPercentagePoints } = useI18n();
-  const missingComparison = t(oee.previous ? 'performance.quality-empty' : 'performance.comparison-empty');
+  const missingComparison = t(oee.previous ? 'performance.previous-quality-empty' : 'performance.comparison-empty');
   const value = oee[part];
   const before = oee.previous?.[part];
   const change = oee.change?.[part];
+  const missingChange = before == null ? missingComparison : t('performance.quality-empty');
   return <Col span={6} style={{ minWidth: 0 }}>
-    <Card data-testid={id} role="group" aria-label={t(label)} style={{ height: '100%' }}>
-      {value === null ? <Empty description={t('performance.quality-empty')} /> : <Statistic title={t(label)} value={formatPercent(value)} />}
-      <Typography.Paragraph type="secondary">{t('performance.previous')}: {before == null ? missingComparison : formatPercent(before)}</Typography.Paragraph>
-      <Typography.Text title={t('performance.change')}>{t('common.change')}: {change == null ? missingComparison : formatPercentagePoints(change)}</Typography.Text>
+    <Card data-testid={id} style={{ height: '100%' }}>
+      {value === null ? <><Typography.Text type="secondary">{t(label)}</Typography.Text><Empty description={t('performance.quality-empty')} /></> : <Statistic title={t(label)} value={formatPercent(value)} />}
+      <Typography.Paragraph type="secondary"><span>{t('performance.previous')}</span>: <span>{before == null ? missingComparison : formatPercent(before)}</span></Typography.Paragraph>
+      <Typography.Text><span>{t('performance.change')}</span>: <span>{change == null ? missingChange : formatPercentagePoints(change)}</span></Typography.Text>
     </Card>
   </Col>;
 }
 
 export function Performance() {
-  const { state, tick, dataset } = useSimulation();
-  const { density } = usePreferences();
-  const { t, tr, formatPercent, formatPercentValue, formatNumber, formatDate, formatDateTime, formatTime } = useI18n();
+  const { state, tick, dataset, snapshot } = useSimulation();
+  const { t, tr, formatPercentValue, formatNumber, formatDate, formatDateTime, formatTime } = useI18n();
   const { token } = theme.useToken();
   const [scope, setScope] = useState<Scope>(PERFORMANCE_DEFAULT_SCOPE);
   const [range, setRange] = useState<RangeId>(PERFORMANCE_DEFAULT_RANGE);
   const [reason, setReason] = useState<string | null>(null);
   const scopeSelect = useRef<RefSelectProps>(null);
   useShortcutHandlers({ 'focus-search': () => scopeSelect.current?.focus() });
+  const reasonLabelId = useId();
+  const effectiveTick = performanceTick(range, tick);
+  const hours = range === 'last-24h' ? snapshot.hours : noLiveHours;
   const choices = useMemo(() => performanceScopes(dataset), [dataset]);
-  const view = useMemo(() => performanceStateView(state, tick, scope, range), [state, tick, scope, range]);
+  const view = useMemo(() => performanceStateView(state, effectiveTick, scope, range, hours), [state, effectiveTick, scope, range, hours]);
   const selected = performanceReason(view, reason);
+  useEffect(() => { if (reason !== null && selected === null) setReason(null); }, [reason, selected]);
   const daily = range === 'last-7d' || range === 'last-30d';
-  const chartTheme = useMemo<ChartTheme>(() => ({
-    fontFamily: token.fontFamily, fontSize: token.fontSize,
-    textColor: token.colorText, mutedTextColor: token.colorTextSecondary, gridColor: token.colorBorderSecondary,
-    backgroundColor: token.colorBgContainer,
-    seriesColors: [token.colorPrimary, token.colorSuccess, token.colorWarning, token.colorTextSecondary, token.colorInfo, token.colorTextTertiary],
-    goodColor: token.colorSuccess, scrapColor: token.colorError, targetColor: token.colorText,
-    limitColor: token.colorError, warningColor: token.colorWarning,
-    tooltipBackgroundColor: token.colorBgElevated, tooltipTextColor: token.colorText, tooltipBorderColor: token.colorBorder,
-  }), [token]);
+  const chartTheme = useChartTheme();
   const paretoLabels = useMemo<ParetoLabels>(() => ({
     caption: t('performance.pareto-caption'), empty: t('performance.pareto-empty'), reason: t('performance.reason'),
     minutes: t('performance.minutes'), share: t('performance.share'), cumulative: t('performance.series.cumulative-percentage'),
@@ -85,8 +83,8 @@ export function Performance() {
           <Typography.Text>{t('performance.scope')}</Typography.Text>
           <Select ref={scopeSelect} data-testid={ids.scope} aria-label={t('performance.scope')} virtual={false} style={{ width: 300 }}
             value={scope.kind === 'site' ? scope.kind : scope.kind === 'area' ? scope.areaId : scope.lineId}
-            options={choices.map(option => ({ ...option, label: option.kind === 'site' ? tr(option.name) : `${t(scopeLabels[option.kind])} · ${option.id ? `${option.id} · ` : ''}${tr(option.name)}` }))}
-            onChange={(_, option) => { if (option && !Array.isArray(option)) { setScope(option.scope); setReason(null); } }} />
+            options={choices.map(option => ({ value: option.value, label: option.kind === 'site' ? tr(option.name) : <><span>{t(scopeLabels[option.kind])}</span> · {option.id ? `${option.id} · ` : ''}{tr(option.name)}</> }))}
+            onChange={value => { const option = choices.find(choice => choice.value === value); if (option) { setScope(option.scope); setReason(null); } }} />
         </Space>
         <Space orientation="vertical" size="small">
           <Typography.Text>{t('performance.range')}</Typography.Text>
@@ -102,56 +100,59 @@ export function Performance() {
     </Card> : <>
       <Row gutter={[token.margin, token.margin]}>{kpis.map(kpi => <Kpi key={kpi.part} {...kpi} oee={view.oee!} />)}</Row>
       <Card title={t('performance.pareto')} style={fullWidth}>
-        {view.pareto.length ? <>
+        {view.pareto.length ? <Space orientation="vertical" size="middle" style={fullWidth}>
           <Suspense fallback={<Typography.Text>{paretoLabels.caption}</Typography.Text>}>
             <ParetoChart data={view.pareto} labels={paretoLabels} formatters={paretoFormatters} theme={chartTheme}
               testId={ids.pareto} height={360} selectedReason={selected?.reason} onReasonSelect={setReason} />
           </Suspense>
-          <Space orientation="vertical" style={fullWidth} aria-label={t('performance.pareto-reason')} role="group">
-            <Typography.Text>{t('performance.pareto-reason')}</Typography.Text>
+          <Space orientation="vertical" style={fullWidth} aria-labelledby={reasonLabelId} role="group">
+            <Typography.Text id={reasonLabelId}>{t('performance.pareto-reason')}</Typography.Text>
             {view.pareto.map(row => <Button key={row.reason} data-testid={ids.paretoReason}
               aria-pressed={selected?.reason === row.reason} type={selected?.reason === row.reason ? 'primary' : 'default'}
-              style={{ height: 'auto', whiteSpace: 'normal' }} onClick={() => setReason(row.reason)}
-              onKeyDown={event => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); setReason(row.reason); } }}>
+              style={{ height: 'auto', whiteSpace: 'normal' }} onClick={() => setReason(row.reason)}>
               {t(downtimeLabels[row.reason])} · {t('performance.minutes')}: {paretoFormatters.formatMinutes(row.minutes)} · {t('performance.share')}: {formatPercentValue(row.sharePct)}
             </Button>)}
           </Space>
-          {selected && <Space orientation="vertical" size="small" style={{ ...fullWidth, marginTop: token.margin }}>
-            <Typography.Text strong>{t('performance.selected-reason')}</Typography.Text>
-            <Typography.Paragraph style={{ marginBottom: 0 }}>
-              {t(downtimeLabels[selected.reason])} · {t('performance.minutes')}: {paretoFormatters.formatMinutes(selected.minutes)} · {t('performance.share')}: {formatPercentValue(selected.sharePct)}
-            </Typography.Paragraph>
-          </Space>}
-        </> : <Empty data-testid={ids.pareto} description={paretoLabels.empty} />}
+          {selected && <Descriptions title={t('performance.selected-reason')} column={1} items={[
+            { key: 'reason', label: t('performance.reason'), children: t(downtimeLabels[selected.reason]) },
+            { key: 'minutes', label: t('performance.minutes'), children: paretoFormatters.formatMinutes(selected.minutes) },
+            { key: 'share', label: t('performance.share'), children: formatPercentValue(selected.sharePct) },
+          ]} />}
+        </Space> : <Empty data-testid={ids.pareto} description={paretoLabels.empty} />}
       </Card>
       <Card title={t('performance.output')} style={fullWidth}>
-        <Typography.Paragraph>{t('performance.bucket')} · {outputLabels.bucket}</Typography.Paragraph>
-        {view.oee.quality === null && <Empty description={outputLabels.empty} />}
-        <Suspense fallback={<Typography.Text>{outputLabels.caption}</Typography.Text>}>
+        <Typography.Paragraph><span>{t('performance.bucket')}</span> · {outputLabels.bucket}</Typography.Paragraph>
+        {!view.outputHasUnits ? <Empty data-testid={ids.output} description={outputLabels.empty} /> : <Suspense fallback={<Typography.Text>{outputLabels.caption}</Typography.Text>}>
           <OutputChart data={view.output} labels={outputLabels} formatters={outputFormatters} theme={chartTheme} testId={ids.output} height={360} />
-        </Suspense>
+        </Suspense>}
       </Card>
-      <Card title={t('performance.shift-history')} style={fullWidth}>
-        <Typography.Paragraph>{t('performance.shift-history-caption')}</Typography.Paragraph>
-        <Table<PerformanceShift> data-testid={ids.shiftHistory} rowKey="startsAt" size={density === 'compact' ? 'small' : 'middle'} pagination={false} loading={passiveLoading}
-          dataSource={view.shifts} scroll={{ x: 'max-content' }}
-          onHeaderRow={() => ({ style: cellStyle })} onRow={() => ({ style: cellStyle })}
-          locale={{ emptyText: <Empty description={t('performance.shift-history-empty')} /> }}
-          columns={[
-            { ...wordCells, key: 'shift', fixed: 'left', title: t('event-target.shift'), dataIndex: 'shift' },
-            { ...wordCells, key: 'start', title: t('common.start'), render: (_, row) => formatDateTime(row.startsAt) },
-            { ...wordCells, key: 'oee', title: t('deck.kpi-oee'), render: (_, row) => <Space wrap>
-              <span>{formatPercent(row.oee)}</span>
-              {row.best && <Tag color="success">{t('performance.best')}</Tag>}
-              {row.worst && <Tag color="warning">{t('performance.worst')}</Tag>}
-            </Space> },
-            { ...wordCells, key: 'output', title: t('performance.shift-output'), children: [
-              { ...wordCells, key: 'good', title: t('performance.series.good'), render: (_, row) => formatNumber(row.goodUnits) },
-              { ...wordCells, key: 'scrap', title: t('performance.series.scrap'), render: (_, row) => formatNumber(row.scrapUnits) },
-              { ...wordCells, key: 'target', title: t('performance.series.target'), render: (_, row) => formatNumber(row.targetUnits) },
-            ] },
-          ]} />
-      </Card>
+      <ShiftHistory shifts={view.shifts} />
     </>}
   </Space>;
 }
+
+const ShiftHistory = memo(function ShiftHistory({ shifts }: { shifts: PerformanceShift[] }) {
+  const { t, formatDateTime, formatPercent, formatNumber } = useI18n();
+  const { density } = usePreferences();
+  return <Card title={t('performance.shift-history')} style={fullWidth}>
+    <Typography.Paragraph>{t('performance.shift-history-caption')}</Typography.Paragraph>
+    <Table<PerformanceShift> data-testid={ids.shiftHistory} rowKey="startsAt" size={density === 'compact' ? 'small' : 'middle'} pagination={false} loading={passiveLoading}
+      dataSource={shifts} scroll={{ x: 'max-content' }}
+      onHeaderRow={() => ({ style: cellStyle })} onRow={() => ({ style: cellStyle })}
+      locale={{ emptyText: <Empty description={t('performance.shift-history-empty')} /> }}
+      columns={[
+        { ...wordCells, key: 'shift', fixed: 'left', title: t('event-target.shift'), render: (_, row) => t(shiftLabels[row.shift]) },
+        { ...wordCells, key: 'start', title: t('common.start'), render: (_, row) => formatDateTime(row.startsAt) },
+        { ...wordCells, key: 'oee', title: t('deck.kpi-oee'), render: (_, row) => <Space wrap>
+          <span>{formatPercent(row.oee)}</span>
+          {row.best && <Tag color="success">{t('performance.best')}</Tag>}
+          {row.worst && <Tag color="warning">{t('performance.worst')}</Tag>}
+        </Space> },
+        { ...wordCells, key: 'output', title: t('performance.shift-output'), children: [
+          { ...wordCells, key: 'good', title: t('performance.series.good'), render: (_, row) => formatNumber(row.goodUnits) },
+          { ...wordCells, key: 'scrap', title: t('performance.series.scrap'), render: (_, row) => formatNumber(row.scrapUnits) },
+          { ...wordCells, key: 'target', title: t('performance.series.target'), render: (_, row) => formatNumber(row.targetUnits) },
+        ] },
+      ]} />
+  </Card>;
+});

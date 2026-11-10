@@ -6,7 +6,7 @@
 export { alarmListView, type AlarmFilters, type AlarmRow } from './alarms';
 export { criticalBannerView, type BannerRow } from './banner';
 export { EVENT_LOG_DEFAULT_RANGE, eventLogView, type EventFilters, type EventRow } from './events';
-export { PERFORMANCE_DEFAULT_SCOPE, PERFORMANCE_DEFAULT_RANGE, performanceScopes, performanceReason, performanceStateView, type PerformanceScopeOption, performanceView, type OeeParts, type OutputBucket, type ParetoRow, type PerformanceShift, type PerformanceView, type Scope } from './performance';
+export { PERFORMANCE_DEFAULT_SCOPE, PERFORMANCE_DEFAULT_RANGE, performanceScopes, performanceTick, performanceReason, performanceStateView, type PerformanceScopeOption, performanceView, type OeeParts, type OutputBucket, type ParetoRow, type PerformanceShift, type PerformanceView, type Scope } from './performance';
 export { performanceWindow, rangeWindow, type RangeId, type RangeWindow } from './ranges';
 export { recipeLibraryView, recipeVersionView, type RecipeVersionActions, type RecipeVersionView, type RecipeFilters, type RecipeLibraryRow } from './recipes';
 export { DIAGNOSTICS_DEFAULT_SORT, TAG_GRID_DEFAULT_FILTERS, connectivityView, tagDetailView, tagGridView, type ConnectivityRow, type ConnectivitySort, type TagFilters, type TagRow } from './tags';

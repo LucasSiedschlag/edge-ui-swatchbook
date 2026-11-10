@@ -16,11 +16,11 @@ Route `/performance`. For Managers. A read-only view of how the plant performs.
 |--------|--------|
 | Change scope | Site, an Area or a Line. |
 | Change range | One of the four standard ranges. |
-| Select a Pareto reason | Highlights it and shows its minutes and share of total downtime in a labeled selected-reason summary, separated from the buttons by native spacing. The summary is plain text, with no live region. |
+| Select a Pareto reason | Highlights it and shows its minutes and share of total downtime in a labeled selected-reason summary, separated from the buttons by native spacing. The summary uses native labeled descriptions, with no live region. |
 
 ## States
 
-- A scope and range with no units and no run minutes: one whole Screen `performance.empty` element when `hasProduction` is false, since all blocks are empty together. If the previous range has no production, the OEE comparison is empty. Quality is empty when no units were made.
+- A scope and range with no units and no run minutes: one whole Screen `performance.empty` element when `hasProduction` is false, since all blocks are empty together. If the previous range has no production, the OEE comparison is empty. Quality is empty when no units were made. Previous Quality has its own message when the previous range has run minutes but no units. Output shows its empty state instead of a chart when `outputHasUnits` is false.
 - Last shift is the most recent completed Shift and does not change; Last 24 hours includes the current Shift and updates each tick; Last 7 and Last 30 days are fixed history up to load and do not change during the session.
 
 ## Required test IDs

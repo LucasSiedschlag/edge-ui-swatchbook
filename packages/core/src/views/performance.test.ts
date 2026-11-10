@@ -4,7 +4,7 @@ import { HOUR, NOW } from '../mock/time';
 import type { HourlyRecord, MockDataset } from '../mock/types';
 import { createPlantState, reduce } from '../plant';
 import { readHours } from '../sim/kpis';
-import { PERFORMANCE_DEFAULT_RANGE, PERFORMANCE_DEFAULT_SCOPE, performanceReason, performanceScopes, performanceStateView, performanceView, type RangeId, type Scope } from './performance';
+import { PERFORMANCE_DEFAULT_RANGE, PERFORMANCE_DEFAULT_SCOPE, performanceReason, performanceTick, performanceScopes, performanceStateView, performanceView, type RangeId, type Scope } from './performance';
 
 const d = generateMockDataset();
 const site: Scope = { kind: 'site' };
@@ -148,7 +148,7 @@ describe('performance arithmetic', () => {
   });
 
   it('returns finite zero ratios for zero denominators and detects run minutes or any units', () => {
-    expect(performanceView(stub(), [], 0, site, 'last-shift')).toEqual({ hasProduction: false, oee: null, pareto: [], output: [], shifts: [] });
+    expect(performanceView(stub(), [], 0, site, 'last-shift')).toEqual({ hasProduction: false, outputHasUnits: false, oee: null, pareto: [], output: [], shifts: [] });
     expect(performanceView(stub(), [], 0, site, 'last-shift').hasProduction).toBe(false);
     for (const overrides of [{ runMin: 1 }, { goodUnits: 1 }, { scrapUnits: 1 }]) {
       const live = [hour(0, { plannedMin: 0, runMin: 0, targetUnits: 0, goodUnits: 0, scrapUnits: 0, downtime: [], ...overrides })];
@@ -177,7 +177,7 @@ describe.each([0, 30000])('performance conservation at tick %i', (tick) => {
       const view = performanceView(d, live, tick, scope, range);
       const downtime = sum(view.pareto.map((p) => p.minutes));
       if (!view.hasProduction) {
-        expect(view).toEqual({ hasProduction: false, oee: null, pareto: [], output: [], shifts: [] });
+        expect(view).toEqual({ hasProduction: false, outputHasUnits: false, oee: null, pareto: [], output: [], shifts: [] });
         // Hidden idle minutes still contribute when this Line is included in a wider scope.
         return { good: 0, scrap: 0, target: sum(rows.map((h) => h.targetUnits)),
           downtime: sum(rows.flatMap((h) => h.downtime.map((loss) => loss.minutes))), run: 0, planned: sum(rows.map((h) => h.plannedMin)) };
@@ -257,7 +257,7 @@ describe('performance Shift history and purity', () => {
     const idle = performanceView(d, [], 0, { kind: 'line', lineId: 'C1' }, 'last-shift');
     const units = sum(idle.output.map((b) => b.goodUnits + b.scrapUnits));
     expect(idle.hasProduction, `C1 last-shift contains ${units} units`).toBe(false);
-    expect(idle).toEqual({ hasProduction: false, oee: null, pareto: [], output: [], shifts: [] });
+    expect(idle).toEqual({ hasProduction: false, outputHasUnits: false, oee: null, pareto: [], output: [], shifts: [] });
   });
 
   it('still shows the production C1 made before it went idle in the last 24 hours', () => {
@@ -374,4 +374,18 @@ it('marks the earliest Shift when the best and worst OEE each tie', () => {
   const dataset = stub([hour(-1), hour(-9), hour(-17, { goodUnits: 80 }), hour(-25, { goodUnits: 80 })]);
   const view = performanceView(dataset, [], 0, site, 'last-shift');
   expect(view.shifts.map(row => [row.best, row.worst])).toEqual([[false, false], [false, true], [false, false], [true, false]]);
+});
+
+it('exports the effective clock and uses supplied hours without reading live production again', () => {
+  for (const range of ranges) {
+    expect(performanceTick(range, 30000)).toBe(range === 'last-24h' ? 30000 : 0);
+    expect(() => performanceTick(range, -1)).toThrow('tick must be 0 or more');
+  }
+  const state = createPlantState({ ...d, hourlyOutput: [] });
+  const hours = [hour(0)];
+  expect(performanceStateView(state, 100, site, 'last-24h', hours)).toEqual(performanceView(state.dataset, hours, 100, site, 'last-24h'));
+  expect(performanceStateView(state, 100, site, 'last-24h', [])).toMatchObject({ hasProduction: false, outputHasUnits: false });
+  for (const overrides of [{ goodUnits: 0, scrapUnits: 0 }, { goodUnits: 1, scrapUnits: 0 }, { goodUnits: 0, scrapUnits: 1 }]) {
+    expect(performanceView(stub([hour(-1, overrides)]), [], 0, site, 'last-shift').outputHasUnits).toBe(overrides.goodUnits + overrides.scrapUnits > 0);
+  }
 });

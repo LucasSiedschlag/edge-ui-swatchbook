@@ -25,15 +25,15 @@ export function buildParetoOption({ data, labels, formatters, theme, selectedRea
     ...base(theme),
     legend: { ...base(theme).legend, type: 'scroll', top: 0, left: 12, right: 12 },
     grid: { left: 12, right: 12, top: Math.max(24, theme.fontSize + 12) + 32, bottom: 12, outerBoundsMode: 'same', outerBoundsContain: 'all' },
-    xAxis: { ...axis(theme), axisLabel: { ...axis(theme).axisLabel, rotate: 20, hideOverlap: true }, type: 'category', data: data.map((row) => formatters.formatReason(row.reason)) },
+    xAxis: { ...axis(theme), axisLabel: { ...axis(theme).axisLabel, ...(data.length <= 8 ? { interval: 0, width: 92, overflow: 'break' as const, hideOverlap: false } : { rotate: 45, hideOverlap: true }) }, tooltip: { show: true }, type: 'category', data: data.map((row) => formatters.formatReason(row.reason)) },
     yAxis: [
       // ECharts passes a tick index as the second argument. Keep it out of core
       // formatters, where a second argument can mean numeric precision.
-      { ...axis(theme), type: 'value', min: 0, name: labels.minutes, nameTextStyle: { ...axis(theme).nameTextStyle, align: 'left' }, axisLabel: { ...axis(theme).axisLabel, formatter: (value: number) => formatters.formatMinutes(value) } },
+      { ...axis(theme), type: 'value', min: 0, minInterval: 1, name: labels.minutes, nameTextStyle: { ...axis(theme).nameTextStyle, align: 'left' }, axisLabel: { ...axis(theme).axisLabel, formatter: (value: number) => formatters.formatMinutes(value) } },
       { ...axis(theme), type: 'value', min: 0, max: 100, name: labels.cumulative, nameTextStyle: { ...axis(theme).nameTextStyle, align: 'right' }, position: 'right', axisLabel: { ...axis(theme).axisLabel, formatter: (value: number) => formatters.formatPercent(value, 0) } },
     ],
     series: [
-      { type: 'bar', name: labels.minutes, emphasis: { itemStyle: { color: theme.seriesColors[0] } }, tooltip: { valueFormatter: (value) => formatChartValue(value, formatters.formatMinutes) }, data: data.map((row) => ({ value: row.minutes, itemStyle: { color: row.reason === selectedReason ? theme.warningColor : theme.seriesColors[0], borderColor: theme.textColor, borderWidth: row.reason === selectedReason ? 3 : 0, decal: { symbol: 'rect', dashArrayX: [1, 0], dashArrayY: [2, 5] } }, emphasis: { itemStyle: { color: row.reason === selectedReason ? theme.warningColor : theme.seriesColors[0] } } })) },
+      { type: 'bar', name: labels.minutes, emphasis: { itemStyle: { color: theme.seriesColors[0] } }, tooltip: { valueFormatter: (value) => formatChartValue(value, formatters.formatMinutes) }, data: data.map((row) => ({ value: row.minutes, itemStyle: { color: row.reason === selectedReason ? theme.warningColor : theme.seriesColors[0], borderColor: theme.textColor, borderWidth: row.reason === selectedReason ? 3 : 0, decal: row.reason === selectedReason ? { color: theme.textColor, symbol: 'rect', dashArrayX: [1, 0], dashArrayY: [2, 5] } : undefined }, emphasis: { itemStyle: { color: row.reason === selectedReason ? theme.warningColor : theme.seriesColors[0] } } })) },
       { type: 'line', name: labels.cumulative, symbol: 'circle', emphasis: { itemStyle: { color: theme.targetColor }, lineStyle: { color: theme.targetColor, type: 'dashed' } }, yAxisIndex: 1, itemStyle: { color: theme.targetColor }, lineStyle: { color: theme.targetColor, type: 'dashed' }, tooltip: { valueFormatter: (value) => formatChartValue(value, formatters.formatPercent) }, data: data.map((row) => row.cumulativePct) },
     ],
   };
@@ -55,10 +55,10 @@ export function buildOutputOption({ data, labels, formatters, theme }: OutputInp
         formatter: (value: string, index: number) => formatters.formatBucketTick ? formatters.formatBucketTick(data[index]!.start) : value,
       },
     },
-    yAxis: { ...axis(theme), type: 'value', min: 0, name: labels.value, axisLabel: { ...axis(theme).axisLabel, formatter: (value: number) => formatters.formatValue(value) } },
+    yAxis: { ...axis(theme), type: 'value', min: 0, minInterval: 1, name: labels.value, axisLabel: { ...axis(theme).axisLabel, formatter: (value: number) => formatters.formatValue(value) } },
     series: [
       { type: 'bar', name: labels.good, emphasis: { itemStyle: { color: theme.goodColor } }, stack: 'output', itemStyle: { color: theme.goodColor }, data: data.map((bucket) => bucket.goodUnits), tooltip: { valueFormatter: (value) => formatChartValue(value, formatters.formatValue) } },
-      { type: 'bar', name: labels.scrap, emphasis: { itemStyle: { color: theme.scrapColor } }, stack: 'output', itemStyle: { color: theme.scrapColor, decal: { symbol: 'rect', dashArrayX: [1, 0], dashArrayY: [2, 4], rotation: -Math.PI / 4 } }, data: data.map((bucket) => bucket.scrapUnits), tooltip: { valueFormatter: (value) => formatChartValue(value, formatters.formatValue) } },
+      { type: 'bar', name: labels.scrap, emphasis: { itemStyle: { color: theme.scrapColor } }, stack: 'output', itemStyle: { color: theme.scrapColor, decal: { color: theme.textColor, symbol: 'rect', dashArrayX: [1, 0], dashArrayY: [2, 4], rotation: -Math.PI / 4 } }, data: data.map((bucket) => bucket.scrapUnits), tooltip: { valueFormatter: (value) => formatChartValue(value, formatters.formatValue) } },
       { type: 'line', name: labels.target, symbol: 'circle', emphasis: { itemStyle: { color: theme.targetColor }, lineStyle: { color: theme.targetColor, type: 'dashed' } }, itemStyle: { color: theme.targetColor }, lineStyle: { color: theme.targetColor, type: 'dashed' }, data: data.map((bucket) => bucket.targetUnits), tooltip: { valueFormatter: (value) => formatChartValue(value, formatters.formatValue) } },
     ],
   };

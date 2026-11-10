@@ -1,3 +1,4 @@
+import { useChartTheme } from './useChartTheme';
 import {
   DEFAULT_TREND_WINDOW, MAX_TREND_TAGS, TAG_GRID_DEFAULT_FILTERS, TEST_IDS, connectivityView, decimalSeparator, formatTagValue,
   linkStatusLabels, plantErrorLabels, simulatedTime, tagDetailView, tagGridView, tagStatusLabels,
@@ -5,8 +6,8 @@ import {
   type ConnectivityRow, type MessageKey, type TagFilters, type TagRow, type TagStatus, type TrendWindowId,
 } from '@swatchbook/core';
 import { actionErrorLabel, useActions, useI18n, usePreferences, useShortcutHandlers, useSimulation } from '@swatchbook/runtime';
-import type { ChartTheme, LineTrendFormatters, LineTrendLabels } from '@swatchbook/charts';
-import { Alert, Button, Card, Empty, Input, InputNumber, Modal, Select, Space, Table, Tooltip, Typography, theme } from 'antd';
+import type { LineTrendFormatters, LineTrendLabels } from '@swatchbook/charts';
+import { Alert, Button, Card, Empty, Input, InputNumber, Modal, Select, Space, Table, Tooltip, Typography } from 'antd';
 import type { InputRef, TableColumnsType } from 'antd';
 import { cloneElement, forwardRef, lazy, Suspense, useCallback, useId, useMemo, useRef, useState, type ComponentProps, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 
@@ -92,16 +93,7 @@ function Trend({ selection, window }: { selection: string[]; window: TrendWindow
   const { dataset, tick, state } = useSimulation();
   const i18n = useI18n();
   const { t, locale, formatTime } = i18n;
-  const { token } = theme.useToken();
-  const chartTheme = useMemo<ChartTheme>(() => ({
-    fontFamily: token.fontFamily, fontSize: token.fontSize,
-    textColor: token.colorText, mutedTextColor: token.colorTextSecondary, gridColor: token.colorBorderSecondary,
-    backgroundColor: token.colorBgContainer,
-    seriesColors: [token.colorPrimary, token.colorSuccess, token.colorWarning, token.colorTextSecondary, token.colorInfo, token.colorTextTertiary],
-    goodColor: token.colorSuccess, scrapColor: token.colorError, targetColor: token.colorText,
-    limitColor: token.colorError, warningColor: token.colorWarning,
-    tooltipBackgroundColor: token.colorBgElevated, tooltipTextColor: token.colorText, tooltipBorderColor: token.colorBorder,
-  }), [token]);
+  const chartTheme = useChartTheme();
   const view = useMemo(() => trendView(dataset, selection, window, tick, state.overlay), [dataset, selection, window, tick, state.overlay]);
   const data = useMemo(() => 'series' in view ? view.series.map(series => ({ ...series, id: series.tagId, name: `${series.machineId} · ${series.name}` })) : [], [view]);
   const labels = useMemo<LineTrendLabels>(() => ({

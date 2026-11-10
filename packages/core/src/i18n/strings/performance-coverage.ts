@@ -11,8 +11,8 @@ export const performanceCoverage = {
     ],
     "OEE": [
       "deck.kpi-oee", "performance.availability", "performance.performance", "performance.quality",
-      "performance.previous", "performance.change", "common.change", "performance.oee-empty", "performance.comparison-empty",
-      "performance.quality-empty",
+      "performance.previous", "performance.change", "performance.oee-empty", "performance.comparison-empty",
+      "performance.quality-empty", "performance.previous-quality-empty",
     ],
     "Downtime Pareto": [
       "performance.pareto", "performance.pareto-caption", "performance.pareto-reason", "performance.reason",
@@ -26,7 +26,7 @@ export const performanceCoverage = {
     "Shift performance history": [
       "performance.shift-history", "performance.shift-history-caption", "event-target.shift", "common.start",
       "deck.kpi-oee", "performance.shift-output", "performance.best", "performance.worst",
-      "performance.shift-history-empty",
+      "performance.shift-history-empty", "shift.first", "shift.second", "shift.third",
     ],
   },
   actions: {
@@ -41,7 +41,7 @@ export const performanceCoverage = {
     ],
   },
   states: {
-    "A scope and range with no units and no run minutes: one whole Screen `performance.empty` element when `hasProduction` is false, since all blocks are empty together. If the previous range has no production, the OEE comparison is empty. Quality is empty when no units were made.": [
+    "A scope and range with no units and no run minutes: one whole Screen `performance.empty` element when `hasProduction` is false, since all blocks are empty together. If the previous range has no production, the OEE comparison is empty. Quality is empty when no units were made. Previous Quality has its own message when the previous range has run minutes but no units. Output shows its empty state instead of a chart when `outputHasUnits` is false.": [
       "performance.empty", "performance.oee-empty", "performance.comparison-empty", "performance.quality-empty", "performance.pareto-empty",
       "performance.output-empty", "performance.shift-history-empty",
     ],

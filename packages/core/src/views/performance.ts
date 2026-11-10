@@ -4,6 +4,7 @@ import { shiftInfo, simulatedTime } from '../sim/clock';
 
 import type { PlantState } from '../plant';
 import { readHours } from '../sim/kpis';
+import { assertSessionTick } from '../sim/context';
 
 import { type RangeId, performanceWindow } from './ranges';
 export type { RangeId } from './ranges';
@@ -23,9 +24,19 @@ export function performanceScopes(d: MockDataset): PerformanceScopeOption[] {
   ];
 }
 
-/** The Plant State overlay is authoritative for live production. */
-export function performanceStateView(state: PlantState, tick: number, scope: Scope = PERFORMANCE_DEFAULT_SCOPE, range: RangeId = PERFORMANCE_DEFAULT_RANGE): PerformanceView {
-  return performanceView(state.dataset, readHours(state.dataset, tick, state.overlay), tick, scope, range);
+const NO_LIVE_HOURS: readonly HourlyRecord[] = [];
+
+/** Only Last 24 hours depends on the session clock. */
+export function performanceTick(range: RangeId, tick: number): number {
+  assertSessionTick(tick);
+  return range === 'last-24h' ? tick : 0;
+}
+
+/** Use the provider's live hours when supplied; fixed history never needs live production. */
+export function performanceStateView(state: PlantState, tick: number, scope: Scope = PERFORMANCE_DEFAULT_SCOPE, range: RangeId = PERFORMANCE_DEFAULT_RANGE, hours?: readonly HourlyRecord[]): PerformanceView {
+  const effectiveTick = performanceTick(range, tick);
+  const live = range === 'last-24h' ? hours ?? readHours(state.dataset, effectiveTick, state.overlay) : NO_LIVE_HOURS;
+  return performanceView(state.dataset, live, effectiveTick, scope, range);
 }
 
 export interface OeeParts {
@@ -72,6 +83,8 @@ export interface PerformanceView {
   output: OutputBucket[];
   shifts: PerformanceShift[];
   hasProduction: boolean;
+  /** Units exist independently of run minutes or target. */
+  outputHasUnits: boolean;
 }
 
 interface Totals {
@@ -175,7 +188,7 @@ export function performanceView(d: MockDataset, live: readonly HourlyRecord[], t
     out.scrapUnits += h.scrapUnits;
   }
 
-  if (!hasProduction(current)) return { hasProduction: false, oee: null, pareto: [], output: [], shifts: [] };
+  if (!hasProduction(current)) return { hasProduction: false, outputHasUnits: false, oee: null, pareto: [], output: [], shifts: [] };
 
   const shifts: PerformanceShift[] = shiftTotals.map((t, i) => ({ t, i }))
     .filter(({ t }) => t.plannedMin > 0 || hasProduction(t)).map(({ t, i }) => {
@@ -205,7 +218,7 @@ export function performanceView(d: MockDataset, live: readonly HourlyRecord[], t
       performance: round3(value.performance - before.performance), quality: value.quality === null || before.quality === null ? null : round3(value.quality - before.quality),
     } : null },
     pareto: paretoOf(downtime), output, shifts,
-    hasProduction: true,
+    hasProduction: true, outputHasUnits: current.goodUnits + current.scrapUnits > 0,
   };
 }
 

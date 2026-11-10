@@ -4,7 +4,7 @@ import { createElement } from 'react';
 import { OutputChart, ParetoChart } from './components';
 import { expect, it } from 'vitest';
 import { buildOutputOption, buildParetoOption } from './options';
-import { lightChartTheme } from './theme';
+import { darkChartTheme, lightChartTheme } from './theme';
 import { outputInput } from './fixtures';
 import type { OutputInput } from './types';
 
@@ -63,17 +63,19 @@ it('uses the exact rounded core Pareto percentages in the chart and table', () =
   }
 });
 
-it('reserves a separate legend band and keeps dual-axis names at opposite edges', () => {
-  const option = buildParetoOption({ ...pareto, selectedReason: 'jam' });
-  expect(option.legend).toMatchObject({ type: 'scroll', top: 0, left: 12, right: 12 });
-  expect(option.grid).toMatchObject({ left: 12, right: 12, top: 56, outerBoundsContain: 'all' });
-  expect(option.yAxis).toMatchObject([
-    { nameTextStyle: { align: 'left' } }, { position: 'right', nameTextStyle: { align: 'right' } },
-  ]);
-  expect(option.series).toMatchObject([
-    { data: [{ itemStyle: { decal: { symbol: 'rect' }, borderWidth: 0 } }, { itemStyle: { borderWidth: 3 } }, {}] },
-    { lineStyle: { type: 'dashed' } },
-  ]);
+it('keeps all fixed reason labels visible and marks only the selected bar with a theme pattern', () => {
+  for (const theme of [lightChartTheme, darkChartTheme]) {
+    const option = buildParetoOption({ ...pareto, theme, selectedReason: 'jam' });
+    expect(option.xAxis).toMatchObject({ axisLabel: { interval: 0, width: 92, overflow: 'break', hideOverlap: false }, tooltip: { show: true } });
+    expect(option.yAxis).toMatchObject([{ minInterval: 1, nameTextStyle: { align: 'left' } }, { position: 'right', nameTextStyle: { align: 'right' } }]);
+    expect(option.series).toMatchObject([
+      { data: [{ itemStyle: { decal: undefined, borderWidth: 0 } }, { itemStyle: { borderWidth: 3, color: theme.warningColor, decal: { color: theme.textColor, symbol: 'rect' } } }, { itemStyle: { decal: undefined } }] },
+      { lineStyle: { type: 'dashed' } },
+    ]);
+    const output = buildOutputOption({ ...outputInput, theme });
+    expect(output.yAxis).toMatchObject({ minInterval: 1 });
+    expect(output.series).toMatchObject([{}, { itemStyle: { decal: { color: theme.textColor } } }, {}]);
+  }
 });
 
 it.each(['en', 'pt-BR'] as const)('keeps axis precision fixed when ECharts supplies tick indices in %s', locale => {

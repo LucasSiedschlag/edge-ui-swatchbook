@@ -2,6 +2,8 @@
 import {
   TEST_IDS, generateMockDataset, t, type HourlyRecord, type Locale, type MessageKey, type MockDataset,
 } from '@swatchbook/core';
+import * as core from '@swatchbook/core';
+import * as registration from '../../../packages/charts/src/register';
 import { act } from 'react';
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from 'vitest';
 import { performanceCoverage } from '../../../packages/core/src/i18n/strings/performance-coverage';
@@ -61,6 +63,8 @@ it('renders four named KPI cards, the displayed product, signed point deltas and
   // Known eight-hour totals: 240/480 run minutes, 400/800 units, 320/400 good units.
   expect([value(ids.oee), value(ids.availability), value(ids.performance), value(ids.quality)])
     .toEqual(['20.0%', '50.0%', '50.0%', '80.0%']);
+  expect([ids.oee, ids.availability, ids.performance, ids.quality].map(id => one(id).querySelector('.ant-statistic-title')?.textContent))
+    .toEqual(['OEE', 'Availability', 'Performance', 'Quality']);
   // 0.5 × 0.5 × 0.8 = 0.2. Previous: 1 × 0.8 × 0.75 = 0.6.
   for (const [id, before, delta] of [
     [ids.oee, '60.0%', '-40.0 pp'], [ids.availability, '100.0%', '-50.0 pp'],
@@ -68,8 +72,7 @@ it('renders four named KPI cards, the displayed product, signed point deltas and
   ]) {
     expect(text(id!)).toContain(before);
     expect(text(id!)).toContain(delta);
-    expect(one(id!).getAttribute('role')).toBe('group');
-    expect(one(id!).getAttribute('aria-label')).toBeTruthy();
+    expect(one(id!).hasAttribute('aria-label')).toBe(false);
     expect(one(id!).closest('[role="status"], [role="alert"], [aria-live="polite"]')).toBeNull();
   }
   expect(shiftRows()).toHaveLength(30);
@@ -109,7 +112,7 @@ it('changes Site, Area, Line and range using core totals', async () => {
   await select(ids.range, 'Last 30 days');
   expect(rows(`${ids.output}-data`)).toHaveLength(31);
   await select(ids.scope, 'Site');
-  expect(value(ids.oee)).not.toBe('20.0%');
+  expect(value(ids.oee)).toBe('21.3%');
 });
 
 it('preserves Pareto order, cumulative numbers and shared pointer/keyboard selection', async () => {
@@ -123,19 +126,25 @@ it('preserves Pareto order, cumulative numbers and shared pointer/keyboard selec
   await click(reasons[1]!);
   expect(reasons[1]!.getAttribute('aria-pressed')).toBe('true');
   expect(reasons[0]!.getAttribute('aria-pressed')).toBe('false');
-  const summaryBlock = () => one(ids.pareto).closest('.ant-card-body')!.lastElementChild!;
-  const summary = () => [...summaryBlock().querySelectorAll('.ant-typography')].at(-1)!.textContent;
-  expect(summaryBlock().querySelector('strong')?.textContent).toBe('Selected downtime reason');
+  const summaryBlock = () => document.querySelector('.ant-descriptions')!;
+  const summary = () => [...summaryBlock().querySelectorAll('.ant-descriptions-item-content')].map(el => el.textContent);
+  expect(summaryBlock().querySelector('.ant-descriptions-title')?.textContent).toBe('Selected downtime reason');
   expect(summaryBlock().querySelector('[role="status"], [role="alert"], [aria-live]')).toBeNull();
   expect(summaryBlock().closest('[role="status"], [role="alert"], [aria-live]')).toBeNull();
-  expect(summary()).toBe('Minor stops · Downtime minutes: 80 · Share of total downtime: 33.3%');
-  await act(() => reasons[0]!.focus());
-  await key(document.activeElement!, 'Enter');
-  expect(reasons[0]!.getAttribute('aria-pressed')).toBe('true');
-  expect(summary()).toBe('Changeover · Downtime minutes: 160 · Share of total downtime: 66.7%');
-  await act(() => reasons[1]!.focus());
-  await key(document.activeElement!, ' ');
-  expect(reasons[1]!.getAttribute('aria-pressed')).toBe('true');
+  expect(summary()).toEqual(['Minor stops', '80', '33.3%']);
+  const group = reasons[0]!.closest('[role="group"]')!;
+  expect(document.getElementById(group.getAttribute('aria-labelledby')!)?.textContent).toBe('Select downtime reason');
+  for (const [index, activation] of [[0, 'Enter'], [1, ' ']] as const) {
+    await act(() => reasons[index]!.focus());
+    await key(document.activeElement!, activation);
+    // happy-dom does not synthesize a native button's activation click.
+    await act(() => {
+      reasons[index]!.dispatchEvent(new KeyboardEvent('keyup', { key: activation, bubbles: true }));
+      reasons[index]!.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 0 }));
+    });
+    expect(reasons[index]!.getAttribute('aria-pressed')).toBe('true');
+    expect(summary()).toEqual(index === 0 ? ['Changeover', '160', '66.7%'] : ['Minor stops', '80', '33.3%']);
+  }
   await select(ids.range, 'Last 24 hours');
   expect([...byId(ids.paretoReason)].every(reason => reason.getAttribute('aria-pressed') === 'false')).toBe(true);
 });
@@ -181,6 +190,9 @@ it('uses the comparison and Quality empties without inventing zero Quality or sh
   expect(text(ids.quality)).toContain('No units produced to calculate Quality.');
   expect(text(ids.oee)).toContain('No production in the previous range to compare.');
   expect(text(ids.pareto)).toContain('No downtime in this scope and range.');
+  expect(one(ids.output).querySelector('.ant-empty-description')?.textContent).toBe('No output in this scope and range.');
+  expect(one(ids.output).querySelector('table, [role="img"]')).toBeNull();
+  expect(byId(`${ids.output}-data`)).toHaveLength(0);
   expect(shiftRows()).toHaveLength(1);
   expect(text(ids.shiftHistory)).not.toContain('Best OEE');
   expect(text(ids.shiftHistory)).not.toContain('Worst OEE');
@@ -223,8 +235,8 @@ it.each(['en', 'pt-BR'] as const)('renders every performance manifest key across
   const keys = new Set<MessageKey>([...Object.values(performanceCoverage.shows), ...Object.values(performanceCoverage.actions), ...Object.values(performanceCoverage.states)].flat());
   const seen = new Set<MessageKey>();
   const capture = () => {
-    const rendered = [document.body.textContent, ...[...document.querySelectorAll('[aria-label], [title]')].flatMap(el => [el.getAttribute('aria-label'), el.getAttribute('title')])].join('\n');
-    for (const key of keys) if (rendered.includes(t(locale, key))) seen.add(key);
+    const rendered = new Set([...document.body.querySelectorAll('*')].flatMap(el => [el.textContent?.trim(), el.getAttribute('aria-label')]));
+    for (const key of keys) if (rendered.has(t(locale, key))) seen.add(key);
   };
   await start(known, locale);
   expect(value(ids.oee)).toBe(locale === 'en' ? '20.0%' : '20,0%');
@@ -240,10 +252,85 @@ it.each(['en', 'pt-BR'] as const)('renders every performance manifest key across
   await view!.unmount(); view = undefined;
   await start({ ...dataset, hourlyOutput: [hour(-1, { goodUnits: 0, scrapUnits: 0, downtime: [] })] }, locale); capture();
   await view!.unmount(); view = undefined;
+  await start({ ...known, hourlyOutput: known.hourlyOutput.map(h => h.hourStart < dataset.now - 8 * HOUR ? { ...h, goodUnits: 0, scrapUnits: 0 } : h) }, locale); capture();
+  await view!.unmount(); view = undefined;
   // Current live production with no completed Shift history exercises its independent empty.
   view = await mountApp('#/performance', { dataset: { ...dataset, hourlyOutput: [] }, languages: [locale], search: '?tick=100' });
   await select(ids.range, t(locale, 'range.last-24h')); capture();
   expect([...keys].filter(key => !seen.has(key))).toEqual([]);
   expect(document.body.textContent).not.toContain('[[');
   if (locale === 'pt-BR') expect(document.documentElement.lang).toBe('pt-BR');
+});
+
+it.each(['en', 'pt-BR'] as const)('translates Shift IDs and distinguishes previous Quality with no units in %s', async locale => {
+  await start({ ...known, hourlyOutput: known.hourlyOutput.map(h => h.hourStart < dataset.now - 8 * HOUR ? { ...h, goodUnits: 0, scrapUnits: 0 } : h) }, locale);
+  expect(shiftRows().slice(0, 3).map(row => row.cells[0]!.textContent)).toEqual(locale === 'en' ? ['Shift 3', 'Shift 2', 'Shift 1'] : ['Turno 3', 'Turno 2', 'Turno 1']);
+  expect(text(ids.quality)).toContain(t(locale, 'performance.previous-quality-empty'));
+  expect(text(ids.quality)).not.toContain(t(locale, 'performance.quality-empty'));
+  expect(one(ids.quality).querySelector('.ant-statistic-title')?.textContent).toBe(t(locale, 'performance.quality'));
+});
+
+it.each(['en', 'pt-BR'] as const)('identifies current Quality when only the current range has no units in %s', async locale => {
+  await start({ ...known, hourlyOutput: known.hourlyOutput.map(h => h.hourStart >= dataset.now - 8 * HOUR ? { ...h, goodUnits: 0, scrapUnits: 0 } : h) }, locale);
+  expect(text(ids.quality)).not.toContain(t(locale, 'performance.previous-quality-empty'));
+  expect(text(ids.quality)).toContain(t(locale, 'performance.quality-empty'));
+  expect(one(ids.quality).querySelector('.ant-typography')?.textContent).toBe(t(locale, 'performance.quality'));
+});
+
+it('passes only primitive Select option attributes and clears reason selection on scope changes', async () => {
+  await start();
+  await click(byId(ids.paretoReason)[0]!);
+  await openSelect(ids.scope);
+  for (const option of document.querySelectorAll('.ant-select-item-option')) {
+    expect([...option.attributes].some(attribute => attribute.value.includes('[object Object]'))).toBe(false);
+    for (const attribute of ['scope', 'name', 'kind']) expect(option.hasAttribute(attribute)).toBe(false);
+  }
+  await key(one(ids.scope).querySelector('input')!, 'Escape'); await endMotion();
+  await select(ids.scope, 'Line · E1 · Extrusion Line 1');
+  expect(document.querySelector('.ant-descriptions')).toBeNull();
+  await select(ids.scope, 'Site');
+  expect([...byId(ids.paretoReason)].map(el => el.getAttribute('aria-pressed'))).toEqual(['false', 'false']);
+});
+
+it('selects a reason from a real chart series click', async () => {
+  const original = registration.init;
+  const engines: ReturnType<typeof original>[] = [];
+  vi.spyOn(registration, 'init').mockImplementation((...args) => { const chart = original(...args); engines.push(chart); return chart; });
+  await start();
+  const chart = engines.find(engine => engine.getDom() === one(ids.pareto).querySelector('[role="img"]'))!;
+  await act(() => { chart.trigger('click', { type: 'click', componentType: 'series', componentSubType: 'bar', componentIndex: 0, seriesType: 'bar', seriesIndex: 0, seriesName: 'Downtime minutes', name: 'Minor stops', dataIndex: 1, data: {}, dataType: 'main', value: 80, color: '#000', $vars: ['seriesName', 'name', 'value'] }); });
+  expect(byId(ids.paretoReason)[1]!.getAttribute('aria-pressed')).toBe('true');
+  expect(document.querySelector('.ant-descriptions-item-content')?.textContent).toBe('Minor stops');
+});
+
+it('keeps fixed range arrays and chart options stable across timer ticks while Last 24 hours refreshes', async () => {
+  vi.useFakeTimers();
+  let now = 0;
+  const builds = vi.spyOn(core, 'performanceStateView');
+  const original = registration.init;
+  const updates: ReturnType<typeof vi.spyOn>[] = [];
+  vi.spyOn(registration, 'init').mockImplementation((...args) => { const chart = original(...args); updates.push(vi.spyOn(chart, 'setOption')); return chart; });
+  view = await mountApp('#/performance', { dataset, search: '', now: () => now });
+  await act(async () => { await Promise.resolve(); });
+  const current = () => builds.mock.results.at(-1)!.value as core.PerformanceView;
+  const fixed = current();
+  const count = builds.mock.calls.length;
+  const optionCalls = () => updates.reduce((sum, update) => sum + update.mock.calls.length, 0);
+  const initialOptions = optionCalls();
+  for (const time of [100_000, 30_000_000]) {
+    now = time;
+    await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+    expect(builds).toHaveBeenCalledTimes(count);
+    for (const field of ['pareto', 'output', 'shifts'] as const) expect(current()[field]).toBe(fixed[field]);
+    expect(optionCalls()).toBe(initialOptions);
+  }
+  await openSelect(ids.range);
+  await click([...document.querySelectorAll('.ant-select-item-option')].find(el => el.textContent === 'Last 24 hours')!);
+  await act(async () => { await vi.advanceTimersByTimeAsync(500); });
+  const rolling = current();
+  const beforeUpdate = optionCalls();
+  now += 100_000;
+  await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+  for (const field of ['pareto', 'output', 'shifts'] as const) expect(current()[field]).not.toBe(rolling[field]);
+  expect(optionCalls()).toBeGreaterThan(beforeUpdate);
 });
