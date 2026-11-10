@@ -14,7 +14,7 @@ Route `/control`. Alarms, the Event Log and communication diagnostics.
 |--------|--------|
 | Filter Alarms | By priority, state, Area and Line. |
 | Acknowledge | One or several selected Alarms, with `a` or a button. An active unacknowledged Alarm becomes active acknowledged. A returned to normal unacknowledged Alarm becomes cleared. Logged. |
-| Filter the Event Log | By User, action type and time range (the four standard ranges); default range: Last 24 hours. |
+| Filter the Event Log | By User, action type and time range (the four standard ranges); default range: Last 24 hours. Last shift is the most recent completed Shift at load and stays fixed. Last 24 hours, Last 7 days and Last 30 days keep rolling. |
 | Sort diagnostics | By status severity (Offline, Degraded, Online), latency, packet loss or Machine id. Default is severity then Machine id. Explicit sorts put null latency last in both directions and break ties by Machine id ascending. |
 
 ## States

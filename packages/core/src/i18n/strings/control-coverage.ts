@@ -29,7 +29,7 @@ export const controlCoverage = {
       "action.alarm-acknowledge", "control.select-all-alarms",
     ],
     "Filter the Event Log": [
-      "control.filter-events", "control.event-user", "control.event-action", "control.event-range",
+      "control.filter-events", "control.event-user", "control.event-action", "control.event-range", "control.event-range-help",
     ],
     "Sort diagnostics": [
       "control.diagnostics-sort", "common.sort", "parameters.link-status", "control.diagnostics-latency",

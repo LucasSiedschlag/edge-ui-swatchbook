@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import { HOUR } from '../mock/time';
 import { shiftsFromHours } from '../mock/history';
+import { rangeWindow, performanceWindow } from '../views/ranges';
 import { performanceView } from '../views/performance';
 import { connectivityView } from '../views/tags';
 import { readHours } from './kpis';
@@ -23,11 +24,27 @@ describe('hourly production agreement', () => {
     }
   });
 
-  it('keeps Screen 4 Last shift anchored at load after Screen 1 crosses a Shift boundary', () => {
-    const after = simulate(d, 28800);
-    for (const line of after.lines) {
-      const scope = { kind: 'line', lineId: line.lineId } as const;
-      expect(performanceView(d, after.hours, 28800, scope, 'last-shift')).toEqual(performanceView(d, [], 0, scope, 'last-shift'));
+  it('agrees across Event Log and Screen 4 short windows before and after a Shift boundary', () => {
+    for (const tick of [0, 100, 3600, 28799, 28800, 30000, 40000]) {
+      const snapshot = simulate(d, tick);
+      for (const range of ['last-shift', 'last-24h'] as const) {
+        expect(rangeWindow(range, tick)).toEqual(performanceWindow(range, tick));
+        const window = rangeWindow(range, tick);
+        for (const line of snapshot.lines) {
+          const scope = { kind: 'line', lineId: line.lineId } as const;
+          const view = performanceView(d, snapshot.hours, tick, scope, range);
+          const records = [...d.hourlyOutput, ...snapshot.hours].filter(h => h.lineId === line.lineId && h.hourStart >= window.start && h.hourStart < window.end);
+          expect(sum(view.output.map(h => h.goodUnits))).toBe(sum(records.map(h => h.goodUnits)));
+          if (range === 'last-shift') {
+            expect(view).toEqual(performanceView(d, [], 0, scope, range));
+          } else {
+            const currentShift = view.output.filter(h => h.start >= snapshot.shift.startsAt);
+            expect(sum(currentShift.map(h => h.goodUnits))).toBe(line.shiftGoodUnits);
+            expect(sum(currentShift.map(h => h.scrapUnits))).toBe(line.scrapThisShift);
+            expect(sum(currentShift.map(h => h.targetUnits))).toBe(line.shiftTargetUnits);
+          }
+        }
+      }
     }
   });
 

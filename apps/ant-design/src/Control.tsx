@@ -63,6 +63,7 @@ function EventLog() {
             />
           </Filter>
         </Space>
+        <Typography.Paragraph type="secondary">{t('control.event-range-help')}</Typography.Paragraph>
         <Typography.Text type="secondary">{tCount('common.row-count', events.rows.length)}</Typography.Text>
         <Table<EventRow>
           data-testid={ids.eventLog} rowKey="id" size="small" pagination={false}

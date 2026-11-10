@@ -103,11 +103,11 @@ describe('eventLogView', () => {
     expect(rows).toHaveLength(d.events.filter((e) => e.at >= now - 8 * HOUR && e.at < now).length);
   });
 
-  it('last-shift moves to the next completed Shift after 8 hours', () => {
+  it('last-shift stays fixed at load after 8 hours', () => {
     const tick = 8 * 3600 + 1;
     const now = simulatedTime(0);
     const s = withEvents([entry('EV-0001', now - 1), entry('EV-0002', now + HOUR)]);
-    expect(eventLogView(s, tick, { range: 'last-shift' }).rows.map((r) => r.id)).toEqual(['EV-0002']);
+    expect(eventLogView(s, tick, { range: 'last-shift' }).rows.map((r) => r.id)).toEqual(['EV-0001']);
   });
 
   it('shows new actions on top at their tick and not before it', () => {

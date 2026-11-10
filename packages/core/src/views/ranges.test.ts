@@ -20,21 +20,22 @@ describe('rangeWindow', () => {
     expect(rangeWindow('last-30d', 0)).toEqual({ start: NOW - 719 * HOUR, end: NOW + HOUR, hours: 720 });
   });
 
-  it('moves the rolling windows by whole hours and the Shift window by whole Shifts', () => {
+  it('moves rolling windows by whole hours and fixes Last shift at load', () => {
     expect(rangeWindow('last-24h', 3599).start).toBe(NOW - 23 * HOUR);
     expect(rangeWindow('last-24h', 3600).start).toBe(NOW - 22 * HOUR);
     expect(rangeWindow('last-shift', 28799)).toEqual(rangeWindow('last-shift', 0));
-    expect(rangeWindow('last-shift', 28800)).toEqual({ start: NOW, end: NOW + 8 * HOUR, hours: 8 });
+    expect(rangeWindow('last-shift', 28800)).toEqual({ start: NOW - 8 * HOUR, end: NOW, hours: 8 });
   });
 });
 
 describe('short ranges share hours across Screens', () => {
   // One event per hour edge around the window, written by real actions so the Event Log is the real one.
-  const ticks = [0, 100, 3599, 3600, 28799, 28800, 40000];
+  const ticks = [0, 100, 3599, 3600, 28799, 28800, 30000, 40000];
 
   it.each(['last-shift', 'last-24h'] as const)('the Event Log and Screen 4 agree on %s', (range) => {
     for (const tick of ticks) {
       const w = rangeWindow(range, tick);
+      expect(w).toEqual(performanceWindow(range, tick));
       const now = simulatedTime(tick);
       const state = createPlantState(d);
       const shown = eventLogView(state, tick, { range }).rows;
@@ -68,11 +69,14 @@ describe('Screen 4 fixed history windows', () => {
     }
   });
 
-  it.each(RANGES)('keeps the Event Log rolling for %s', (range) => {
+  it.each(RANGES)('applies the Event Log range semantics for %s', (range) => {
     const result = reduce(createPlantState(d), { type: 'shift-handover', note: 'New action' }, { tick: 30000 });
     if (!result.ok) throw new Error(result.error.code);
     if (range !== 'last-shift') expect(eventLogView(result.state, 30000, { range }).rows[0]?.note).toBe('New action');
-    if (range === 'last-shift') expect(performanceWindow(range, 30000)).toEqual(rangeWindow(range, 0));
+    if (range === 'last-shift') {
+      expect(performanceWindow(range, 30000)).toEqual(rangeWindow(range, 30000));
+      expect(eventLogView(result.state, 30000, { range }).rows.some(row => row.note === 'New action')).toBe(false);
+    }
     if (range === 'last-24h') {
       expect(performanceWindow(range, 30000)).toEqual(rangeWindow(range, 30000));
     }

@@ -15,19 +15,20 @@ export interface RangeWindow {
 }
 
 /**
- * Rolling Event Log windows. Screen 4 shares Last 24 hours and anchors its other ranges at load.
- * Last shift is the most recent COMPLETED Shift, the eight hours before the running Shift starts.
+ * Event Log Last shift is the most recent completed Shift at load, fixed at tick 0.
+ * Last 24 hours rolls in both Screens. Event Log Last 7 and Last 30 days keep rolling.
  * The rolling ranges are 24, 168 or 720 whole hour slots ending with the current hour, so the current hour counts with the
  * minutes that have really happened (nothing after now exists yet).
  */
 export function rangeWindow(range: RangeId, tick: number): RangeWindow {
   assertSessionTick(tick);
   const hours = RANGE_HOURS[range];
-  const end = range === 'last-shift' ? shiftInfo(tick).startsAt : Math.floor(simulatedTime(tick) / HOUR) * HOUR + HOUR;
+  const end = range === 'last-shift' ? shiftInfo(0).startsAt : Math.floor(simulatedTime(tick) / HOUR) * HOUR + HOUR;
   return { start: end - hours * HOUR, end, hours };
 }
 
-/** Screen 4 only rolls Last 24 hours. Last shift and long ranges stay anchored at load. */
+/** Screen 4 shares the fixed-at-load completed Last shift and rolling Last 24 hours with the Event Log.
+ * Last 7 and Last 30 days contain history only, ending at load throughout the session. */
 export function performanceWindow(range: RangeId, tick: number): RangeWindow {
   assertSessionTick(tick);
   if (range === 'last-shift') return rangeWindow(range, 0);
