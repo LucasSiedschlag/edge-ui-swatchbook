@@ -1,4 +1,4 @@
-import { t, tr, formatNumber, formatPercentValue, formatDuration, type Locale, type MessageKey } from '../i18n';
+import { t, tr, formatDate, formatNumber, formatPercentValue, formatDuration, type Locale, type MessageKey } from '../i18n';
 import { SHIFT_IDS, BATCH_STATUSES } from '../mock/types';
 import { normalizeFilters, type FilterInput } from './filters';
 import { spDayStart, spDayEnd } from '../mock/time';
@@ -64,6 +64,7 @@ export interface LedgerFilterValues {
 export type LedgerFilters = FilterInput<LedgerFilterValues>;
 export type ActiveFilter = { [K in keyof LedgerFilterValues]-?: { column: K; value: Exclude<LedgerFilterValues[K], undefined> } }[keyof LedgerFilterValues];
 export interface LedgerQuery {
+  locale?: Locale;
   filters?: LedgerFilters | null;
   sort?: { column: LedgerColumn; direction: 'asc' | 'desc' };
   /** Selection survives filtering. Hidden selected Batches still count toward the limit of four. */
@@ -122,7 +123,7 @@ export const LEDGER_FILTER_COLUMNS = ['batchId', 'lotId', 'upstreamLotId', 'area
 export type LedgerFilterColumn = typeof LEDGER_FILTER_COLUMNS[number];
 const inRange = (n: number, r?: LedgerRange) => !r || ((r.min === undefined || n >= r.min) && (r.max === undefined || n <= r.max));
 
-/** Finished Batches only. Code point ordering, null first ascending. Batch id ties always ascend. */
+/** Finished Batches only. Area and status use localized labels; other fields use code point order. Batch id ties ascend. */
 export function ledgerView(d: MockDataset, query: LedgerQuery): LedgerView {
   const { column, direction } = query.sort ?? LEDGER_DEFAULT_SORT;
   if (!LEDGER_SORT_COLUMNS.includes(column)) throw new Error('unknown ledger column');
@@ -162,17 +163,33 @@ export function ledgerView(d: MockDataset, query: LedgerQuery): LedgerView {
     inRange(r.scrap, f.scrap) && inRange(r.durationMinutes, f.duration) &&
     (start.from === undefined || r.start >= start.from) && (start.to === undefined || r.start <= start.to) &&
     (end.from === undefined || r.end >= end.from) && (end.to === undefined || r.end <= end.to));
-  rows.sort((a, b) => order(a[column], b[column]) * (direction === 'asc' ? 1 : -1) || order(a.batchId, b.batchId));
-  const selected = new Set(query.selected ?? []);
-  const visible = new Set(rows.map(r => r.batchId));
-  const selectedHidden = [...selected].filter(id => !visible.has(id)).length;
+  const locale = query.locale ?? 'en';
+  const collator = new Intl.Collator(locale);
+  const label = (row: LedgerRow) => column === 'areaId' ? tr(locale, row.areaName) : t(locale, `batch-status.${row.status}`);
+  rows.sort((a, b) => (column === 'areaId' || column === 'status' ? collator.compare(label(a), label(b)) : order(a[column], b[column]))
+    * (direction === 'asc' ? 1 : -1) || order(a.batchId, b.batchId));
   return { rows, rowCount: rows.length, totalCount: base.rows.length, empty: rows.length === 0, activeFilters,
-    selectedCount: selected.size, selectedHidden, canSelectAll: rows.length + selectedHidden <= MAX_COMPARE };
+    ...ledgerSelection(rows, query.selected ?? []) };
 }
 
 
+/** Selection statistics do not refilter or sort historical rows. */
+export function ledgerSelection(rows: readonly LedgerRow[], selection: readonly string[]) {
+  const selected = new Set(selection);
+  const visible = new Set(rows.map(row => row.batchId));
+  const selectedHidden = [...selected].filter(id => !visible.has(id)).length;
+  return { selectedCount: selected.size, selectedHidden, canSelectAll: rows.length + selectedHidden <= MAX_COMPARE };
+}
+
 export const MAX_COMPARE = 4;
 export interface SelectionResult { selected: string[]; result: 'selected' | 'deselected' | 'selection-limit' }
+
+/** Apply native select-all or Shift-click proposals atomically, preserving hidden selections. */
+export function bulkSelection(selected: readonly string[], proposed: readonly string[]): SelectionResult {
+  const next = [...new Set(proposed)];
+  if (next.length > MAX_COMPARE) return { selected: selected as string[], result: 'selection-limit' };
+  return { selected: next, result: next.some(id => !selected.includes(id)) ? 'selected' : 'deselected' };
+}
 
 export function toggleSelection(selected: readonly string[], batchId: string): SelectionResult {
   if (selected.includes(batchId)) return { selected: selected.filter(id => id !== batchId), result: 'deselected' };
@@ -296,10 +313,10 @@ export function ledgerFilterDescriptions(d: MockDataset, filters: readonly Activ
     switch (filter.column) {
       case 'areas': value = filter.value.map(id => tr(locale, d.areas.find(a => a.id === id)!.name)).join(', '); break;
       case 'lines': value = filter.value.map(id => `${id} · ${tr(locale, d.lines.find(l => l.id === id)!.name)}`).join(', '); break;
-      case 'products': value = filter.value.map(id => tr(locale, d.products.find(p => p.id === id)!.name)).join(', '); break;
+      case 'products': value = filter.value.map(id => { const product = d.products.find(p => p.id === id)!; return `${product.code} · ${tr(locale, product.name)}`; }).join(', '); break;
       case 'shifts': value = filter.value.map(id => t(locale, id === 'S1' ? 'shift.first' : id === 'S2' ? 'shift.second' : 'shift.third')).join(', '); break;
       case 'statuses': value = filter.value.map(id => t(locale, `batch-status.${id}`)).join(', '); break;
-      case 'start': case 'end': value = [filter.value.fromDate && `${t(locale, 'common.from')}: ${filter.value.fromDate}`, filter.value.toDate && `${t(locale, 'common.to')}: ${filter.value.toDate}`].filter(Boolean).join(', '); break;
+      case 'start': case 'end': value = [filter.value.fromDate && `${t(locale, 'common.from')}: ${formatDate(locale, spDayStart(filter.value.fromDate))}`, filter.value.toDate && `${t(locale, 'common.to')}: ${formatDate(locale, spDayStart(filter.value.toDate))}`].filter(Boolean).join(', '); break;
       case 'recipeVersion': case 'yield': case 'scrap': case 'duration': {
         const number = (n: number) => filter.column === 'yield' ? formatPercentValue(locale, n)
           : filter.column === 'duration' ? formatDuration(n * 60) : formatNumber(locale, n, { decimals: filter.column === 'recipeVersion' || filter.column === 'scrap' ? 0 : 1 });

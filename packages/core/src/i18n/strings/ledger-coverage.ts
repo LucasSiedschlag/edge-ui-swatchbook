@@ -21,16 +21,16 @@ export const ledgerCoverage = {
   },
   actions: {
     "Sort": [
-      "common.sort", "common.sort-ascending", "common.sort-descending", "ledger.sort-default",
+      "common.sort-ascending", "common.sort-descending", "ledger.sort-default",
     ],
     "Filter by column": [
-      "ledger.filter-column", "common.filter", "common.from", "common.to", "ledger.duration-minutes",
+      "ledger.filter-column", "common.filter", "ledger.filter-count", "common.from", "common.to", "ledger.duration-minutes",
     ],
     "Clear filters": [
       "action.clear-filters", "common.row-count.other",
     ],
     "Select rows": [
-      "ledger.select-batch", "ledger.selected-hidden.other", "common.selected-count.other", "common.select-item",
+      "ledger.select-batch", "ledger.selected-hidden.other", "common.selected-count.other",
       "ledger.result.selected", "ledger.result.deselected", "ledger.select-all",
     ],
     "Compare": [

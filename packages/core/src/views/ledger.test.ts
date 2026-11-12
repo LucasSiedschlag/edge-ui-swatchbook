@@ -1,7 +1,8 @@
+import { DATE_PATTERNS, t, tr } from '../i18n';
 import { batchModel } from '../sim/kpis';
 import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
-import { batchDetail, canCompare, compareBatches, MAX_COMPARE, toggleSelection, ledgerView, LEDGER_SORT_COLUMNS, LEDGER_DEFAULT_SORT, nextLedgerSort, ledgerFilterDescriptions } from './ledger';
+import { batchDetail, canCompare, compareBatches, MAX_COMPARE, toggleSelection, bulkSelection, ledgerSelection, ledgerView, LEDGER_SORT_COLUMNS, LEDGER_DEFAULT_SORT, nextLedgerSort, ledgerFilterDescriptions } from './ledger';
 
 import { alarmList, createPlantState } from '../plant';
 import { alarmListView } from './alarms';
@@ -94,7 +95,7 @@ describe('ledger filters and ordering', () => {
     expect(active.find(f => f.column === 'scrap')!.value).not.toBe(filters.scrap);
   });
   it('sorts every column both ways, keeping Batch id ties ascending', () => {
-    const columns = LEDGER_SORT_COLUMNS;
+    const columns = LEDGER_SORT_COLUMNS.filter(column => column !== 'areaId' && column !== 'status');
     for (const column of columns) for (const direction of ['asc', 'desc'] as const) {
       const rows = ledgerView(d, { sort: { column, direction } }).rows;
       for (let i = 1; i < rows.length; i++) {
@@ -406,4 +407,57 @@ it('exports the sort cycle, duration units, selection safety and localized filte
   const filters = ledgerView(d, { filters: { areas: ['extrusion'], duration: { min: 2.5 }, batchId: 'missing' } }).activeFilters;
   expect(ledgerFilterDescriptions(d, filters, 'en')).toEqual(['Batch ID: missing', 'Area: Extrusion', 'Duration (min): From: 2 min 30 s']);
   expect(ledgerFilterDescriptions(d, filters, 'pt-BR')).toEqual(['ID do lote de produção: missing', 'Área: Extrusão', 'Duração (min): De: 2 min 30 s']);
+});
+
+it.each([
+  ['en', ['assembly', 'extrusion', 'metalworking'], ['aborted', 'completed', 'rework']],
+  ['pt-BR', ['extrusion', 'metalworking', 'assembly'], ['completed', 'aborted', 'rework']],
+] as const)('sorts localized Area and status labels in %s, with ascending Batch id ties', (locale, areas, statuses) => {
+  for (const [column, expected] of [['areaId', areas], ['status', statuses]] as const) {
+    const ascending = ledgerView(d, { locale, sort: { column, direction: 'asc' } }).rows;
+    expect([...new Set(ascending.map(row => row[column]))]).toEqual(expected);
+    const descending = ledgerView(d, { locale, sort: { column, direction: 'desc' } }).rows;
+    expect([...new Set(descending.map(row => row[column]))]).toEqual([...expected].reverse());
+    for (const rows of [ascending, descending]) for (let i = 1; i < rows.length; i++) {
+      if (rows[i - 1]![column] === rows[i]![column]) expect(rows[i - 1]!.batchId < rows[i]!.batchId).toBe(true);
+    }
+  }
+  if (locale === 'en') expect(ledgerView(d, { sort: { column: 'areaId', direction: 'asc' } }).rows)
+    .toEqual(ledgerView(d, { locale, sort: { column: 'areaId', direction: 'asc' } }).rows);
+});
+
+it('computes selection statistics separately and applies bulk proposals atomically', () => {
+  const view = ledgerView(d, {}), rows = view.rows;
+  expect(ledgerSelection(rows, [rows[0]!.batchId, 'hidden'])).toEqual({ selectedCount: 2, selectedHidden: 1, canSelectAll: false });
+  expect(view.rows).toBe(rows);
+  const selected = ['a', 'b'];
+  expect(bulkSelection(selected, ['a', 'b', 'c', 'd', 'e'])).toEqual({ selected, result: 'selection-limit' });
+  expect(bulkSelection(selected, ['a', 'b', 'c'])).toEqual({ selected: ['a', 'b', 'c'], result: 'selected' });
+  expect(bulkSelection(selected, ['a'])).toEqual({ selected: ['a'], result: 'deselected' });
+});
+
+it.each(['recipeVersion', 'yield', 'scrap', 'duration'] as const)('rejects every non-finite %s bound with a clear error', column => {
+  for (const value of [NaN, Infinity, -Infinity]) for (const bound of ['min', 'max']) {
+    expect(() => ledgerView(d, { filters: { [column]: { [bound]: value } } })).toThrow('range bounds must be finite');
+  }
+});
+
+it('formats date filters with core local dates and includes Product codes', () => {
+  const active = ledgerView(d, { filters: { start: { fromDate: '2025-12-30', toDate: '2025-12-31' }, end: { fromDate: '2025-12-30' } } }).activeFilters;
+  expect(ledgerFilterDescriptions(d, active, 'en')).toEqual(['Start: From: 12/30/2025, To: 12/31/2025', 'End: From: 12/30/2025']);
+  expect(ledgerFilterDescriptions(d, active, 'pt-BR')).toEqual(['Início: De: 30/12/2025, Até: 31/12/2025', 'Fim: De: 30/12/2025']);
+  const product = { ...d.products[0]!, code: 'TEST', name: { key: 'product.window-1-leaf' as const, params: { code: 'TEST' } } };
+  const filters = [{ column: 'products' as const, value: [product.id] }];
+  expect(ledgerFilterDescriptions({ ...d, products: [product] }, filters, 'en')).toEqual(['Product: TEST · Single-leaf window (TEST)']);
+  expect(ledgerFilterDescriptions({ ...d, products: [product] }, filters, 'pt-BR')).toEqual(['Produto: TEST · Janela de uma folha (TEST)']);
+});
+
+it('pins localized sort labels and picker patterns to each language', () => {
+  const labels = (locale: 'en' | 'pt-BR', column: 'areaId' | 'status') => [...new Set(ledgerView(d, { locale, sort: { column, direction: 'asc' } }).rows
+    .map(row => column === 'areaId' ? tr(locale, row.areaName) : t(locale, `batch-status.${row.status}`)))];
+  expect(labels('pt-BR', 'areaId')).toEqual(['Extrusão', 'Metalurgia', 'Montagem']);
+  expect(labels('pt-BR', 'status')).toEqual(['Concluído', 'Interrompido', 'Retrabalho']);
+  expect(labels('en', 'areaId')).toEqual(['Assembly', 'Extrusion', 'Metalworking']);
+  expect(labels('en', 'status')).toEqual(['Aborted', 'Completed', 'Rework']);
+  expect(DATE_PATTERNS).toEqual({ en: 'MM/DD/YYYY', 'pt-BR': 'DD/MM/YYYY' });
 });

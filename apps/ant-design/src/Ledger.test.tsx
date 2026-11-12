@@ -75,6 +75,7 @@ it('renders a coherent virtual ARIA table with fixed columns and native density'
   expect(one(ids.grid).querySelector('thead tr')!.getAttribute('aria-rowindex')).toBe('1');
   rows().forEach((element, index) => {
     expect(element.getAttribute('role')).toBe('row');
+    expect(element.tabIndex).toBe(-1);
     expect(element.getAttribute('aria-rowindex')).toBe(String(index + 2));
     expect(element.querySelectorAll('[role="cell"]')).toHaveLength(16);
     expect(element.querySelectorAll('.ant-table-cell-fix-start').length).toBeGreaterThanOrEqual(2);
@@ -161,6 +162,9 @@ it('retains up to four selections across filters, refuses the fifth, and guards 
   expect(one(ids.selectionLimit).textContent).toBe('Select at most four Batches.');
   expect(one(ids.selectionLimit).getAttribute('role')).toBe('status');
   expect(one(ids.selectionLimit).classList.contains('ant-alert-warning')).toBe(true);
+  const refusal = one(ids.selectionLimit);
+  await select(first[4]!);
+  expect(one(ids.selectionLimit)).not.toBe(refusal);
   await input(one(ids.filterBatchId), 'no-such-batch');
   expect(byId(ids.selectionLimit)).toHaveLength(0);
   expect(document.body.textContent).toContain('4 selected Batches hidden by filters');
@@ -169,6 +173,27 @@ it('retains up to four selections across filters, refuses the fifth, and guards 
   await select(first[0]!); expect(selected()).toHaveLength(3);
   expect(document.body.textContent).toContain('Batch deselected.');
   await select(first[4]!); expect(selected()).toHaveLength(4);
+});
+
+it('reports Shift-click selection and limit refusals, and returns focus when selection clears Compare', async () => {
+  await start();
+  const first = rowIds().slice(0, 5);
+  await select(first[0]!);
+  const shiftSelect = (id: string) => act(() => {
+    row(id).querySelector('input')!.dispatchEvent(new MouseEvent('click', { bubbles: true, shiftKey: true }));
+  });
+  await shiftSelect(first[2]!);
+  expect(selected()).toHaveLength(3);
+  expect(document.querySelector('.ant-alert-info')?.textContent).toBe('Batch selected.');
+  await click(one(ids.compare));
+  expect(document.activeElement).toBe(one(ids.comparePanel));
+  await shiftSelect(first[4]!);
+  expect(selected()).toHaveLength(3);
+  expect(one(ids.selectionLimit).textContent).toBe('Select at most four Batches.');
+  expect(byId(ids.comparePanel)).toHaveLength(1);
+  await select(first[0]!);
+  expect(byId(ids.comparePanel)).toHaveLength(0);
+  expect(document.activeElement).toBe(one(ids.compare));
 });
 
 it('selects all a small result only when the total including hidden selections fits the core limit', async () => {
@@ -182,6 +207,7 @@ it('selects all a small result only when the total including hidden selections f
 
 it('explains disabled Compare on focus, then compares 2, 3 and 4 Batches with fixed expected values', async () => {
   const errors = vi.spyOn(console, 'error');
+  const scroll = vi.spyOn(HTMLElement.prototype, 'scrollIntoView');
   await start();
   expect(one(ids.compare).getAttribute('aria-disabled')).toBe('true');
   expect((one(ids.compare) as HTMLButtonElement).disabled).toBe(false);
@@ -196,6 +222,8 @@ it('explains disabled Compare on focus, then compares 2, 3 and 4 Batches with fi
     expect(one(ids.compare).getAttribute('aria-disabled')).toBe('false');
     await click(one(ids.compare));
     expect(one(ids.comparePanel).textContent).toContain('Batch comparison');
+    expect(document.activeElement).toBe(one(ids.comparePanel));
+    expect(scroll.mock.contexts).toContain(one(ids.comparePanel));
     for (const id of first.slice(0, count)) expect(one(ids.comparePanel).textContent).toContain(id);
     const descriptions = [...one(ids.comparePanel).querySelectorAll('.ant-descriptions')];
     expect(descriptions).toHaveLength(count);
@@ -219,6 +247,9 @@ it('explains disabled Compare on focus, then compares 2, 3 and 4 Batches with fi
   expect(one(ids.comparePanel).textContent).toContain('Duration');
   expect(one(ids.comparePanel).textContent).toContain('Yield percentage');
   expect(one(ids.comparePanel).textContent).toContain('Scrap count');
+  await click(one(ids.comparePanel).querySelector('button')!);
+  expect(byId(ids.comparePanel)).toHaveLength(0);
+  expect(document.activeElement).toBe(one(ids.compare));
   expect(errors.mock.calls).toEqual([]);
 });
 
@@ -236,6 +267,10 @@ it('opens details from a row action, suppresses shortcuts, navigates Genealogy a
   expect(one(ids.drawerParameters).querySelectorAll('tbody [data-row-key]')).toHaveLength(detail.parameters.length);
   expect(one(ids.drawerAlarms).querySelectorAll('tbody [data-row-key]')).toHaveLength(detail.alarms.length);
   expect(one(ids.drawerParameters).textContent).toContain('Actual');
+  expect(one(ids.drawer).querySelectorAll('button[aria-label="Close"]')).toHaveLength(1);
+  expect(one(ids.drawerParameters).closest('.ant-table-small')).not.toBeNull();
+  expect(one(ids.drawerParameters).querySelector('.ant-table-scroll-horizontal')).toBeNull();
+  expect(one(ids.drawerParameters).querySelector('table')!.style.width).not.toBe('max-content');
   expect(one(ids.drawerParameters).textContent).toContain('Setpoint');
   const cycle = [...one(ids.drawerParameters).querySelectorAll('tbody tr')].find(element => element.querySelector('td')?.textContent === 'Cycle time')!;
   expect([...cycle.querySelectorAll('td')].map(cell => cell.textContent)).toEqual(['Cycle time', '110', '109', '0.9%', '60', '119', 's', 'Within limits']);
@@ -251,6 +286,8 @@ it('opens details from a row action, suppresses shortcuts, navigates Genealogy a
   const link = [...one(ids.drawerGenealogy).querySelectorAll('a')].find(link => link.textContent === target.batchId)!;
   await click(link);
   expect(one(ids.drawer).querySelector('.ant-descriptions')!.textContent).toContain(target.batchId);
+  expect(document.activeElement).toBe(one(ids.drawer).querySelector('.ant-drawer-title > span'));
+  expect(document.activeElement?.textContent).toBe(`Batch details · ${target.batchId}`);
   expect(one(ids.drawer).querySelector('.ant-descriptions')!.textContent).not.toContain('B-A1-01150');
   const nextDetail = batchDetail(plantState(), 0, target.batchId!);
   if ('error' in nextDetail) throw new Error(nextDetail.error);
@@ -286,23 +323,95 @@ it('renders Portuguese controls and decimal ranges without object-valued Select 
   expect(document.body.textContent).not.toContain('[[');
 });
 
-it('does not recompute the historical ledger view on clock ticks', async () => {
-  const viewSpy = vi.spyOn(core, 'ledgerView'); vi.useFakeTimers(); let clock = 0;
+it('advances the drawer clock without recomputing the historical rows or inventing changes', async () => {
+  const viewSpy = vi.spyOn(core, 'ledgerView');
+  const detailSpy = vi.spyOn(core, 'batchDetail');
+  vi.useFakeTimers(); let clock = 0;
   app = await mountApp('#/ledger', { dataset, search: '', now: () => clock });
+  expect(viewSpy).toHaveBeenCalled();
   const calls = viewSpy.mock.calls.length;
-  const first = rows()[0]!;
+  const historical = viewSpy.mock.results.at(-1)!.value.rows;
+  const firstRow = rows()[0];
+  await click(action(rowIds()[0]!));
+  expect(detailSpy).toHaveBeenCalled();
+  expect(detailSpy.mock.calls.at(-1)![1]).toBe(0);
+  const parametersBefore = one(ids.drawerParameters).textContent;
+  const alarmsBefore = one(ids.drawerAlarms).textContent;
+  const before = detailSpy.mock.results.at(-1)!.value;
   clock = 3000; await act(async () => { await vi.advanceTimersByTimeAsync(3100); });
-  expect(viewSpy.mock.calls).toHaveLength(calls); expect(rows()[0]).toBe(first);
+  expect(detailSpy.mock.calls.at(-1)![1]).toBeGreaterThan(0);
+  const after = detailSpy.mock.results.at(-1)!.value;
+  expect(one(ids.drawerParameters).textContent === parametersBefore).toBe(JSON.stringify(before.parameters) === JSON.stringify(after.parameters));
+  expect(one(ids.drawerAlarms).textContent === alarmsBefore).toBe(JSON.stringify(before.alarms) === JSON.stringify(after.alarms));
+  expect(viewSpy.mock.calls).toHaveLength(calls);
+  expect(viewSpy.mock.results.at(-1)!.value.rows).toBe(historical);
+  expect(rows()[0]).toBe(firstRow);
+});
+
+it('keeps historical rows stable across selections and remounts informational confirmations', async () => {
+  const viewSpy = vi.spyOn(core, 'ledgerView');
+  const statsSpy = vi.spyOn(core, 'ledgerSelection');
+  await start();
+  expect(viewSpy).toHaveBeenCalled();
+  const calls = viewSpy.mock.calls.length;
+  const historical = statsSpy.mock.calls.at(-1)![0];
+  const first = rowIds().slice(0, 2);
+  await select(first[0]!);
+  const notice = one(ids.grid).closest('.ant-card')!.querySelector('[role="status"]')!;
+  expect(notice.classList.contains('ant-alert-info')).toBe(true);
+  expect(notice.textContent).toBe('Batch selected.');
+  await select(first[1]!);
+  expect(one(ids.grid).closest('.ant-card')!.querySelector('[role="status"]')).not.toBe(notice);
+  expect(viewSpy.mock.calls).toHaveLength(calls);
+  expect(statsSpy.mock.calls.at(-1)![0]).toBe(historical);
+});
+
+it.each(['en', 'pt-BR'] as const)('names filters and both date inputs distinctly in %s, and keeps search outside Collapse', async locale => {
+  await start(locale);
+  expect(one(ids.filterBatchId).getAttribute('aria-label')).toBe(t(locale, 'ledger.filter-column', { column: t(locale, 'common.batch-id') }));
+  for (const column of LEDGER_FILTER_COLUMNS) {
+    const wrapper = one(ledgerFilterId(column));
+    const element = wrapper.hasAttribute('aria-label') ? wrapper : wrapper.querySelector('[aria-label]')!;
+    expect(element.getAttribute('aria-label')).toBe(t(locale, 'ledger.filter-column', { column: t(locale, core.ledgerFilterLabels[column]) }));
+  }
+  for (const column of ['start', 'end'] as const) {
+    const group = one(ledgerFilterId(column));
+    expect(group.getAttribute('role')).toBe('group');
+    expect([...group.querySelectorAll('input')].map(field => field.getAttribute('aria-label') ?? field.placeholder)).toEqual([t(locale, 'common.from'), t(locale, 'common.to')]);
+  }
+  expect(one(ids.grid).querySelector('thead input')!.closest('[title]')!.getAttribute('title')).toBe(t(locale, 'ledger.select-all'));
+  const collapse = document.querySelector<HTMLElement>('.ant-collapse')!;
+  expect(collapse.contains(one(ids.filterBatchId))).toBe(false);
+  await click(collapse.querySelector('[role="button"]')!);
+  for (const column of LEDGER_FILTER_COLUMNS) expect(byId(ledgerFilterId(column))).toHaveLength(1);
+  await act(() => document.body.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true })));
+  expect(document.activeElement).toBe(one(ids.filterBatchId));
+  expect(one(ids.clearFilters).closest('.ant-collapse')).toBeNull();
+  expect(one(ids.rowCount).closest('.ant-collapse')).toBeNull();
+});
+
+it.each(['1e400', '-'])('treats invalid range input %s as empty and keeps the grid rendered', async value => {
+  const viewSpy = vi.spyOn(core, 'ledgerView');
+  await start();
+  const field = one(ids.filterYield).querySelector('input')!;
+  await input(field, '98');
+  await input(field, value);
+  expect(one(ids.grid).getAttribute('aria-rowcount')).toBe('5001');
+  expect(viewSpy.mock.calls.at(-1)![1].filters?.yield).toEqual({ min: undefined });
+  expect(rows().length).toBeGreaterThan(0);
 });
 
 it.each(['en', 'pt-BR'] as const)('renders every Ledger manifest key, including empty and defensive states, in %s', async locale => {
   const keys = new Set<MessageKey>([...Object.values(ledgerCoverage.shows), ...Object.values(ledgerCoverage.actions), ...Object.values(ledgerCoverage.states)].flat());
   const seen = new Set<MessageKey>();
   const capture = () => {
-    const rendered = [document.body.textContent ?? '', ...[...document.querySelectorAll('*')].flatMap(el => ['aria-label', 'placeholder', 'title'].map(attribute => el.getAttribute(attribute) ?? ''))].join('\n');
+    const rendered = [...document.querySelectorAll('*')].flatMap(el => [
+      ...(![...el.children].some(child => child.textContent === el.textContent) ? [el.textContent ?? ''] : []),
+      ...['aria-label', 'placeholder', 'title'].map(attribute => el.getAttribute(attribute) ?? ''),
+    ]);
     for (const key of keys) {
       const pattern = t(locale, key).split(/\{[^}]+\}/).map(part => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.+?');
-      if (new RegExp(pattern).test(rendered)) seen.add(key);
+      if (rendered.some(value => new RegExp(`^${pattern}$`).test(value))) seen.add(key);
     }
   };
   async function hover(element: HTMLElement) {

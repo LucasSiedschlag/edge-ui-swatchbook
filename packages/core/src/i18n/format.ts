@@ -3,6 +3,7 @@ import type { Timestamp } from '../mock/types';
 import type { Locale } from './types';
 
 const INTL_LOCALES: Record<Locale, string> = { en: 'en-US', 'pt-BR': 'pt-BR' };
+export const DATE_PATTERNS: Readonly<Record<Locale, string>> = Object.freeze({ en: 'MM/DD/YYYY', 'pt-BR': 'DD/MM/YYYY' });
 const TIME_ZONE = 'America/Sao_Paulo';
 const normalize = (text: string): string => text
   .replace(/[\u202f\u00a0\u2009]/g, ' ')
@@ -119,7 +120,7 @@ export function formatChange(locale: Locale, delta: number, kind: 'points' | 'pe
   return `${number.startsWith('-') ? '' : '+'}${number}${kind === 'percent' ? '%' : ''}`;
 }
 
-/** Fraction differences shown as signed percentage points on the 0–100 scale. */
+/** Fraction differences shown as signed percentage points on the 0 to 100 scale. */
 export function formatPercentagePoints(locale: Locale, fraction: number): string {
   const value = formatChange(locale, fraction * 100, 'points');
   return value === '-' ? value : `${value} pp`;
