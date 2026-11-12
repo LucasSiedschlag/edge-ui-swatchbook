@@ -1,8 +1,8 @@
 import { normalizeFilters, type FilterInput } from './filters';
-import type { LineType, TextRef } from '../mock/types';
+import type { LineType, TextRef, RecipeVersion, Step } from '../mock/types';
 import { STEP_KINDS, type StepKind } from '../mock/types';
-import { reduce, recipeList } from '../plant';
-import type { PlantState, RecipeRow } from '../plant';
+import { reduce, recipeList, recipeCheck } from '../plant';
+import type { PlantState, PlantError, RecipeRow, RuleResult } from '../plant';
 
 interface RecipeFilterValues {
   lineType?: LineType;
@@ -12,6 +12,9 @@ interface RecipeFilterValues {
   search?: string;
 }
 export type RecipeFilters = FilterInput<RecipeFilterValues>;
+export const RECIPE_DEFAULT_FILTERS: RecipeFilters = {};
+export const RECIPE_DEFAULT_STEP_KIND: StepKind | null = null;
+export const RECIPE_DEFAULT_SELECTION: string | null = null;
 
 export interface RecipeLibraryRow extends RecipeRow {
   productCode: string;
@@ -43,19 +46,57 @@ export function recipeLibraryView(
 
 
 export interface RecipeVersionActions { newDraft: boolean; addStep: boolean; save: boolean; approve: boolean; discard: boolean }
-export type RecipeVersionView = { actions: RecipeVersionActions; addableStepKinds: StepKind[] } | { error: 'unknown-version' };
+export interface RecipeStepView extends Step {
+  moveUp: { toIndex: number; reason: 'recipes.first-step' | 'recipes.approved-read-only' | null };
+  moveDown: { toIndex: number; reason: 'recipes.last-step' | 'recipes.approved-read-only' | null };
+}
+export interface RecipeRuleView extends Omit<RuleResult, 'violations'> {
+  violations: (RuleResult['violations'][number] & { parameters: TextRef[]; unit: string })[];
+}
+export type RecipeVersionView = {
+  actions: RecipeVersionActions; addableStepKinds: StepKind[];
+  version: RecipeVersion; versions: { id: string; number: number; status: RecipeVersion['status'] }[];
+  nameRef: TextRef; product: PlantState['dataset']['products'][number]; lineType: LineType;
+  steps: RecipeStepView[]; rules: RecipeRuleView[];
+  readOnlyReason: 'recipes.approved-read-only' | null;
+  /** Null includes an allowed Save no-op; otherwise the reducer's exact refusal and failing rule ids. */
+  saveBlock: PlantError | null;
+  approveBlock: PlantError | null;
+  addStepReason: 'recipes.approved-read-only' | 'recipes.no-addable-step' | null;
+  suggestedStepKind: StepKind | null;
+  summary: 'recipes.approved-read-only' | 'recipes.draft-failing' | 'recipes.draft-passing';
+} | { error: 'unknown-version' };
 
 /** Probes use the same reducer and effective tick as dispatch; no action availability rule is duplicated here. */
 export function recipeVersionView(state: PlantState, versionId: string): RecipeVersionView {
-  if (!state.recipeVersions.some(v => v.id === versionId)) return { error: 'unknown-version' };
+  const version = state.recipeVersions.find(v => v.id === versionId);
+  if (!version) return { error: 'unknown-version' };
+  const recipe = state.dataset.recipes.find(r => r.id === version.recipeId)!;
+  const product = state.dataset.products.find(p => p.id === recipe.productId)!;
+  const versions = state.recipeVersions.filter(v => v.recipeId === recipe.id).sort((a, b) => b.number - a.number);
+  // Approved templates retain names and units even when a Draft removes a required Step.
+  const parameters = new Map(versions.flatMap(v => v.steps.flatMap(s => s.parameters)).map(p => [p.key, p]));
+  const rules = recipeCheck(state, versionId)!.map(rule => ({ ...rule, violations: rule.violations.map(violation => ({
+    ...violation, parameters: violation.parameterKeys.map(key => parameters.get(key)?.name ?? { key: `parameter.${key}` }),
+    unit: parameters.get(violation.parameterKeys[0]!)?.unit ?? '',
+  })) }));
+  const readOnlyReason = version.status === 'approved' ? 'recipes.approved-read-only' as const : null;
+  const steps = version.steps.map<RecipeStepView>((step, index) => ({ ...step,
+    moveUp: { toIndex: Math.max(0, index - 1), reason: readOnlyReason ?? (index === 0 ? 'recipes.first-step' as const : null) },
+    moveDown: { toIndex: Math.min(version.steps.length - 1, index + 1), reason: readOnlyReason ?? (index === version.steps.length - 1 ? 'recipes.last-step' as const : null) },
+  }));
   const ctx = { tick: state.lastTick };
   const available = (type: 'new-draft' | 'save-draft' | 'approve' | 'discard-draft') => {
     const r = reduce(state, { type, versionId }, ctx);
     return r.ok && r.events.length > 0;
   };
   const addableStepKinds = STEP_KINDS.filter(kind => reduce(state, { type: 'add-step', versionId, kind }, ctx).ok);
-  return { actions: {
+  const save = reduce(state, { type: 'save-draft', versionId }, ctx);
+  const approve = reduce(state, { type: 'approve', versionId }, ctx);
+  return { addStepReason: readOnlyReason ?? (addableStepKinds.length ? null : 'recipes.no-addable-step'), suggestedStepKind: addableStepKinds[0] ?? null, version, versions, nameRef: recipe.name, product, lineType: recipe.lineType, steps, rules, readOnlyReason,
+    saveBlock: save.ok ? null : save.error, approveBlock: approve.ok ? null : approve.error,
+    summary: readOnlyReason ?? (rules.some(rule => rule.status === 'fail') ? 'recipes.draft-failing' : 'recipes.draft-passing'), actions: {
     newDraft: available('new-draft'), addStep: addableStepKinds.length > 0,
-    save: available('save-draft'), approve: available('approve'), discard: available('discard-draft'),
+    save: save.ok && save.events.length > 0, approve: approve.ok && approve.events.length > 0, discard: available('discard-draft'),
   }, addableStepKinds };
 }

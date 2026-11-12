@@ -3,11 +3,37 @@ import { generateMockDataset } from '../mock/generate';
 import type { TextRef } from '../mock/types';
 import { createPlantState, reduce } from '../plant';
 import { recipeLibraryView } from './recipes';
+import { recipeVersionView } from '../index';
 
 const d = generateMockDataset();
 const start = () => createPlantState(d);
 const text = (r: TextRef) => `${r.key}|${JSON.stringify(r.params ?? {})}`;
 const view = (f: Parameters<typeof recipeLibraryView>[1], s = start()) => recipeLibraryView(s, f, text);
+
+it('exposes reducer refusal codes and blocking rule ids for Save and Approve at the public view boundary', () => {
+  const state = start();
+  expect(recipeVersionView(state, 'R01-v3')).toMatchObject({
+    saveBlock: { code: 'rules-failing', rules: [1] }, approveBlock: { code: 'rules-failing', rules: [1] },
+  });
+  const weld = state.recipeVersions.find(v => v.recipeId === 'R05' && v.status === 'draft')!;
+  expect(recipeVersionView(state, weld.id)).toMatchObject({
+    saveBlock: { code: 'rules-failing', rules: [3] }, approveBlock: { code: 'rules-failing', rules: [3] },
+  });
+  expect(recipeVersionView(state, 'R01-v2')).toMatchObject({ saveBlock: { code: 'read-only' }, approveBlock: { code: 'read-only' } });
+  for (const type of ['save-draft', 'approve'] as const) {
+    expect(reduce(state, { type, versionId: 'R01-v3' }, { tick: 1 })).toEqual({ ok: false, error: { code: 'rules-failing', rules: [1] } });
+  }
+  const parameter = state.recipeVersions.find(v => v.id === 'R01-v3')!.steps.flatMap(s => s.parameters).find(p => p.key === 'barrel-zone-3')!;
+  const repaired = reduce(state, { type: 'edit-parameter', versionId: 'R01-v3', parameterId: parameter.id, field: 'setpoint', value: 180 }, { tick: 1 });
+  if (!repaired.ok) throw new Error(repaired.error.code);
+  expect(recipeVersionView(repaired.state, 'R01-v3')).toMatchObject({ saveBlock: null, approveBlock: null });
+  const saved = reduce(repaired.state, { type: 'save-draft', versionId: 'R01-v3' }, { tick: 2 });
+  if (!saved.ok) throw new Error(saved.error.code);
+  // Saving an unchanged Draft is an allowed no-op, not a refusal.
+  expect(recipeVersionView(saved.state, 'R01-v3')).toMatchObject({ saveBlock: null, approveBlock: null });
+  const empty = { ...state, recipeVersions: state.recipeVersions.map(v => v.id === 'R01-v3' ? { ...v, steps: [] } : v) };
+  expect(recipeVersionView(empty, 'R01-v3')).toMatchObject({ saveBlock: { code: 'invalid-version' }, approveBlock: { code: 'invalid-version' } });
+});
 
 describe('recipeLibraryView', () => {
   it('lists all 40 Recipes unfiltered, in dataset order, with ids and refs only', () => {
@@ -121,4 +147,23 @@ it('derives every version action and addable kind from reduce, including read-on
   state = { ...state, recipeVersions: state.recipeVersions.map(x => x.id === v.id ? { ...bad, steps: [] } : x) };
   check(v.id);
   expect(recipeVersionView(state, 'missing')).toEqual({ error: 'unknown-version' });
+});
+
+it('exposes the selected Version, Product, version choices, ordered Steps and named rule violations', async () => {
+  const { recipeVersionView } = await import('./recipes');
+  const selected = recipeVersionView(start(), 'R01-v3');
+  expect(selected).toMatchObject({
+    version: { id: 'R01-v3', number: 3, status: 'draft' },
+    product: { code: 'WIN-1L-60' }, lineType: 'extrusion',
+    versions: [{ id: 'R01-v3' }, { id: 'R01-v2' }, { id: 'R01-v1' }],
+    summary: 'recipes.draft-failing',
+    rules: expect.arrayContaining([{ rule: 1, status: 'fail', violations: expect.arrayContaining([expect.objectContaining({
+      kind: 'above-max', actual: 198, limit: 195, unit: '°C',
+      parameters: [{ key: 'parameter.barrel-zone-3' }],
+    })]) }]),
+  });
+  if ('error' in selected) throw new Error(selected.error);
+  expect(selected.steps.map(step => [step.order, step.kind])).toEqual([[1, 'preheat'], [2, 'ramp'], [3, 'run'], [4, 'cooldown']]);
+  expect(selected.steps[0]).toMatchObject({ moveUp: { toIndex: 0, reason: 'recipes.first-step' }, moveDown: { toIndex: 1, reason: null } });
+  expect(selected.steps[3]).toMatchObject({ moveDown: { toIndex: 3, reason: 'recipes.last-step' } });
 });

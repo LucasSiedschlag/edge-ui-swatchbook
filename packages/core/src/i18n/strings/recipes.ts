@@ -4,6 +4,10 @@
  * Missing violations carry a sentinel limit of zero; show the returned limit and common.unknown for actual.
  */
 export const en = {
+  "recipes.discard-confirm": "Discard this Draft and its working changes?",
+  "recipes.no-addable-step": "Remove a Step to add it again from the Approved template.",
+  "recipes.first-step": "Already the first Step.",
+  "recipes.last-step": "Already the last Step.",
   "recipes.library": "Recipe library",
   "recipes.version": "Recipe Version details",
   "recipes.steps": "Step sequence",
@@ -35,6 +39,10 @@ export const en = {
 } as const;
 
 export const ptBR: Record<keyof typeof en, string> = {
+  "recipes.discard-confirm": "Descartar este rascunho e suas alterações em edição?",
+  "recipes.no-addable-step": "Remova uma etapa para adicioná-la novamente a partir do modelo aprovado.",
+  "recipes.first-step": "Já é a primeira etapa.",
+  "recipes.last-step": "Já é a última etapa.",
   "recipes.library": "Biblioteca de receitas",
   "recipes.version": "Detalhes da versão da receita",
   "recipes.steps": "Sequência de etapas",

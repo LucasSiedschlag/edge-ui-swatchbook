@@ -29,7 +29,15 @@ A rule that does not apply to the Recipe's Line type shows as Not applicable.
 | Approve | Allowed only for a Draft with no failing rule. The version becomes read-only. Logged. |
 | Discard Draft | Deletes the Draft. Logged. |
 
-The dependency check runs on every edit, and again before Save and Approve.
+The dependency check runs on every edit, and again before Save and Approve. Its summary announces rule status changes politely, while each rule keeps its status as text. Missing required Parameters name the Parameter, show an unknown actual and the returned zero sentinel rule limit.
+
+The Screen starts with `RECIPE_DEFAULT_FILTERS` (no filters), `RECIPE_DEFAULT_SELECTION` (no open Recipe Version) and `RECIPE_DEFAULT_STEP_KIND` (no explicit Step choice). Core supplies the first addable Step kind as the suggested choice. Version choices show number and status in descending number order. Step kinds come from `STEP_KINDS` and Approved templates. When none is addable, explain that removing a Step lets it be added again from the Approved template.
+
+Move up and Move down are explicit keyboard actions. The first and last Steps explain why they cannot move further. Approved fields and actions expose the read-only reason on hover and focus. Discard asks whether to discard the Draft and its working changes, with Cancel returning focus to Discard and confirmation returning focus to search.
+
+The full-width Recipe library sits above the Version and shows all seven columns without horizontal scrolling at desktop widths. Line type, status and search share one row; the library scrolls vertically through about six to seven rows. Recipe names may ellipsize with the full text in a title. Clicking a row, pressing Enter on it or using Open Recipe Version opens its latest Version. The selected Recipe stays highlighted and exposes its selection even while an older Version is open.
+
+Below the library, the Version and sticky Dependency check panel share a two-to-one layout. If the Screen content cannot fit both, the panel appears above the Version. Step controls sit in each Step header, and its kind appears once. Blocked Save and Approve stay focusable with `aria-disabled`, ignore activation, and describe the core refusal and all failing rule names on hover and focus.
 
 ## States
 

@@ -5,6 +5,7 @@ import performanceSpec from '../../../../../docs/screens/04-plant-performance-ce
 import parametersSpec from '../../../../../docs/screens/05-live-parameter-matrix.md?raw';
 import controlSpec from '../../../../../docs/screens/06-control-room-command.md?raw';
 import { describe, expect, it } from 'vitest';
+import { recipesCoverage } from './recipes-coverage';
 import { parametersCoverage } from './parameters-coverage';
 import { performanceCoverage } from './performance-coverage';
 import { controlCoverage } from './control-coverage';
@@ -84,61 +85,7 @@ const manifest: Record<string, ScreenCoverage> = {
       ],
     },
   },
-  recipes: {
-    file: "02-interactive-recipe-lab.md",
-    shows: {
-      "Recipe library": [
-        "recipes.library", "recipes.column-recipe-id", "recipes.column-name", "common.product",
-        "recipes.filter-line-type", "recipes.column-version", "recipes.filter-status", "recipes.search-placeholder",
-        "common.search", "common.row-count.other",
-      ],
-      "Recipe Version view": [
-        "recipes.version", "recipes.steps", "recipes.step-number", "recipes.step-kind",
-        "recipes.parameters", "common.parameter", "common.name", "term.setpoint",
-        "common.minimum", "common.maximum", "common.unit", "recipes.version-empty",
-        "recipes.steps-empty", "recipes.parameters-empty",
-      ],
-      "Dependency check panel": [
-        "recipes.dependency-check", "recipes.rules-empty", "rule-status.pass", "rule-status.fail",
-        "rule-status.not-applicable", "recipes.violation.below-min", "recipes.violation.above-max", "recipes.violation.adjacent-too-far",
-        "recipes.violation.missing",
-      ],
-    },
-    actions: {
-      "Open a Recipe Version": [
-        "recipes.open-version",
-      ],
-      "New Draft": [
-        "action.recipe-new-draft",
-      ],
-      "Add, remove or reorder Steps": [
-        "action.add-step", "action.remove-step", "action.move-up", "action.move-down",
-      ],
-      "Edit Parameter values": [
-        "recipes.edit-parameters", "common.minimum", "term.setpoint", "common.maximum",
-      ],
-      "Save Draft": [
-        "action.recipe-save",
-      ],
-      "Approve": [
-        "action.recipe-approve",
-      ],
-      "Discard Draft": [
-        "action.recipe-discard",
-      ],
-    },
-    states: {
-      "Library filter with no match: `recipes.library-empty`. If no Recipe Version is open either, show one whole Screen `recipes.empty` instead.": [
-        "recipes.library-empty", "recipes.empty",
-      ],
-      "Draft with failing rules, Draft with all rules passing, Approved read-only.": [
-        "recipes.draft-failing", "recipes.draft-passing", "recipes.approved-read-only",
-      ],
-      "Field error (min, setpoint, max out of order).": [
-        "plant-error.parameter-order",
-      ],
-    },
-  },
+  recipes: recipesCoverage,
   ledger: {
     file: "03-batch-and-lot-ledger.md",
     shows: {
