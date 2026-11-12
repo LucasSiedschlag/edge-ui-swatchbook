@@ -96,9 +96,9 @@ it('runs the Tour from the route', async () => {
 });
 
 it('shows a translated placeholder for Screens that are not built', async () => {
-  view = await mountApp('#/ledger');
-  const placeholder = one('ledger.placeholder');
-  expect(placeholder.textContent).toContain(en['screen.ledger']);
+  view = await mountApp('#/recipes');
+  const placeholder = one('recipes.placeholder');
+  expect(placeholder.textContent).toContain(en['screen.recipes']);
   await choose(TEST_IDS.shell.language, en['language.portuguese']);
-  expect(one('ledger.placeholder').textContent).toContain(ptBR['screen.ledger']);
+  expect(one('recipes.placeholder').textContent).toContain(ptBR['screen.recipes']);
 });
