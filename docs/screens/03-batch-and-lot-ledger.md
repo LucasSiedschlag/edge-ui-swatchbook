@@ -11,7 +11,7 @@ About 5,000 Batches, one per row, with these columns: Batch ID, Lot, Upstream Lo
 | Action | Effect |
 |--------|--------|
 | Sort | By any column. |
-| Filter by column | Text for IDs, choice lists for Area, Line, Product, Shift and status, ranges for Recipe Version number, yield, scrap and duration, and local date ranges for start and end. Filters combine. |
+| Filter by column | Text for IDs, choice lists for Area, Line, Product, Shift and status, ranges for Recipe Version number, yield, scrap and duration, and local date ranges for start and end. Filters combine. Choice lists search their displayed labels in the current language. Recipe Version bounds accept integers only. |
 | Clear filters | Resets every filter and shows the row count. |
 | Select rows | Multi-select with checkboxes, up to 4 Batches. Selecting a fifth shows a message and does nothing. |
 | Compare | With 2 to 4 Batches selected, shows their duration, yield, scrap and key Parameter actuals side by side. |

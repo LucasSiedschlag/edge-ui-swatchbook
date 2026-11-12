@@ -138,6 +138,7 @@ export function ledgerView(d: MockDataset, query: LedgerQuery): LedgerView {
   for (const column of ['recipeVersion', 'yield', 'scrap', 'duration'] as const) {
     const range = f[column];
     if (range && Object.values(range).some(n => n !== undefined && !Number.isFinite(n))) throw new Error('range bounds must be finite');
+    if (column === 'recipeVersion' && range && Object.values(range).some(n => n !== undefined && !Number.isInteger(n))) throw new Error('recipeVersion bounds must be integers');
     if (range?.min !== undefined && range.max !== undefined && range.min > range.max) throw new Error(`${column} min must not exceed max`);
   }
   const dates = (column: 'start' | 'end') => {
@@ -192,8 +193,8 @@ export function bulkSelection(selected: readonly string[], proposed: readonly st
 }
 
 export function toggleSelection(selected: readonly string[], batchId: string): SelectionResult {
+  selected = [...new Set(selected)];
   if (selected.includes(batchId)) return { selected: selected.filter(id => id !== batchId), result: 'deselected' };
-  // Preserve the caller's selection on a refused fifth selection, without writing through this reference.
   if (selected.length >= MAX_COMPARE) return { selected: selected as string[], result: 'selection-limit' };
   return { selected: [...selected, batchId], result: 'selected' };
 }

@@ -15,10 +15,12 @@ export const ledgerCoverage = {
       "ledger.genealogy.extrusion-run", "ledger.genealogy.metalwork-lot", "ledger.genealogy.assembly-serial", "common.actual",
       "term.setpoint", "common.deviation", "common.deviation-percent", "common.minimum",
       "common.maximum", "common.unit", "ledger.inside-limits", "ledger.outside-limits",
-      "ledger.genealogy-empty", "ledger.parameters-empty", "ledger.alarms-empty", "ledger.result.unknown-batch",
+      "ledger.genealogy-empty", "ledger.parameters-empty", "ledger.alarms-empty",
       "action.close",
     ],
   },
+  // Unreachable from a valid mounted Screen; exercised at the core detail seam.
+  coreStates: ['ledger.result.unknown-batch'],
   actions: {
     "Sort": [
       "common.sort-ascending", "common.sort-descending", "ledger.sort-default",
@@ -51,4 +53,4 @@ export const ledgerCoverage = {
       "ledger.result.selection-limit",
     ],
   },
-} as const satisfies { file: string; shows: Elements; actions: Elements; states: Elements };
+} as const satisfies { file: string; shows: Elements; actions: Elements; states: Elements; coreStates: readonly MessageKey[] };

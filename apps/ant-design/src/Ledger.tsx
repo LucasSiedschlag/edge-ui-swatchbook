@@ -77,10 +77,10 @@ function NumberRange({ column, value, onChange }: { column: LedgerFilterColumn; 
       aria-label={`${t('ledger.filter-column', { column: t(ledgerFilterLabels[column]) })} · ${t(bound === 'min' ? 'common.from' : 'common.to')}`}
       placeholder={t(bound === 'min' ? 'common.from' : 'common.to')}
       min={bound === 'max' ? value?.min : undefined} max={bound === 'min' ? value?.max : undefined}
-      decimalSeparator={separator} parser={input => (input ?? '').replace(separator, '.')}
+      precision={column === 'recipeVersion' ? 0 : undefined} decimalSeparator={separator} parser={input => (input ?? '').replace(separator, '.')}
       formatter={(number, { userTyping, input }) => userTyping ? input : String(number ?? '').replace('.', separator)}
       onInput={input => { if (!Number.isFinite(Number(input.replace(separator, '.')))) onChange({ ...value, [bound]: undefined }); }}
-      onChange={number => onChange({ ...value, [bound]: number === null || number === '' || !Number.isFinite(Number(number)) ? undefined : Number(number) })} />)}
+      onChange={number => onChange({ ...value, [bound]: number === null || number === '' || !Number.isFinite(Number(number)) ? undefined : column === 'recipeVersion' ? Math.round(Number(number)) : Number(number) })} />)}
   </Space>;
 }
 
@@ -267,7 +267,7 @@ export function Ledger() {
           : column === 'lines' ? dataset.lines.map(line => ({ value: line.id, label: `${line.id} · ${tr(line.name)}` }))
           : column === 'products' ? dataset.products.map(product => ({ value: product.id, label: `${product.code} · ${tr(product.name)}` }))
           : column === 'shifts' ? SHIFT_IDS.map(value => ({ value, label: t(shiftLabels[value]) })) : BATCH_STATUSES.map(value => ({ value, label: t(batchStatusLabels[value]) }));
-        return <Select data-testid={testId} aria-label={label} mode="multiple" style={{ width: 240 }} virtual={false}
+        return <Select data-testid={testId} aria-label={label} mode="multiple" showSearch={{ optionFilterProp: 'label' }} style={{ width: 240 }} virtual={false}
           allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} value={filters[column] ?? []} options={options}
           onChange={value => filter(column, value)} />;
       }
@@ -298,15 +298,22 @@ export function Ledger() {
             {!allowed && <span id={reasonId} style={visuallyHidden}>{compareReason}</span>}
           </Space>
           {notice && <Alert key={noticeAttempts} data-testid={notice === 'ledger.result.selection-limit' ? ids.selectionLimit : undefined} role="status" type={notice === 'ledger.result.selection-limit' ? 'warning' : 'info'} showIcon title={t(notice)} />}
-          <div ref={grid} data-testid={ids.grid} role="table" aria-label={t('ledger.grid')} aria-rowcount={view.rowCount + 1} aria-colcount={columns.length + 1} style={fullWidth}>
+          <div ref={grid} data-testid={ids.grid} role="table" aria-label={t('ledger.grid')} aria-rowcount={view.empty ? 2 : view.rowCount + 1} aria-colcount={columns.length + 1} style={fullWidth}>
             <Table<LedgerRow> rowKey="batchId" components={gridComponents} virtual scroll={{ x: gridWidth, y: 440 }} dataSource={view.rows}
               columns={columns} pagination={false} loading={passiveLoading} size={density === 'compact' ? 'small' : 'middle'}
               onHeaderRow={() => ({ role: 'row', 'aria-rowindex': 1 })}
               onRow={(_row, index) => ({ role: 'row', 'aria-rowindex': (index ?? 0) + 2, tabIndex: -1,
               })}
-              locale={{ emptyText: <div data-testid={ids.empty}><Empty description={t('ledger.empty')} />
-                <Typography.Text strong>{t('ledger.active-filters')}</Typography.Text>
-                {filterDescriptions.map(description => <Typography.Paragraph key={description}>{description}</Typography.Paragraph>)}
+              locale={{ emptyText: <div role="rowgroup">
+                <div role="row" aria-rowindex={2}>
+                  <div role="cell" aria-colspan={columns.length + 1}>
+                    <div data-testid={ids.empty}>
+                      <Empty description={t('ledger.empty')} />
+                      <Typography.Text strong>{t('ledger.active-filters')}</Typography.Text>
+                      {filterDescriptions.map(description => <Typography.Paragraph key={description}>{description}</Typography.Paragraph>)}
+                    </div>
+                  </div>
+                </div>
               </div> }}
               rowSelection={{
                 fixed: 'left', columnWidth: 40, preserveSelectedRowKeys: true, selectedRowKeys: selection, onCell: () => ({ role: 'cell' }),
