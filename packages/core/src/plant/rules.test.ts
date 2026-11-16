@@ -25,6 +25,13 @@ describe('dependency rules', () => {
     expect(checkRecipeVersion(version({ 'die-pressure': 190, 'screw-speed': 10 }), 'extrusion')[1]!.status).toBe('pass');
     expect(checkRecipeVersion(version({ 'die-pressure': 999 }), 'extrusion')[1]).toEqual({ rule: 2, status: 'fail', violations: [{ parameterKeys: ['screw-speed'], kind: 'missing', limit: 0, actual: null }] });
   });
+  it('keeps die pressure inclusive of its limit and the takt limit strict, just inside and just outside', () => {
+    // Screw speed 10 rpm gives a die pressure limit of 190 bar.
+    const die = (pressure: number) => checkRecipeVersion(version({ 'die-pressure': pressure, 'screw-speed': 10 }), 'extrusion')[1]!.status;
+    expect([die(189.9), die(190), die(190.1)]).toEqual(['pass', 'pass', 'fail']);
+    const takt = (cycle: number) => checkRecipeVersion(version({ 'cycle-time': cycle }), 'assembly')[3]!.status;
+    expect([takt(119.9), takt(120), takt(120.1)]).toEqual(['pass', 'fail', 'fail']);
+  });
   it('checks weld and takt boundaries', () => {
     for (const [temperature, time] of [[240, 20], [270, 40]] as const) expect(checkRecipeVersion(version({ 'weld-temperature': temperature, 'weld-time': time, 'cycle-time': 119 }), 'assembly').map(r => r.status)).toEqual(['not-applicable', 'not-applicable', 'pass', 'pass']);
     const results = checkRecipeVersion(version({ 'weld-temperature': 239, 'weld-time': 41, 'cycle-time': 120 }), 'assembly');

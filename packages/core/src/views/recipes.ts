@@ -62,6 +62,8 @@ export type RecipeVersionView = {
   /** Null includes an allowed Save no-op; otherwise the reducer's exact refusal and failing rule ids. */
   saveBlock: PlantError | null;
   approveBlock: PlantError | null;
+  /** The reducer's refusal of New Draft (a Draft exists, or the version is not Approved); null when it is allowed. */
+  newDraftBlock: PlantError | null;
   addStepReason: 'recipes.approved-read-only' | 'recipes.no-addable-step' | null;
   suggestedStepKind: StepKind | null;
   summary: 'recipes.approved-read-only' | 'recipes.draft-failing' | 'recipes.draft-passing';
@@ -93,8 +95,9 @@ export function recipeVersionView(state: PlantState, versionId: string): RecipeV
   const addableStepKinds = STEP_KINDS.filter(kind => reduce(state, { type: 'add-step', versionId, kind }, ctx).ok);
   const save = reduce(state, { type: 'save-draft', versionId }, ctx);
   const approve = reduce(state, { type: 'approve', versionId }, ctx);
+  const newDraft = reduce(state, { type: 'new-draft', versionId }, ctx);
   return { addStepReason: readOnlyReason ?? (addableStepKinds.length ? null : 'recipes.no-addable-step'), suggestedStepKind: addableStepKinds[0] ?? null, version, versions, nameRef: recipe.name, product, lineType: recipe.lineType, steps, rules, readOnlyReason,
-    saveBlock: save.ok ? null : save.error, approveBlock: approve.ok ? null : approve.error,
+    saveBlock: save.ok ? null : save.error, approveBlock: approve.ok ? null : approve.error, newDraftBlock: newDraft.ok ? null : newDraft.error,
     summary: readOnlyReason ?? (rules.some(rule => rule.status === 'fail') ? 'recipes.draft-failing' : 'recipes.draft-passing'), actions: {
     newDraft: available('new-draft'), addStep: addableStepKinds.length > 0,
     save: save.ok && save.events.length > 0, approve: approve.ok && approve.events.length > 0, discard: available('discard-draft'),

@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { generateMockDataset } from '../mock/generate';
 import type { TextRef } from '../mock/types';
 import { createPlantState, reduce } from '../plant';
-import { recipeLibraryView } from './recipes';
-import { recipeVersionView } from '../index';
+import { recipeLibraryView, recipeVersionView } from './recipes';
+import { STEP_KINDS } from '../mock/types';
 
 const d = generateMockDataset();
 const start = () => createPlantState(d);
@@ -33,6 +33,13 @@ it('exposes reducer refusal codes and blocking rule ids for Save and Approve at 
   expect(recipeVersionView(saved.state, 'R01-v3')).toMatchObject({ saveBlock: null, approveBlock: null });
   const empty = { ...state, recipeVersions: state.recipeVersions.map(v => v.id === 'R01-v3' ? { ...v, steps: [] } : v) };
   expect(recipeVersionView(empty, 'R01-v3')).toMatchObject({ saveBlock: { code: 'invalid-version' }, approveBlock: { code: 'invalid-version' } });
+});
+
+it('exposes the reducer refusal for New Draft, including an older Approved version while a Draft exists', () => {
+  const state = start();
+  expect(recipeVersionView(state, 'R11-v2')).toMatchObject({ newDraftBlock: null });
+  expect(recipeVersionView(state, 'R01-v2')).toMatchObject({ newDraftBlock: { code: 'draft-exists' } });
+  expect(recipeVersionView(state, 'R01-v3')).toMatchObject({ newDraftBlock: { code: 'not-approved' } });
 });
 
 describe('recipeLibraryView', () => {
@@ -116,8 +123,6 @@ it('normalizes null and empty Recipe filters', () => {
 });
 
 it('derives every version action and addable kind from reduce, including read-only, dirty and invalid Drafts', async () => {
-  const { recipeVersionView } = await import('./recipes');
-  const { STEP_KINDS } = await import('../mock/types');
   let state = start();
   const approved = state.recipeVersions.find(v => v.status === 'approved' && !state.recipeVersions.some(s => s.recipeId === v.recipeId && s.status === 'draft'))!;
   const check = (versionId: string) => {
@@ -150,7 +155,6 @@ it('derives every version action and addable kind from reduce, including read-on
 });
 
 it('exposes the selected Version, Product, version choices, ordered Steps and named rule violations', async () => {
-  const { recipeVersionView } = await import('./recipes');
   const selected = recipeVersionView(start(), 'R01-v3');
   expect(selected).toMatchObject({
     version: { id: 'R01-v3', number: 3, status: 'draft' },
