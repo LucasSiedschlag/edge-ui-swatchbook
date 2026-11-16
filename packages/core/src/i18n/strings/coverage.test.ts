@@ -7,6 +7,7 @@ import controlSpec from '../../../../../docs/screens/06-control-room-command.md?
 import { describe, expect, it } from 'vitest';
 import { parametersCoverage } from './parameters-coverage';
 import { performanceCoverage } from './performance-coverage';
+import { ledgerCoverage } from './ledger-coverage';
 import { controlCoverage } from './control-coverage';
 import { en, ptBR, type MessageKey } from '../messages';
 
@@ -139,56 +140,7 @@ const manifest: Record<string, ScreenCoverage> = {
       ],
     },
   },
-  ledger: {
-    file: "03-batch-and-lot-ledger.md",
-    shows: {
-      "Columns": [
-        "ledger.grid", "common.batch-id", "term.lot", "ledger.column.upstream-lot",
-        "scope.area", "scope.line", "common.product", "event-target.recipe-version",
-        "event-target.shift", "common.start", "common.end", "common.duration",
-        "common.status", "ledger.column.yield", "ledger.column.scrap", "common.row-count.other",
-        "ledger.filter-column", "ledger.search-placeholder", "ledger.compare-panel", "ledger.drawer.header",
-        "ledger.drawer.genealogy", "ledger.drawer.parameters", "ledger.drawer.alarms", "ledger.genealogy.material-lot",
-        "ledger.genealogy.extrusion-run", "ledger.genealogy.metalwork-lot", "ledger.genealogy.assembly-serial", "common.actual",
-        "term.setpoint", "common.deviation", "common.deviation-percent", "common.minimum",
-        "common.maximum", "common.unit", "ledger.inside-limits", "ledger.outside-limits",
-        "ledger.genealogy-empty", "ledger.parameters-empty", "ledger.alarms-empty", "ledger.result.unknown-batch",
-        "action.close",
-      ],
-    },
-    actions: {
-      "Sort": [
-        "common.sort", "common.sort-ascending", "common.sort-descending",
-      ],
-      "Filter by column": [
-        "ledger.filter-column", "common.filter", "common.from", "common.to",
-      ],
-      "Clear filters": [
-        "action.clear-filters", "common.row-count.other",
-      ],
-      "Select rows": [
-        "ledger.select-batch", "ledger.selected-hidden.other", "common.selected-count.other", "common.select-item",
-        "ledger.result.selected", "ledger.result.deselected",
-      ],
-      "Compare": [
-        "action.compare", "ledger.compare-panel", "ledger.result.compare-count",
-      ],
-      "Open details": [
-        "ledger.open-details", "ledger.drawer.header", "action.close",
-      ],
-    },
-    states: {
-      "Filters match nothing: empty state with the active filters listed.": [
-        "ledger.empty", "ledger.active-filters",
-      ],
-      "Fewer than 2 Batches selected: Compare is disabled.": [
-        "ledger.result.compare-count",
-      ],
-      "Fifth selection attempted: limit message.": [
-        "ledger.result.selection-limit",
-      ],
-    },
-  },
+  ledger: ledgerCoverage,
   performance: performanceCoverage,
   parameters: parametersCoverage,
   control: controlCoverage,

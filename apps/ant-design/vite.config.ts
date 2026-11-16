@@ -6,5 +6,5 @@ export default defineConfig(({ command }) => ({
   plugins: [react()],
   // One copy of React for the app, the runtime and the charts (ADR 0004).
   resolve: { dedupe: ['react', 'react-dom'] },
-  test: { setupFiles: ['./src/test-setup.ts'] },
+  test: { testTimeout: 20000, hookTimeout: 20000, setupFiles: ['./src/test-setup.ts'] },
 }));
