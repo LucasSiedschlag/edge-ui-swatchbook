@@ -50,6 +50,11 @@ export function decimalSeparator(locale: Locale): string {
     .find(part => part.type === 'decimal')!.value;
 }
 
+/** Joins names with the language's own conjunction, for example "A and B" or "A e B". */
+export function formatList(locale: Locale, items: readonly string[]): string {
+  return new Intl.ListFormat(INTL_LOCALES[locale], { type: 'conjunction', style: 'long' }).format(items);
+}
+
 /** Numbers default to whole units; explicit decimals keep trailing zeroes. */
 export function formatNumber(locale: Locale, n: number, { decimals = 0 }: NumberOptions = {}): string {
   return numeric(locale, n, decimals, 'decimal');

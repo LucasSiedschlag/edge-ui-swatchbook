@@ -1,6 +1,6 @@
 import { formatPercentagePoints, formatTagValue } from './format';
 import { describe, expect, it, vi } from 'vitest';
-import { formatNumber, formatPercent, formatDate, formatTime, formatDateTime, formatDuration } from './format';
+import { formatList, formatNumber, formatPercent, formatDate, formatTime, formatDateTime, formatDuration } from './format';
 
 describe('number formatting', () => {
   it('pins grouping, decimals, negatives and rounding in both languages', () => {
@@ -144,4 +144,14 @@ it.each(['en', 'pt-BR'] as const)('formats signed fraction differences as percen
   expect(formatPercentagePoints(locale, -0.004)).toBe(locale === 'en' ? '-0.4 pp' : '-0,4 pp');
   expect(formatPercentagePoints(locale, 0)).toBe(locale === 'en' ? '+0.0 pp' : '+0,0 pp');
   expect(formatPercentagePoints(locale, NaN)).toBe('-');
+});
+
+describe('list formatting', () => {
+  it('joins names with the language conjunction', () => {
+    expect(formatList('en', ['Die pressure'])).toBe('Die pressure');
+    expect(formatList('en', ['Barrel zone 2', 'Barrel zone 3'])).toBe('Barrel zone 2 and Barrel zone 3');
+    expect(formatList('en', ['A', 'B', 'C'])).toBe('A, B, and C');
+    expect(formatList('pt-BR', ['Zona 2', 'Zona 3'])).toBe('Zona 2 e Zona 3');
+    expect(formatList('pt-BR', ['A', 'B', 'C'])).toBe('A, B e C');
+  });
 });

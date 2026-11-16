@@ -189,6 +189,22 @@ describe('Save, Approve and Discard', () => {
     expect(reduce(r.state, { type: 'new-draft', versionId: latest(r.state, recipeId)?.id ?? '' }, { tick: 70 }).ok).toBe(true);
   });
 
+  it('keeps version numbers increasing after a Discard: discarding v3 makes the next Draft v4', () => {
+    const discarded = ok(start(), { type: 'discard-draft', versionId: 'R01-v3' }, 60).state;
+    const next = ok(discarded, { type: 'new-draft', versionId: 'R01-v2' }, 70);
+    expect(next.events[0]).toMatchObject({ action: 'recipe-new-draft', target: 'R01-v4' });
+    expect(latest(next.state, 'R01')).toMatchObject({ id: 'R01-v4', number: 4, status: 'draft' });
+  });
+
+  it('approves a Draft directly, without a prior Save', () => {
+    const p = param(start(), 'R01-v3', 'barrel-zone-3');
+    const fixed = ok(start(), { type: 'edit-parameter', versionId: 'R01-v3', parameterId: p?.id ?? '', field: 'setpoint', value: 180 }).state;
+    expect(isDirty(fixed, 'R01-v3')).toBe(true);
+    const approved = ok(fixed, { type: 'approve', versionId: 'R01-v3' }, 90);
+    expect(approved.state.recipeVersions.find(v => v.id === 'R01-v3')?.status).toBe('approved');
+    expect(approved.state.events.slice(d.events.length).map(e => e.action)).toEqual(['recipe-approve']);
+  });
+
   it('writes one entry for New Draft, Save, Approve and Discard, and none for edits', () => {
     const r = ok(start(), { type: 'new-draft', versionId: latest(start(), clean)?.id ?? '' }, 5);
     const id = latest(r.state, clean)?.id ?? '';

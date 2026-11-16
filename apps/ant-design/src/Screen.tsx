@@ -1,11 +1,16 @@
+import type { ComponentType } from 'react';
 import type { ScreenId } from '@swatchbook/core';
+import { Recipes } from './Recipes';
 import { Ledger } from './Ledger';
 import { Deck } from './Deck';
 import { Performance } from './Performance';
 import { Parameters } from './Parameters';
 import { Control } from './Control';
-import { Placeholder } from './Placeholder';
+
+// Keyed by every ScreenId, so the compiler fails when a Screen is added to core and not built here.
+const BUILT: Record<ScreenId, ComponentType> = { deck: Deck, recipes: Recipes, ledger: Ledger, performance: Performance, parameters: Parameters, control: Control };
 
 export function Screen({ screen }: { screen: ScreenId }) {
-  return screen === 'deck' ? <Deck /> : screen === 'ledger' ? <Ledger /> : screen === 'performance' ? <Performance /> : screen === 'parameters' ? <Parameters /> : screen === 'control' ? <Control /> : <Placeholder screen={screen} />;
+  const Built = BUILT[screen];
+  return <Built />;
 }

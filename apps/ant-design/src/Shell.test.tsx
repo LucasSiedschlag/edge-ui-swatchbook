@@ -95,10 +95,3 @@ it('runs the Tour from the route', async () => {
   expect(location.hash.startsWith('#/ledger')).toBe(true);
 });
 
-it('shows a translated placeholder for Screens that are not built', async () => {
-  view = await mountApp('#/recipes');
-  const placeholder = one('recipes.placeholder');
-  expect(placeholder.textContent).toContain(en['screen.recipes']);
-  await choose(TEST_IDS.shell.language, en['language.portuguese']);
-  expect(one('recipes.placeholder').textContent).toContain(ptBR['screen.recipes']);
-});
