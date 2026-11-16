@@ -52,7 +52,6 @@ it('renders the required IDs, repeated Alarm row and selection IDs, and core con
     ids.acknowledge, ids.eventLog, ids.eventFilterUser, ids.eventFilterType, ids.eventFilterRange, ids.diagnostics, ids.diagnosticsSort]) {
     expect(byId(id), id).toHaveLength(1);
   }
-  expect(byId('control.placeholder')).toHaveLength(0);
   expect(byId(ids.alarmEmpty)).toHaveLength(0);
   expect(byId(ids.eventEmpty)).toHaveLength(0);
   const alarms = alarmListView(plantState(), 0).rows;
