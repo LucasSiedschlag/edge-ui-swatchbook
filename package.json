@@ -9,7 +9,8 @@
   },
   "scripts": {
     "typecheck": "pnpm -r typecheck",
-    "build": "pnpm -r build"
+    "build": "pnpm -r build",
+    "test:parity": "pnpm --filter @swatchbook/parity test:e2e"
   },
   "devDependencies": {
     "typescript": "^7.0.2"
