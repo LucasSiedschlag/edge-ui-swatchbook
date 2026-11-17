@@ -3,6 +3,7 @@ import {
 } from '@swatchbook/core';
 import { actionErrorLabel, useActions, useI18n, useSimulation } from '@swatchbook/runtime';
 import { Alert, Button, Card, Col, Descriptions, Input, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
+import { selectArrow } from './decorative-icons';
 import { CloseCircleFilled, InfoCircleFilled } from '@ant-design/icons';
 import { useState, type ReactNode } from 'react';
 
@@ -30,7 +31,7 @@ function LineHeader({ view, lineId, onChange }: { view: DeckView; lineId: LineId
   return (
     <Card>
       <Space size="large" wrap>
-        <Select
+        <Select suffixIcon={selectArrow}
           data-testid={ids.lineSelect}
           aria-label={t('scope.line')}
           style={{ minWidth: 340 }}

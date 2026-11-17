@@ -628,3 +628,9 @@ it('offers a Step kind choice only when core has an addable Step, while unavaila
   await openSelect(ids.stepChoice);
   expect([...document.querySelectorAll('[role="option"]')].map(element => element.textContent)).toEqual(['Ramp']);
 });
+
+it.each(['en', 'pt-BR'] as const)('names no stepper arrow icon of the Parameter fields in %s', async locale => {
+  await start(locale); await openRecipe('R01');
+  expect(byId(ids.parameter).length).toBeGreaterThan(0);
+  expect([...document.querySelectorAll('[role="img"]:not([aria-hidden="true"])')].map(el => el.getAttribute('aria-label')).filter(name => name === 'up' || name === 'down')).toEqual([]);
+});
