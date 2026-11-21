@@ -7,6 +7,7 @@ import {
 import { useI18n, usePreferences, useShortcutHandlers, useSimulation } from '@swatchbook/runtime';
 import type { OutputFormatters, OutputLabels, ParetoFormatters, ParetoLabels } from '@swatchbook/charts';
 import { Button, Card, Col, Descriptions, Empty, Row, Select, Space, Statistic, Table, Tag, Typography, theme } from 'antd';
+import { selectArrow } from './decorative-icons';
 import type { RefSelectProps } from 'antd';
 import { lazy, memo, Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 
@@ -81,14 +82,14 @@ export function Performance() {
       <Space wrap align="start">
         <Space orientation="vertical" size="small">
           <Typography.Text>{t('performance.scope')}</Typography.Text>
-          <Select ref={scopeSelect} data-testid={ids.scope} aria-label={t('performance.scope')} virtual={false} style={{ width: 300 }}
+          <Select suffixIcon={selectArrow} ref={scopeSelect} data-testid={ids.scope} aria-label={t('performance.scope')} virtual={false} style={{ width: 300 }}
             value={scope.kind === 'site' ? scope.kind : scope.kind === 'area' ? scope.areaId : scope.lineId}
             options={choices.map(option => ({ value: option.value, label: option.kind === 'site' ? tr(option.name) : <><span>{t(scopeLabels[option.kind])}</span> · {option.id ? `${option.id} · ` : ''}{tr(option.name)}</> }))}
             onChange={value => { const option = choices.find(choice => choice.value === value); if (option) { setScope(option.scope); setReason(null); } }} />
         </Space>
         <Space orientation="vertical" size="small">
           <Typography.Text>{t('performance.range')}</Typography.Text>
-          <Select data-testid={ids.range} aria-label={t('performance.range')} virtual={false} style={{ width: 220 }}
+          <Select suffixIcon={selectArrow} data-testid={ids.range} aria-label={t('performance.range')} virtual={false} style={{ width: 220 }}
             value={range} options={Object.entries(rangeLabels).map(([value, key]) => ({ value, label: t(key) }))}
             onChange={value => { setRange(value); setReason(null); }} />
         </Space>

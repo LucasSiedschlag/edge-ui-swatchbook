@@ -3,6 +3,7 @@ import {
   LIBRARIES, LIBRARY_NOT_BUILT_KEY, PRESETS, libraryUrl, siteBaseFrom, useI18n, useLibrary, usePreferences, useRoute, useTour, type PresetId,
 } from '@swatchbook/runtime';
 import { Alert, Button, ConfigProvider, Layout, Menu, Segmented, Select, Space, Typography, theme } from 'antd';
+import { selectArrow } from './decorative-icons';
 import enUS from 'antd/locale/en_US';
 import ptBR from 'antd/locale/pt_BR';
 import { Screen } from './Screen';
@@ -35,7 +36,7 @@ function Header() {
       <Typography.Title level={4} style={{ margin: 0, whiteSpace: 'nowrap' }}>{t('shell.app-title')}</Typography.Title>
       <Space size="large" wrap style={{ marginInlineStart: 'auto' }}>
         <Control label={t('shell.library-picker')}>
-          <Select
+          <Select suffixIcon={selectArrow}
             data-testid={TEST_IDS.shell.libraryPicker}
             aria-label={t('shell.library-picker')}
             style={{ minWidth: 220 }}
@@ -81,7 +82,7 @@ function Header() {
           />
         </Control>
         <Control label={t('shell.preset')}>
-          <Select
+          <Select suffixIcon={selectArrow}
             data-testid={TEST_IDS.shell.preset}
             aria-label={t('shell.preset')}
             style={{ minWidth: 160 }}

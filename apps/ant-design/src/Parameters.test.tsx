@@ -441,3 +441,9 @@ it.each(['en', 'pt-BR'] as const)('renders reachable parameters manifest text an
   expect(byId(ids.empty)).toHaveLength(1); expect(byId(ids.gridEmpty)).toHaveLength(0); expect(byId(ids.trendEmpty)).toHaveLength(0);
   expect([...keys].filter(message => !seen.has(message))).toEqual([]);
 });
+
+it.each(['en', 'pt-BR'] as const)('names no stepper arrow icon of the override value in %s', async locale => {
+  await start(locale); await openOverride(locale);
+  expect(byId(ids.overrideValue)).toHaveLength(1);
+  expect([...document.querySelectorAll('[role="img"]:not([aria-hidden="true"])')].map(el => el.getAttribute('aria-label')).filter(name => name === 'up' || name === 'down')).toEqual([]);
+});

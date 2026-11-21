@@ -5,6 +5,7 @@ import {
 } from '@swatchbook/core';
 import { actionErrorLabel, useActions, useI18n, useShortcutHandlers, useSimulation } from '@swatchbook/runtime';
 import { Alert, Button, Card, Empty, Select, Space, Table, Typography } from 'antd';
+import { selectArrow } from './decorative-icons';
 import { useEffect, useRef, useState, type Key, type ReactNode } from 'react';
 import type { RefSelectProps, TableColumnType } from 'antd';
 
@@ -40,7 +41,7 @@ function EventLog() {
         <Typography.Text strong>{t('control.filter-events')}</Typography.Text>
         <Space wrap align="start">
           <Filter label={t('control.event-user')}>
-            <Select
+            <Select suffixIcon={selectArrow}
               data-testid={ids.eventFilterUser} aria-label={t('control.event-user')}
               allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} style={{ minWidth: 220 }}
               value={filters.userId} options={dataset.users.map(user => ({ value: user.id, label: user.name }))}
@@ -48,7 +49,7 @@ function EventLog() {
             />
           </Filter>
           <Filter label={t('control.event-action')}>
-            <Select
+            <Select suffixIcon={selectArrow}
               data-testid={ids.eventFilterType} aria-label={t('control.event-action')}
               mode="multiple" allowClear={{ label: t('action.clear-filters') }} virtual={false} placeholder={t('common.all')} style={{ minWidth: 260 }}
               value={filters.actions} options={Object.entries(eventActionLabels).map(([value, key]) => ({ value, label: t(key) }))}
@@ -56,7 +57,7 @@ function EventLog() {
             />
           </Filter>
           <Filter label={t('control.event-range')}>
-            <Select
+            <Select suffixIcon={selectArrow}
               data-testid={ids.eventFilterRange} aria-label={t('control.event-range')} style={{ minWidth: 200 }}
               value={filters.range} options={Object.entries(rangeLabels).map(([value, key]) => ({ value, label: t(key) }))}
               onChange={range => setFilters({ ...filters, range })}
@@ -105,7 +106,7 @@ function Diagnostics({ openAlarm }: { openAlarm(id: string): void }) {
     <Card title={t('control.diagnostics')}>
       <Space orientation="vertical" size="middle" style={{ width: '100%' }}>
         <Filter label={t('common.sort')}>
-          <Select
+          <Select suffixIcon={selectArrow}
             data-testid={ids.diagnosticsSort} aria-label={t('control.diagnostics-sort')}
             style={{ minWidth: 440 }} virtual={false} value={`${sort.column}-${sort.direction}`} options={sorts}
             onChange={value => { const next = sorts.find(option => option.value === value)!; setSort({ column: next.column, direction: next.direction }); }}
@@ -193,7 +194,7 @@ export function Control() {
           <Typography.Text strong>{t('control.filter-alarms')}</Typography.Text>
           <Space wrap align="start">
             <Filter label={t('control.alarm-priority')}>
-              <Select
+              <Select suffixIcon={selectArrow}
                 ref={priorityFilter} data-testid={ids.alarmFilterPriority} aria-label={t('control.alarm-priority')}
                 mode="multiple" allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} style={{ minWidth: 200 }}
                 value={filters.priorities} options={Object.entries(alarmPriorityLabels).map(([value, key]) => ({ value, label: t(key) }))}
@@ -201,7 +202,7 @@ export function Control() {
               />
             </Filter>
             <Filter label={t('control.alarm-state')}>
-              <Select
+              <Select suffixIcon={selectArrow}
                 data-testid={ids.alarmFilterState} aria-label={t('control.alarm-state')}
                 mode="multiple" allowClear={{ label: t('action.clear-filters') }} placeholder={t('control.alarm-state-open')} style={{ minWidth: 300 }}
                 value={filters.states} options={Object.entries(alarmStateLabels).map(([value, key]) => ({ value, label: t(key) }))}
@@ -209,7 +210,7 @@ export function Control() {
               />
             </Filter>
             <Filter label={t('scope.area')}>
-              <Select
+              <Select suffixIcon={selectArrow}
                 data-testid={ids.alarmFilterArea} aria-label={t('scope.area')}
                 allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} style={{ minWidth: 180 }} value={filters.areaId}
                 options={dataset.areas.map(area => ({ value: area.id, label: tr(area.name) }))}
@@ -217,7 +218,7 @@ export function Control() {
               />
             </Filter>
             <Filter label={t('scope.line')}>
-              <Select
+              <Select suffixIcon={selectArrow}
                 data-testid={ids.alarmFilterLine} aria-label={t('scope.line')}
                 allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} style={{ minWidth: 240 }} value={filters.lineId}
                 options={dataset.lines.map(line => ({ value: line.id, label: `${line.id} · ${tr(line.name)}` }))}

@@ -8,6 +8,7 @@ import {
 import { actionErrorLabel, useActions, useI18n, usePreferences, useShortcutHandlers, useSimulation } from '@swatchbook/runtime';
 import type { LineTrendFormatters, LineTrendLabels } from '@swatchbook/charts';
 import { Alert, Button, Card, Empty, Input, InputNumber, Modal, Select, Space, Table, Tooltip, Typography } from 'antd';
+import { selectArrow, stepperControls } from './decorative-icons';
 import type { InputRef, TableColumnsType } from 'antd';
 import { cloneElement, forwardRef, lazy, Suspense, useCallback, useId, useMemo, useRef, useState, type ComponentProps, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 
@@ -184,19 +185,19 @@ export function Parameters() {
           <Typography.Text strong>{t('common.filter')}</Typography.Text>
           <Space wrap align="start">
             <Filter label={t('scope.line')}>
-              <Select data-testid={ids.filterLine} aria-label={t('scope.line')} style={{ width: 180 }} virtual={false}
+              <Select suffixIcon={selectArrow} data-testid={ids.filterLine} aria-label={t('scope.line')} style={{ width: 180 }} virtual={false}
                 allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} value={filters.lineId}
                 options={dataset.lines.map(line => ({ value: line.id, label: `${line.id} · ${tr(line.name)}` }))}
                 onChange={lineId => filter({ ...filters, lineId })} />
             </Filter>
             <Filter label={t('term.machine')}>
-              <Select data-testid={ids.filterMachine} aria-label={t('term.machine')} style={{ width: 200 }} virtual={false}
+              <Select suffixIcon={selectArrow} data-testid={ids.filterMachine} aria-label={t('term.machine')} style={{ width: 200 }} virtual={false}
                 allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} value={filters.machineId}
                 options={dataset.machines.map(machine => ({ value: machine.id, label: `${machine.id} · ${tr(machine.name)}` }))}
                 onChange={machineId => filter({ ...filters, machineId })} />
             </Filter>
             <Filter label={t('common.status')}>
-              <Select data-testid={ids.filterStatus} aria-label={t('common.status')} style={{ width: 140 }} virtual={false}
+              <Select suffixIcon={selectArrow} data-testid={ids.filterStatus} aria-label={t('common.status')} style={{ width: 140 }} virtual={false}
                 allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} value={filters.status}
                 options={Object.entries(tagStatusLabels).map(([value, label]) => ({ value, label: t(label) }))}
                 onChange={status => filter({ ...filters, status })} />
@@ -238,7 +239,7 @@ export function Parameters() {
       <Card title={t('parameters.trend')} style={fullWidth}>
         <Space orientation="vertical" size="middle" style={fullWidth}>
           <Filter label={t('parameters.trend-window')}>
-            <Select data-testid={ids.trendWindow} aria-label={t('parameters.trend-window')} style={{ width: 200 }} virtual={false}
+            <Select suffixIcon={selectArrow} data-testid={ids.trendWindow} aria-label={t('parameters.trend-window')} style={{ width: 200 }} virtual={false}
               value={trendWindow} options={Object.entries(trendWindowLabels).map(([value, label]) => ({ value, label: t(label) }))}
               onChange={trendWindow => { setTrendWindow(trendWindow); setNotice(null); setOverrideError(null); }} />
           </Filter>
@@ -266,7 +267,7 @@ export function Parameters() {
           <Typography.Text>{t('parameters.recipe-value')}: {formatTagValue(locale, tag.recipeValue, tag.unit)} {tag.unit}</Typography.Text>
           <Refusal message={tag.overrideUnavailable ? plantErrorLabels[tag.overrideUnavailable] : null} />
           <Filter label={t('parameters.override-value')}>
-            <InputNumber<number | string> data-testid={ids.overrideValue} aria-label={t('parameters.override-value')} value={value}
+            <InputNumber<number | string> controls={stepperControls} data-testid={ids.overrideValue} aria-label={t('parameters.override-value')} value={value}
               decimalSeparator={separator}
               parser={input => (input ?? '').replace(separator, '.')}
               formatter={(value, { userTyping, input }) => userTyping ? input : String(value ?? '').replace('.', separator)}

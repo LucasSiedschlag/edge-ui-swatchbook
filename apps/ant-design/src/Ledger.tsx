@@ -8,6 +8,7 @@ import {
 } from '@swatchbook/core';
 import { useI18n, usePlantState, usePreferences, useShortcutHandlers, useSimulation } from '@swatchbook/runtime';
 import { Alert, Button, Card, Collapse, DatePicker, Descriptions, Drawer, Empty, Input, InputNumber, Select, Space, Table, Tooltip, Typography } from 'antd';
+import { selectArrow } from './decorative-icons';
 import type { InputRef, TableColumnsType } from 'antd';
 import enUS from 'antd/locale/en_US';
 import ptBR from 'antd/locale/pt_BR';
@@ -73,7 +74,7 @@ function NumberRange({ column, value, onChange }: { column: LedgerFilterColumn; 
   const { t, locale } = useI18n();
   const separator = decimalSeparator(locale);
   return <Space data-testid={ledgerFilterId(column)} role="group" title={t(ledgerFilterLabels[column])} aria-label={t('ledger.filter-column', { column: t(ledgerFilterLabels[column]) })}>
-    {(['min', 'max'] as const).map(bound => <InputNumber<number | string> key={bound} style={{ width: 114 }} value={value?.[bound] ?? null}
+    {(['min', 'max'] as const).map(bound => <InputNumber<number | string> key={bound} controls={false} style={{ width: 114 }} value={value?.[bound] ?? null}
       aria-label={`${t('ledger.filter-column', { column: t(ledgerFilterLabels[column]) })} · ${t(bound === 'min' ? 'common.from' : 'common.to')}`}
       placeholder={t(bound === 'min' ? 'common.from' : 'common.to')}
       min={bound === 'max' ? value?.min : undefined} max={bound === 'min' ? value?.max : undefined}
@@ -267,7 +268,7 @@ export function Ledger() {
           : column === 'lines' ? dataset.lines.map(line => ({ value: line.id, label: `${line.id} · ${tr(line.name)}` }))
           : column === 'products' ? dataset.products.map(product => ({ value: product.id, label: `${product.code} · ${tr(product.name)}` }))
           : column === 'shifts' ? SHIFT_IDS.map(value => ({ value, label: t(shiftLabels[value]) })) : BATCH_STATUSES.map(value => ({ value, label: t(batchStatusLabels[value]) }));
-        return <Select data-testid={testId} aria-label={label} mode="multiple" showSearch={{ optionFilterProp: 'label' }} style={{ width: 240 }} virtual={false}
+        return <Select suffixIcon={selectArrow} data-testid={testId} aria-label={label} mode="multiple" showSearch={{ optionFilterProp: 'label' }} style={{ width: 240 }} virtual={false}
           allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} value={filters[column] ?? []} options={options}
           onChange={value => filter(column, value)} />;
       }

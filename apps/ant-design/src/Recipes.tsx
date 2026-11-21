@@ -4,6 +4,7 @@ import {
 } from '@swatchbook/core';
 import { actionErrorLabel, useActions, useI18n, usePlantState, usePreferences, useShortcutHandlers } from '@swatchbook/runtime';
 import { Alert, Button, Card, Descriptions, Empty, Input, InputNumber, Modal, Select, Space, Table, Tooltip, Typography, theme } from 'antd';
+import { selectArrow, stepperControls } from './decorative-icons';
 import type { InputRef } from 'antd';
 import { Fragment, cloneElement, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 
@@ -37,13 +38,13 @@ export function Recipes() {
         {/* 1fr 1fr 2fr: the search box gets twice the width of each select because it holds the longer placeholder. */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 2fr', gap: token.marginSM, alignItems: 'end' }}>
         <Filter label={t('recipes.filter-line-type')}>
-          <Select data-testid={ids.filterLineType} aria-label={t('recipes.filter-line-type')} style={fullWidth} virtual={false}
+          <Select suffixIcon={selectArrow} data-testid={ids.filterLineType} aria-label={t('recipes.filter-line-type')} style={fullWidth} virtual={false}
             allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} value={filters.lineType}
             options={Object.entries(lineTypeLabels).map(([value, key]) => ({ value, label: t(key) }))}
             onChange={lineType => setFilters({ ...filters, lineType })} />
         </Filter>
         <Filter label={t('recipes.filter-status')}>
-          <Select data-testid={ids.filterStatus} aria-label={t('recipes.filter-status')} style={fullWidth} virtual={false}
+          <Select suffixIcon={selectArrow} data-testid={ids.filterStatus} aria-label={t('recipes.filter-status')} style={fullWidth} virtual={false}
             allowClear={{ label: t('action.clear-filters') }} placeholder={t('common.all')} value={filters.status}
             options={Object.entries(recipeStatusLabels).map(([value, key]) => ({ value, label: t(key) }))}
             onChange={status => setFilters({ ...filters, status })} />
@@ -121,7 +122,7 @@ function ParameterValue({ parameter, field, readOnlyReason, versionId, saved, on
   const reason = readOnlyReason && t(readOnlyReason);
   const separator = decimalSeparator(locale);
   return <>
-    <ReasonTip title={reason}><InputNumber<number | string> aria-label={t('recipes.parameter-field', { parameter: tr(parameter.name), field: label })} value={value} readOnly={Boolean(reason)}
+    <ReasonTip title={reason}><InputNumber<number | string> controls={stepperControls} aria-label={t('recipes.parameter-field', { parameter: tr(parameter.name), field: label })} value={value} readOnly={Boolean(reason)}
       aria-disabled={Boolean(reason)} aria-invalid={Boolean(error)} status={error ? 'error' : undefined}
       aria-describedby={reason ? reasonId : error ? `${reasonId}-error` : undefined} style={{ width: token.controlHeightLG * 2 }}
       onBlur={() => { commit(); setValue(parameter[field]); }}
@@ -207,7 +208,7 @@ function Version({ detail, select, onDiscard }: { detail: RecipeVersionView | nu
       {!detail || 'error' in detail
         ? <Empty description={t('recipes.version-empty')} /> : <Space orientation="vertical" size="middle" style={fullWidth}>
         <Filter label={t('recipes.open-version')}>
-          <Select data-testid={ids.versionChoice} aria-label={t('recipes.open-version')} virtual={false} style={fullWidth}
+          <Select suffixIcon={selectArrow} data-testid={ids.versionChoice} aria-label={t('recipes.open-version')} virtual={false} style={fullWidth}
             value={detail.version.id} options={detail.versions.map(version => ({ value: version.id, label: t('recipes.version-option', { recipe: detail.version.recipeId, number: formatNumber(version.number), status: t(recipeStatusLabels[version.status]) }) }))}
             onChange={id => { select(id); setNotice(null); setSaveStatus(null); }} />
         </Filter>
@@ -228,7 +229,7 @@ function Version({ detail, select, onDiscard }: { detail: RecipeVersionView | nu
         ]} />
         <Typography.Title level={4}>{t('recipes.steps')}</Typography.Title>
         {detail.actions.addStep && <Filter label={t('recipes.step-kind')}>
-          <Select data-testid={ids.stepChoice} aria-label={t('recipes.step-kind')} virtual={false} style={fullWidth}
+          <Select suffixIcon={selectArrow} data-testid={ids.stepChoice} aria-label={t('recipes.step-kind')} virtual={false} style={fullWidth}
             value={chosenKind ?? detail.suggestedStepKind} options={detail.addableStepKinds.map(kind => ({ value: kind, label: t(stepKindLabels[kind]) }))}
             onChange={kind => { setChosenKind(kind); setSaveStatus(null); }} />
         </Filter>}
