@@ -8,7 +8,7 @@ import {
 import { actionErrorLabel, useActions, useI18n, usePreferences, useShortcutHandlers, useSimulation } from '@swatchbook/runtime';
 import type { LineTrendFormatters, LineTrendLabels } from '@swatchbook/charts';
 import { Alert, Button, Card, Empty, Input, InputNumber, Modal, Select, Space, Table, Tooltip, Typography } from 'antd';
-import { selectArrow, stepperControls } from './decorative-icons';
+import { closeIcon, selectArrow, stepperControls } from './decorative-icons';
 import type { InputRef, TableColumnsType } from 'antd';
 import { cloneElement, forwardRef, lazy, Suspense, useCallback, useId, useMemo, useRef, useState, type ComponentProps, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 
@@ -55,13 +55,15 @@ function Refusal({ message, testId }: { message: MessageKey | null; testId?: str
 /**
  * Hover goes through Ant Design, focus through plain state: the Modal moves focus while React commits, and Ant's own focus
  * trigger calls flushSync from inside that commit, which React reports as an error.
+ * While the tooltip is open it describes the control, so `whileOpen` lists only the hidden descriptions the tooltip does not repeat.
  */
-function ReasonTip({ title, children }: { title: ReactNode; children: ReactElement<{ onFocus?: () => void; onBlur?: () => void }> }) {
+function ReasonTip({ title, whileOpen, children }: { title: ReactNode; whileOpen?: string; children: ReactElement<{ onFocus?: () => void; onBlur?: () => void }> }) {
   const [hover, setHover] = useState(false);
   const [focus, setFocus] = useState(false);
+  const open = Boolean(title) && (hover || focus);
   return (
-    <Tooltip title={title} trigger={['hover']} open={Boolean(title) && (hover || focus)} onOpenChange={setHover}>
-      {cloneElement(children, { onFocus: () => setFocus(true), onBlur: () => setFocus(false) })}
+    <Tooltip title={title} trigger={['hover']} open={open} onOpenChange={setHover}>
+      {cloneElement(children, { onFocus: () => setFocus(true), onBlur: () => setFocus(false), ...(open && { 'aria-describedby': whileOpen }) })}
     </Tooltip>
   );
 }
@@ -80,7 +82,7 @@ function TagActions({ row, onOpen, onReset }: { row: TagRow; onOpen: (row: TagRo
         onClick={() => { if (row.canOverride) onOpen(row); }}>{t('parameters.override')}</Button>
     </ReasonTip>
     {!row.canOverride && <span id={`${id}-override`} style={visuallyHidden}>{overrideReason}</span>}
-    <ReasonTip title={resetReason || recipeValue}>
+    <ReasonTip title={resetReason || recipeValue} whileOpen={resetReason ? `${id}-recipe` : undefined}>
       <Button data-testid={ids.resetRecipe} size="small" aria-disabled={!row.canResetToRecipe}
         aria-describedby={`${id}-recipe${resetReason ? ` ${id}-reset` : ''}`} style={{ whiteSpace: 'nowrap' }}
         onClick={() => { if (row.canResetToRecipe) onReset(row); }}>{t('action.reset-to-recipe')}</Button>
@@ -103,7 +105,7 @@ function Trend({ selection, window }: { selection: string[]; window: TrendWindow
     minimum: t('common.minimum'), maximum: t('common.maximum'), setpoint: t('term.setpoint'),
   }), [t]);
   const formatters = useMemo<LineTrendFormatters>(() => ({
-    formatTime: tick => formatTime(simulatedTime(tick)),
+    formatTime: (tick, options) => formatTime(simulatedTime(tick), options),
     formatValue: (value, unit) => `${formatTagValue(locale, value, unit)} ${unit}`,
     formatStatus: status => t(tagStatusLabels[status as TagStatus]),
   }), [locale, t, formatTime]);
@@ -256,7 +258,7 @@ export function Parameters() {
             { key: 'lastSeen', title: t('parameters.last-seen'), render: (_, row) => formatDateTime(row.lastSeenAt) },
           ]} />
       </Card>
-      <Modal open={tag !== null} title={tag ? `${t('parameters.override')} · ${tag.name}` : t('parameters.override')} onCancel={close}
+      <Modal closeIcon={closeIcon} open={tag !== null} title={tag ? `${t('parameters.override')} · ${tag.name}` : t('parameters.override')} onCancel={close}
         footer={(
           <Space>
             <Button onClick={close}>{t('action.cancel')}</Button>

@@ -8,7 +8,7 @@ import {
 } from '@swatchbook/core';
 import { useI18n, usePlantState, usePreferences, useShortcutHandlers, useSimulation } from '@swatchbook/runtime';
 import { Alert, Button, Card, Collapse, DatePicker, Descriptions, Drawer, Empty, Input, InputNumber, Select, Space, Table, Tooltip, Typography } from 'antd';
-import { selectArrow } from './decorative-icons';
+import { closeIcon, selectArrow } from './decorative-icons';
 import type { InputRef, TableColumnsType } from 'antd';
 import enUS from 'antd/locale/en_US';
 import ptBR from 'antd/locale/pt_BR';
@@ -24,6 +24,8 @@ const visuallyHidden: CSSProperties = {
   overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0,
 };
 const nowrap = { whiteSpace: 'nowrap' } as const;
+// Headers wrap between words and are never cut: the body cells keep their ellipsis.
+const wrapWords = { whiteSpace: 'normal', overflowWrap: 'normal', wordBreak: 'normal' } as const;
 type HeaderTableProps = ComponentProps<'table'>;
 type HeaderGroupProps = ComponentProps<'thead'>;
 type HeaderCellProps = ComponentProps<'th'>;
@@ -41,20 +43,20 @@ const gridComponents = {
   table: HeaderTable, header: { table: HeaderTable, wrapper: HeaderGroup, cell: HeaderCell }, body: { wrapper: BodyGroup },
 };
 const columnDefinitions: readonly { column: LedgerColumn; label: MessageKey; width: number }[] = [
-  { column: 'batchId', label: 'common.batch-id', width: 148 },
-  { column: 'lotId', label: 'term.lot', width: 90 },
-  { column: 'upstreamLotId', label: 'ledger.column.upstream-lot', width: 94 },
-  { column: 'areaId', label: 'scope.area', width: 86 },
-  { column: 'lineId', label: 'scope.line', width: 70 },
-  { column: 'productCode', label: 'common.product', width: 94 },
-  { column: 'recipeVersion', label: 'event-target.recipe-version', width: 76 },
+  { column: 'batchId', label: 'common.batch-id', width: 116 },
+  { column: 'lotId', label: 'term.lot', width: 116 },
+  { column: 'upstreamLotId', label: 'ledger.column.upstream-lot', width: 116 },
+  { column: 'areaId', label: 'scope.area', width: 80 },
+  { column: 'lineId', label: 'scope.line', width: 86 },
+  { column: 'productCode', label: 'common.product', width: 102 },
+  { column: 'recipeVersion', label: 'event-target.recipe-version', width: 100 },
   { column: 'shift', label: 'event-target.shift', width: 90 },
   { column: 'start', label: 'common.start', width: 150 },
   { column: 'end', label: 'common.end', width: 150 },
-  { column: 'durationMinutes', label: 'common.duration', width: 110 },
-  { column: 'status', label: 'common.status', width: 110 },
-  { column: 'yieldPct', label: 'ledger.column.yield', width: 80 },
-  { column: 'scrap', label: 'ledger.column.scrap', width: 80 },
+  { column: 'durationMinutes', label: 'common.duration', width: 108 },
+  { column: 'status', label: 'common.status', width: 94 },
+  { column: 'yieldPct', label: 'ledger.column.yield', width: 132 },
+  { column: 'scrap', label: 'ledger.column.scrap', width: 130 },
 ];
 
 function Filter({ label, children }: { label: string; children: ReactNode }) {
@@ -62,11 +64,13 @@ function Filter({ label, children }: { label: string; children: ReactNode }) {
 }
 
 // Ant handles hover; plain focus state avoids flushSync when a dialog moves focus during commit.
+// While the tooltip is open it describes the control, so the hidden copy of the reason is left out of the description.
 function ReasonTip({ title, children }: { title: ReactNode; children: ReactElement<{ onFocus?: () => void; onBlur?: () => void }> }) {
   const [hover, setHover] = useState(false);
   const [focus, setFocus] = useState(false);
-  return <Tooltip title={title} trigger={['hover']} open={Boolean(title) && (hover || focus)} onOpenChange={setHover}>
-    {cloneElement(children, { onFocus: () => setFocus(true), onBlur: () => setFocus(false) })}
+  const open = Boolean(title) && (hover || focus);
+  return <Tooltip title={title} trigger={['hover']} open={open} onOpenChange={setHover}>
+    {cloneElement(children, { onFocus: () => setFocus(true), onBlur: () => setFocus(false), ...(open && { 'aria-describedby': undefined }) })}
   </Tooltip>;
 }
 
@@ -139,7 +143,7 @@ function Details({ batchId, close, navigate }: { batchId: string | null; close()
     { key: 'message', title: t('common.message'), render: (_, row) => tr(row.message) },
   ];
   return <Drawer data-testid={ids.drawer} open={batchId !== null} title={<span ref={title} tabIndex={-1}><span>{t('ledger.drawer.header')}</span> · {batchId}</span>} size={900} destroyOnHidden focusable={{ focusTriggerAfterClose: false }}
-    onClose={close} closable={{ 'aria-label': t('action.close') }}>
+    onClose={close} closable={{ 'aria-label': t('action.close'), closeIcon }}>
     {detail && ('error' in detail
       ? <Alert type="warning" role="status" title={t('ledger.result.unknown-batch')} />
       : <Space orientation="vertical" size="large" style={fullWidth}>
@@ -218,10 +222,11 @@ export function Ledger() {
   const compareReason = allowed ? null : t('ledger.result.compare-count');
   const columns = useMemo(() => {
     const columns: TableColumnsType<LedgerRow> = columnDefinitions.map(definition => ({
-      key: definition.column, title: t(definition.label), width: definition.width, ellipsis: { showTitle: true }, fixed: definition.column === 'batchId' ? 'left' : undefined,
+      key: definition.column, title: <span style={wrapWords}>{t(definition.label)}</span>, width: definition.width, ellipsis: { showTitle: true }, fixed: definition.column === 'batchId' ? 'left' : undefined,
       sorter: true, sortOrder: sort.column === definition.column ? sort.direction === 'asc' ? 'ascend' : 'descend' : null,
       showSorterTooltip: { title: t(nextLedgerSort(sort, definition.column).default ? 'ledger.sort-default' : sort.column === definition.column && sort.direction === 'asc' ? 'common.sort-descending' : 'common.sort-ascending') },
-      onHeaderCell: () => ({ style: nowrap, onClick: () => { setSort(nextLedgerSort(sort, definition.column)); setNotice(null); }, onKeyDown: event => { if (event.key === 'Enter') { setSort(nextLedgerSort(sort, definition.column)); setNotice(null); } }, 'aria-sort': sort.column === definition.column ? sort.direction === 'asc' ? 'ascending' : 'descending' : 'none' }),
+      onHeaderCell: () => ({ style: wrapWords, onClick: () => { setSort(nextLedgerSort(sort, definition.column)); setNotice(null); }, onKeyDown: event => { if (event.key === 'Enter') { setSort(nextLedgerSort(sort, definition.column)); setNotice(null); } }, // Ant sets aria-sort of the sorted column from sortOrder; the others are named here.
+        ...(sort.column !== definition.column && { 'aria-sort': 'none' as const }) }),
       onCell: () => ({ role: 'cell', style: nowrap }),
       render: (_, row) => {
         switch (definition.column) {
@@ -240,7 +245,7 @@ export function Ledger() {
       },
     }));
     columns.push({ key: 'actions',
-      title: <span style={visuallyHidden}>{t('ledger.open-details')}</span>, fixed: 'right', width: 180,
+      title: <span style={visuallyHidden}>{t('ledger.open-details')}</span>, fixed: 'right', width: 140,
       onHeaderCell: () => ({ style: nowrap }), onCell: () => ({ role: 'cell' }),
       render: (_, row) => <Button size="small" type="link" style={{ whiteSpace: 'normal', height: 'auto' }} onClick={event => open(row.batchId, event.currentTarget)}>{t('ledger.open-details')}</Button>,
     });

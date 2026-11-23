@@ -87,12 +87,25 @@ function trendBounds(data: LineTrendInput['data'], unit: string): { min?: number
   return { min: min - padding, max: max + padding };
 }
 
+const TICK_SECONDS = [1, 2, 5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 14400];
+const TARGET_TICKS = 6;
+/** The smallest round step that keeps the window within about six ticks, in seconds. */
+function tickSeconds(seconds: number): number {
+  return TICK_SECONDS.find(step => step * TARGET_TICKS >= seconds) ?? TICK_SECONDS.at(-1)!;
+}
+
 export function buildLineTrendOption({ data, labels, formatters, theme }: LineTrendInput): ChartOption {
   if (unsupportedTrend(data)) return { ...base(theme), series: [] };
   const units = [...new Set(data.map((series) => series.unit))];
   const seriesColors = theme.seriesColors.filter(color => color !== theme.limitColor);
   const legendHeight = Math.max(24, theme.fontSize + 12);
   const common = base(theme);
+  const times = data.flatMap(series => series.points.map(pointTime));
+  const secondsPerUnit = formatters.secondsPerUnit ?? 1;
+  const range = (Math.max(...times) - Math.min(...times)) * secondsPerUnit;
+  const step = range > 0 ? tickSeconds(range) : undefined;
+  // Equal steps of a whole minute or more always change the minute, so HH:MM labels never repeat.
+  const formatTime = (time: number) => formatters.formatTime(time, { seconds: step !== undefined && step < 60 });
 
   return {
     ...common,
@@ -104,7 +117,7 @@ export function buildLineTrendOption({ data, labels, formatters, theme }: LineTr
     // These are the outer bounds, including offset axes and their names. ECharts
     // measures that text and reserves the necessary space inside these bounds.
     grid: { left: 12, right: 12, top: legendHeight + 24, bottom: 12, outerBoundsMode: 'same', outerBoundsContain: 'all' },
-    xAxis: { ...axis(theme), type: 'value', name: labels.time, axisLabel: { ...axis(theme).axisLabel, formatter: formatters.formatTime }, axisPointer: { label: { formatter: ({ value }) => formatters.formatTime(Number(value)) } } },
+    xAxis: { ...axis(theme), type: 'value', scale: true, name: labels.time, interval: step && step / secondsPerUnit, axisLabel: { ...axis(theme).axisLabel, formatter: formatTime }, axisPointer: { label: { formatter: ({ value }) => formatTime(Number(value)) } } },
     yAxis: units.map((unit, index) => {
       const position = index % 2 === 0 ? 'left' : 'right';
       return {

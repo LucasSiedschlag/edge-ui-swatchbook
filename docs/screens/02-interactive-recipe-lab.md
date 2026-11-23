@@ -43,7 +43,7 @@ Below the library, the Version and sticky Dependency check panel share a two-to-
 
 - Library filter with no match: `recipes.library-empty`. If no Recipe Version is open either, show one whole Screen `recipes.empty` instead.
 - Draft with failing rules, Draft with all rules passing, Approved read-only.
-- Successful Save Draft shows `recipes.draft-saved` as a polite info status, announced again on every Save and cleared on any edit or opening another Version. A Save that changes nothing shows `recipes.no-changes` instead, with the same announcement and clearing.
+- Successful Save Draft shows `recipes.draft-saved` as a polite info status, announced again on every Save and cleared when an edit is committed or another Version is opened. A Save that changes nothing shows `recipes.no-changes` instead, with the same announcement and clearing.
 - Field error (min, setpoint, max out of order) appears when a Parameter edit is committed with Enter or blur and rejected. It stays after blur restores the committed value, and clears when the field is focused again, on any input event, after a successful edit to the same Parameter, or when another Version is opened, saved or discarded.
 
 ## Required test IDs

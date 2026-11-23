@@ -325,6 +325,37 @@ it('clears retained Parameter rejections on successful saves, including a no-op,
   expect(byId(ids.version)).toHaveLength(0);
 });
 
+it('describes a focused blocked button and a focused read-only field with the reason once', async () => {
+  await start(); await openRecipe('R01');
+  await pick(ids.versionChoice, 'R01 v2 · Approved');
+  const reason = 'Approved version. Create a new Draft to edit.';
+  for (const target of [one(ids.save), field('Barrel zone 3', 'Setpoint')]) {
+    await act(() => target.focus()); await endMotion();
+    expect(document.querySelector('[role="tooltip"]')?.textContent).toBe(reason);
+    // The tooltip is the one description (Ant gives it a fixed id under test).
+    expect(target.getAttribute('aria-describedby')).toBe(document.querySelector('[role="tooltip"]')!.id);
+    await act(() => target.blur()); await endMotion();
+  }
+});
+
+it.each(['Draft saved.', 'No changes to save.'])('keeps what is typed into a Parameter right after the save status "%s"', async message => {
+  await start(); await openRecipe('R01');
+  await edit(field('Barrel zone 3', 'Setpoint'), '190');
+  await click(one(ids.save));
+  if (message === 'No changes to save.') await click(one(ids.save));
+  expect(one(ids.version).textContent).toContain(message);
+  const setpoint = field('Barrel zone 3', 'Setpoint');
+  await act(() => { setpoint.focus(); setpoint.select(); });
+  for (const [length, shown] of [[1, '1'], [2, '18'], [3, '181']] as const) {
+    await act(() => { setNativeValue(field('Barrel zone 3', 'Setpoint'), '181'.slice(0, length)); field('Barrel zone 3', 'Setpoint').dispatchEvent(new Event('input', { bubbles: true })); });
+    expect(field('Barrel zone 3', 'Setpoint').value).toBe(shown);
+    // The status only changes when the edit is committed: re-rendering the Version mid typing resets the field in a browser.
+    expect(one(ids.version).textContent).toContain(message);
+  }
+  await act(() => field('Barrel zone 3', 'Setpoint').blur());
+  expect(one(ids.version).textContent).not.toContain(message);
+});
+
 const steps = () => [...byId(ids.step)];
 const stepNames = () => steps().map(step => step.getAttribute('aria-label'));
 it('keeps all Dependency Rules and their live summary in a named complementary panel beside the Version', async () => {
@@ -368,7 +399,9 @@ it('removes, adds and reorders Steps with keyboard controls, reasons at the ends
   expect(stepNames()).toEqual(['Preheat', 'Ramp', 'Run', 'Cooldown']);
   expect(document.activeElement).toBe(button('Move down', steps()[3]!));
   expect(document.activeElement?.getAttribute('aria-disabled')).toBe('true');
-  expect(description(document.activeElement!).trim()).toBe('Already the last Step.');
+  // The open tooltip is the one description of the focused button.
+  expect(document.activeElement?.getAttribute('aria-describedby')).toBe(document.querySelector('[role="tooltip"]')!.id);
+  expect(document.querySelector('[role="tooltip"]')?.textContent).toBe('Already the last Step.');
   expect(plantState().events.slice(dataset.events.length).map(event => event.action)).toEqual(['recipe-new-draft']);
 });
 
@@ -467,6 +500,16 @@ it('confirms Discard in an Ant Modal, restores focus on cancel and returns to se
   expect(plantState().events.at(-1)).toMatchObject({ action: 'recipe-discard', target: 'R01-v3' });
   expect(rows()[0]!.querySelectorAll('td')[4]!.textContent).toBe('2');
   expect(rows()[0]!.querySelectorAll('td')[5]!.textContent).toBe('Approved');
+});
+
+it('sends focus to the search after confirming Discard while the filters leave no Recipe to show', async () => {
+  await start(); await openRecipe('R01');
+  await input(one(ids.search), 'missing');
+  expect(byId(ids.version)).toHaveLength(1);
+  await click(one(ids.discard));
+  await click(button('Discard draft', document.querySelector('[role="dialog"]')!)); await endMotion();
+  expect(document.querySelector('[role="dialog"]')).toBeNull();
+  expect(document.activeElement).toBe(one(ids.search));
 });
 
 it('checks die pressure at screw speed, weld temperature and time, and the strict 120 second takt using literal edits', async () => {

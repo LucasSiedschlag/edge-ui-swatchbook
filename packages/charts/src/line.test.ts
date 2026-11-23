@@ -1,4 +1,4 @@
-import { expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import { buildLineTrendOption } from './options';
 import { darkChartTheme } from './theme';
 
@@ -13,7 +13,7 @@ const data = [
 it('builds a time trend with two unit axes, caller formatting and stale gaps', () => {
   const option = buildLineTrendOption({ data, labels, formatters, theme: darkChartTheme });
   expect(option.animation).toBe(false);
-  expect(option.xAxis).toMatchObject({ type: 'value', axisLabel: { formatter: formatters.formatTime } });
+  expect(option.xAxis).toMatchObject({ type: 'value', axisLabel: { formatter: expect.any(Function) } });
   expect(option.yAxis).toMatchObject([{ type: 'value', name: '°C' }, { type: 'value', name: 'bar' }]);
   expect(option.series).toMatchObject([
     { name: 'Temperature', type: 'line', yAxisIndex: 0, connectNulls: false, data: [[1000, 18], [2000, null]] },
@@ -148,4 +148,24 @@ it('uses each Tag colour for its dotted limits and dashed setpoints with transla
   expect(series[0]!.markLine!.tooltip.trigger).toBe('item');
   expect(series[0]!.markLine!.tooltip.formatter({ name: 'Mínimo', value: 10 })).toBe('First - Mínimo: 10 °C');
   expect(series[1]!.markLine!.tooltip.formatter({ name: 'Máximo', value: 30 })).toBe('Second - Máximo: 30 °C');
+});
+
+describe('time axis labels', () => {
+  const clock = (time: number, options?: { seconds?: boolean }) => new Date(time * 1000).toISOString().slice(11, options?.seconds ? 19 : 16);
+  const build = (seconds: number) => buildLineTrendOption({ data: [{ ...data[0]!, points: [{ tick: 3600, value: 1, status: 'normal' }, { tick: 3600 + seconds, value: 2, status: 'normal' }] }], labels, formatters: { ...formatters, formatTime: clock }, theme: darkChartTheme });
+  const ticks = (seconds: number) => {
+    const { interval } = build(seconds).xAxis as { interval: number };
+    return Array.from({ length: Math.floor(seconds / interval) + 1 }, (_, index) => Math.ceil(3600 / interval) * interval + index * interval).filter(tick => tick <= 3600 + seconds);
+  };
+  const labelsOf = (seconds: number) => ticks(seconds).map(tick => ((build(seconds).xAxis as { axisLabel: { formatter: (value: number) => string } }).axisLabel.formatter(tick)));
+
+  it.each([[300, 60, ['01:00', '01:01', '01:02', '01:03', '01:04', '01:05']], [1800, 300, ['01:00', '01:05', '01:10', '01:15', '01:20', '01:25', '01:30']], [7200, 1800, ['01:00', '01:30', '02:00', '02:30', '03:00']]])('spaces ticks of a %i second window every %i seconds with distinct minutes', (seconds, interval, expected) => {
+    expect(build(seconds).xAxis).toMatchObject({ interval });
+    expect(labelsOf(seconds)).toEqual(expected);
+  });
+
+  it('shows seconds when the tick interval is under a minute', () => {
+    expect(build(30).xAxis).toMatchObject({ interval: 5 });
+    expect(labelsOf(30)).toEqual(['01:00:00', '01:00:05', '01:00:10', '01:00:15', '01:00:20', '01:00:25', '01:00:30']);
+  });
 });

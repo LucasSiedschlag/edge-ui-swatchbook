@@ -217,7 +217,7 @@ it('requires a note for the Shift handover and records it', async () => {
   const submit = () => [...document.querySelectorAll<HTMLButtonElement>('.ant-modal button')].find(b => b.textContent === en['action.submit-handover'])!;
   const before = events().length;
   await click(submit());
-  expect(document.body.textContent).toContain(en['plant-error.note-required']);
+  expect(one(ids.actionError).textContent).toContain(en['plant-error.note-required']);
   expect(events().length).toBe(before);
   const note = one(ids.handoverNote) as HTMLTextAreaElement;
   expect(note.placeholder).toBe(en['deck.handover-placeholder']);
