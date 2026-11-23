@@ -3,7 +3,7 @@ import {
 } from '@swatchbook/core';
 import { actionErrorLabel, useActions, useI18n, useSimulation } from '@swatchbook/runtime';
 import { Alert, Button, Card, Col, Descriptions, Input, Modal, Progress, Row, Select, Space, Statistic, Table, Tag, Typography } from 'antd';
-import { selectArrow } from './decorative-icons';
+import { closeIcon, selectArrow } from './decorative-icons';
 import { CloseCircleFilled, InfoCircleFilled } from '@ant-design/icons';
 import { useState, type ReactNode } from 'react';
 
@@ -260,11 +260,12 @@ function Actions({ view, lineId }: { view: DeckView; lineId: LineId }) {
         <Button data-testid={ids.resume} disabled={!actions.resume} onClick={() => run({ type: 'resume', lineId })}>{t('action.resume')}</Button>
         <Button data-testid={ids.estop} danger type="primary" disabled={!actions.emergencyStop} onClick={() => setConfirming(true)}>{t('action.emergency-stop')}</Button>
         <Button data-testid={ids.reset} disabled={!actions.reset} onClick={() => run({ type: 'reset', lineId })}>{t('action.reset')}</Button>
-        <Button data-testid={ids.handover} disabled={!actions.shiftHandover} onClick={() => setHandover({ note: '', error: null })}>{t('action.shift-handover')}</Button>
+        <Button data-testid={ids.handover} disabled={!actions.shiftHandover} onClick={() => { setError(null); setHandover({ note: '', error: null }); }}>{t('action.shift-handover')}</Button>
       </Space>
       <ErrorAlert messageKey={error} testId={ids.actionError} />
       <Modal
         destroyOnHidden
+        closeIcon={closeIcon}
         open={confirming}
         title={t('deck.estop-confirm.title')}
         okText={t('action.confirm')}
@@ -277,6 +278,7 @@ function Actions({ view, lineId }: { view: DeckView; lineId: LineId }) {
       </Modal>
       <Modal
         destroyOnHidden
+        closeIcon={closeIcon}
         open={handover !== null}
         title={t('deck.handover')}
         okText={t('action.submit-handover')}
@@ -301,7 +303,7 @@ function Actions({ view, lineId }: { view: DeckView; lineId: LineId }) {
             value={handover?.note ?? ''}
             onChange={event => setHandover(current => current && { ...current, note: event.target.value })}
           />
-          <ErrorAlert messageKey={handover?.error ?? null} />
+          <ErrorAlert messageKey={handover?.error ?? null} testId={ids.actionError} />
         </Space>
       </Modal>
     </Space>

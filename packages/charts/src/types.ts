@@ -31,7 +31,10 @@ export interface LineTrendLabels extends ChartLabels {
   minimum: string; maximum: string; setpoint: string;
 }
 export interface LineTrendFormatters {
-  formatTime: (time: number) => string;
+  /** Receives the axis coordinate. `seconds` is true when the ticks are less than a minute apart. */
+  formatTime: (time: number, options?: { seconds: boolean }) => string;
+  /** Seconds in one unit of the time coordinate. Defaults to 1. */
+  secondsPerUnit?: number;
   formatValue: (value: number, unit: string) => string;
   formatStatus: (status: string) => string;
 }

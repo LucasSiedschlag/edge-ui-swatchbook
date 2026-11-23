@@ -114,7 +114,7 @@ function Diagnostics({ openAlarm }: { openAlarm(id: string): void }) {
         </Filter>
         <Table<ConnectivityRow>
           data-testid={ids.diagnostics} rowKey="machineId" size="small" pagination={false}
-          dataSource={connectivityView(dataset, snapshot, sort)} scroll={{ x: 'max-content' }}
+          dataSource={connectivityView(dataset, snapshot, sort)}
           onChange={(_, __, sorter) => {
             const next = Array.isArray(sorter) ? sorter[0] : sorter;
             setSort(next?.order

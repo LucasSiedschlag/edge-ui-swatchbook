@@ -4,7 +4,7 @@ import {
 } from '@swatchbook/core';
 import { actionErrorLabel, useActions, useI18n, usePlantState, usePreferences, useShortcutHandlers } from '@swatchbook/runtime';
 import { Alert, Button, Card, Descriptions, Empty, Input, InputNumber, Modal, Select, Space, Table, Tooltip, Typography, theme } from 'antd';
-import { selectArrow, stepperControls } from './decorative-icons';
+import { closeIcon, selectArrow, stepperControls } from './decorative-icons';
 import type { InputRef } from 'antd';
 import { Fragment, cloneElement, useEffect, useId, useMemo, useRef, useState, type CSSProperties, type ReactElement, type ReactNode } from 'react';
 
@@ -77,7 +77,7 @@ export function Recipes() {
           ].map(column => ({ ...column, onHeaderCell: () => ({ style: words }), onCell: () => ({ style: { ...words, padding: token.paddingXS } }) }))} /></div>}
       </Space>
     </Card>
-    {!wholeEmpty && <Version detail={detail} select={setSelection} onDiscard={() => { setSelection(null); search.current?.focus(); }} />}
+    {!wholeEmpty && <Version detail={detail} select={setSelection} onDiscard={() => search.current?.focus()} />}
   </div>;
 }
 
@@ -86,11 +86,13 @@ const visuallyHidden: CSSProperties = {
   overflow: 'hidden', clipPath: 'inset(50%)', whiteSpace: 'nowrap', border: 0,
 };
 // Ant handles hover; plain focus state avoids flushSync when a dialog moves focus during commit.
+// While the tooltip is open it describes the control, so the hidden copy of the reason is left out of the description.
 function ReasonTip({ title, children }: { title: ReactNode; children: ReactElement<{ onFocus?: () => void; onBlur?: () => void }> }) {
   const [hover, setHover] = useState(false);
   const [focus, setFocus] = useState(false);
-  return <Tooltip title={title} trigger={['hover']} open={Boolean(title) && (hover || focus)} onOpenChange={setHover}>
-    {cloneElement(children, { onFocus: () => { setFocus(true); children.props.onFocus?.(); }, onBlur: () => { setFocus(false); children.props.onBlur?.(); } })}
+  const open = Boolean(title) && (hover || focus);
+  return <Tooltip title={title} trigger={['hover']} open={open} onOpenChange={setHover}>
+    {cloneElement(children, { onFocus: () => { setFocus(true); children.props.onFocus?.(); }, onBlur: () => { setFocus(false); children.props.onBlur?.(); }, ...(open && { 'aria-describedby': undefined }) })}
   </Tooltip>;
 }
 function ReasonButton({ reason, children, onClick, testId, buttonRef, size, buttonId }: { reason: string | null; children: ReactNode; onClick(): void; testId?: string; buttonId?: string; buttonRef?: React.Ref<HTMLButtonElement>; size?: 'small' }) {
@@ -114,6 +116,7 @@ function ParameterValue({ parameter, field, readOnlyReason, versionId, saved, on
   function commit() {
     const next = value === null ? Number.NaN : Number(value);
     if (readOnlyReason || next === parameter[field] || next === refused.current) return;
+    onEdit();
     const result = dispatch({ type: 'edit-parameter', versionId, parameterId: parameter.id, field, value: next });
     refused.current = result.ok ? null : next;
     setError(actionErrorLabel(result));
@@ -128,7 +131,7 @@ function ParameterValue({ parameter, field, readOnlyReason, versionId, saved, on
       onBlur={() => { commit(); setValue(parameter[field]); }}
       onPressEnter={commit}
       onFocus={() => { setError(null); refused.current = null; }}
-      onInputCapture={() => { onEdit(); setError(null); refused.current = null; }}
+      onInputCapture={() => { setError(null); refused.current = null; }}
       onChange={setValue}
       decimalSeparator={separator} parser={input => (input ?? '').replace(separator, '.')}
       formatter={(number, { userTyping, input }) => userTyping ? input : String(number ?? '').replace('.', separator)} /></ReasonTip>
@@ -147,6 +150,8 @@ function Version({ detail, select, onDiscard }: { detail: RecipeVersionView | nu
   const [discarding, setDiscarding] = useState(false);
   const discardButton = useRef<HTMLButtonElement>(null);
   const discarded = useRef(false);
+  // When the filters leave nothing to show, the Version leaves with the dialog before afterClose can run.
+  useEffect(() => () => { if (discarded.current) onDiscard(); }, []);
   const [chosenKind, setChosenKind] = useState<StepKind | null>(RECIPE_DEFAULT_STEP_KIND);
   const title = useRef<HTMLSpanElement>(null);
   const addButton = useRef<HTMLButtonElement>(null);
@@ -179,7 +184,7 @@ function Version({ detail, select, onDiscard }: { detail: RecipeVersionView | nu
     setAttempts(count => count + 1);
     const result = dispatch({ type: 'discard-draft', versionId });
     setNotice(actionErrorLabel(result));
-    if (result.ok) { discarded.current = true; setDiscarding(false); onDiscard(); }
+    if (result.ok) { discarded.current = true; setDiscarding(false); select(null); }
   }
   function finish(type: 'save-draft' | 'approve') {
     if (!versionId) return;
@@ -266,7 +271,9 @@ function Version({ detail, select, onDiscard }: { detail: RecipeVersionView | nu
     </Card>
     <Modal open={discarding} title={t('action.recipe-discard')} onOk={discard} onCancel={() => setDiscarding(false)}
       okText={t('action.recipe-discard')} cancelText={t('action.cancel')} destroyOnHidden
-      closable={{ 'aria-label': t('action.close') }} focusable={{ focusTriggerAfterClose: false }} afterClose={() => { if (!discarded.current) discardButton.current?.focus(); }}>
+      closable={{ 'aria-label': t('action.close'), closeIcon }} focusable={{ focusTriggerAfterClose: false }}
+      // Focus moves once the dialog has left: focusing the search while it is open loses it to the dialog's focus return.
+      afterClose={() => { if (discarded.current) onDiscard(); else discardButton.current?.focus(); }}>
       <Typography.Paragraph>{t('recipes.discard-confirm')}</Typography.Paragraph>
     </Modal>
     <aside className="recipes-dependencies" aria-label={t('recipes.dependency-check')}

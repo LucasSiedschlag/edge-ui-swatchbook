@@ -18,9 +18,11 @@ Route `/deck`. For Operators on shift. Shows the state of one Line and lets the 
 | Pause | Line goes Stopped, reason Paused by operator. Logged. |
 | Resume | Line goes Running if it has no active Critical Alarm. Logged. |
 | Emergency stop | Needs a confirmation. Line goes Stopped, reason Emergency stop, and stays latched until Reset. Logged. |
-| Reset | Clears the latch after an Emergency stop. Logged. |
+| Reset | Clears the latch after an Emergency stop. The Line stays Stopped, reason Paused by operator, until Resume. Logged. |
 | Shift handover | Asks for a note, records it on the current Shift. Logged. |
 | Expand or collapse banner | Shows or hides the Critical Alarms. |
+
+A refused Action shows its message under `deck.action-error`: under the buttons, or inside the Shift handover dialog for the note-required refusal. Only one of the two shows at a time.
 
 ## States
 
