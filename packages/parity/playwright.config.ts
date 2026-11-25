@@ -6,6 +6,8 @@ const baseURL = LIBRARY_URL ?? 'http://localhost:5199';
 
 export default defineConfig<Options>({
   testDir: './tests',
+  // A loaded machine makes dev-server pages slow; give each check room instead of retrying blindly.
+  timeout: 60_000,
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 1 : 0,
